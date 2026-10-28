@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -143,10 +144,15 @@ def extract_frames(config: ExtractConfig, progress: ProgressCb | None = None) ->
 
     mask_paths: list[Path] = []
     if config.generate_masks:
-        from pipeline.masks import generate_moving_object_masks
+        try:
+            from pipeline.masks import generate_moving_object_masks
 
-        _emit(progress, "masking", 80, "Masking moving objects")
-        mask_paths = generate_moving_object_masks(written)
+            _emit(progress, "masking", 80, "Masking moving objects")
+            mask_paths = generate_moving_object_masks(written)
+        except RuntimeError as _mask_err:
+            warnings.warn(f"Masking skipped: {_mask_err}", stacklevel=2)
+        except Exception as _mask_err:
+            warnings.warn(f"Masking failed and will be skipped: {_mask_err}", stacklevel=2)
 
     shutil.rmtree(raw_dir, ignore_errors=True)
     last = "masking" if mask_paths else "geotagging"

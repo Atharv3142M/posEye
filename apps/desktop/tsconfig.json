@@ -9,5 +9,6 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src"]
+  "include": ["src/renderer"],
+  "exclude": ["src/main.ts", "src/viewer.ts", "node_modules"]
 }

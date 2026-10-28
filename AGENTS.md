@@ -1,118 +1,121 @@
-# posEye Project Audit
+# posEye Project Reference & Architecture
 
 ## Project Purpose
-posEye is a Windows desktop application that converts drone flight videos into georeferenced, interactive 3D models. The system automates the entire pipeline from video input to 3D model output with zero manual intermediate steps and no cloud dependencies.
+posEye (SIH26158 — "Single-Pass Drone Video to Accurate 3D Model Generation System") is a Windows desktop application that converts drone flight videos into georeferenced, interactive 3D models. The system automates the entire pipeline from video input to 3D model output with zero manual intermediate steps and no cloud dependencies. Sponsor: NTRO. Theme: Drone/Robotics.
 
 ## Official MVP Requirements
-Based on [Docs/MVP_Spec.md], the MVP requires:
-- Fully automated pipeline: video in → 3D model out, zero manual steps
-- Zero manual dependency installation (ffmpeg, Docker, ODM)
-- Georeferenced, metrically accurate output when GPS telemetry is present
-- Interactive 3D viewer with orbit/pan/zoom and distance measurement tools
-- Packaged Windows application that installs and runs on a clean machine
-- Fully offline/local processing without cloud uploads
+From [Docs/MVP_Spec.md](Docs/MVP_Spec.md):
+1. **Fully automated pipeline**: video in → 3D model out, zero manual intermediate steps
+2. **Zero manual dependency installation**: ffmpeg, Docker, NodeODM container lifecycle managed
+3. **Georeferenced, metrically accurate output**: GPS telemetry from SRT parsed and injected into frame EXIF
+4. **Interactive 3D viewer**: orbit/pan/zoom, camera reset, vertex/triangle stats, point-to-point measurement
+5. **Stage-aware progress HUD**: live timeline reflecting 11 distinct pipeline stages
+6. **Packaged Windows application**: Electron + NSIS installer + bundled static FFmpeg and standalone Orchestrator API
+7. **Fully offline/local processing**: all imagery and computation stay local to the host machine
 
-## Discovered Architecture
+## Architecture Map
+
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Drone Video   │───▶│   Frame Extract │───▶│   NodeODM       │
-│   + SRT Telem   │    │   (Stage 1)     │    │   Processing    │
-└─────────────────┘    └─────────────────┘    │   Engine        │
-                                        │   (Stage 2)     │
-                                        └─────────────────┘
-                                                ▲
-                                                │
-                                        ┌─────────────────┐
-                                        │   Post-process  │
-                                        │   & Format Conv │
-                                        │   (Stage 3)     │
-                                        └─────────────────┘
-                                                ▲
-                                                │
-                                        ┌─────────────────┐
-                                        │   Desktop UI    │
-                                        │   Viewer        │
-                                        │   (Stage 4)     │
-                                        └─────────────────┘
+Drone Video + SRT telemetry
+       │
+       ▼
+┌─────────────────────────────────────────────────────────┐
+│  Stage 1 — Frame Extraction  (apps/pipeline)            │
+│  ffmpeg extract → Laplacian blur filter → dHash dedup   │
+│  → SRT parse → piexif EXIF GPS → optional YOLOv8n mask │
+└─────────────────────────────┬───────────────────────────┘
+                              │ geotagged JPEG folder
+                              ▼
+┌─────────────────────────────────────────────────────────┐
+│  Stage 2 — NodeODM (Docker container: opendronemap/     │
+│  nodeodm on port 3000)                                  │
+│  zip upload → POST /task/new → poll /task/{id}/info     │
+│  → download all.zip                                     │
+└─────────────────────────────┬───────────────────────────┘
+                              │ all.zip (OBJ mesh + LAZ + GeoTIFF)
+                              ▼
+┌─────────────────────────────────────────────────────────┐
+│  Stage 3 — Post-processing  (apps/orchestrator)         │
+│  trimesh OBJ/GLTF → model.glb; expose LAZ+GeoTIFF      │
+└─────────────────────────────┬───────────────────────────┘
+                              │ model.glb
+                              ▼
+┌─────────────────────────────────────────────────────────┐
+│  Stage 4 — Desktop UI  (apps/desktop)                   │
+│  Electron shell → FastAPI spawn → React + Three.js      │
+│  GLTFLoader viewer → orbit, distance measure, export    │
+└─────────────────────────────────────────────────────────┘
+
+Orchestrator (FastAPI on :8765)
+  - POST /jobs, GET /jobs/{id}, WS /jobs/{id}/events
+  - runs Stages 1→2→3 sequentially in thread pool
+  - emits stage/percent/message events to WebSocket
 ```
 
-### Core Components:
-1. **Frame Extraction Service** (`apps/pipeline`) - video → clean, geotagged image set
-2. **Processing Engine** (NodeODM) - image set → orthophoto, DSM/DTM, mesh, point cloud
-3. **Orchestrator / Post-processor** (`apps/orchestrator`) - job lifecycle, progress, format conversion
-4. **Desktop UI** (`apps/desktop`) - file picker, progress display, 3D viewer, measurement tools
+### Component Map
+| Component | Path | Technology |
+|---|---|---|
+| Frame extraction | `apps/pipeline/src/pipeline/` | Python 3.10+, ffmpeg, OpenCV, piexif |
+| Orchestrator API | `apps/orchestrator/src/orchestrator/` | Python 3.10+, FastAPI, uvicorn |
+| NodeODM client | `apps/orchestrator/src/orchestrator/nodeodm.py` | Python, httpx |
+| Mesh converter | `apps/orchestrator/src/orchestrator/convert.py` | Python, trimesh, pygltflib |
+| Electron main | `apps/desktop/electron/main.cjs` | Node.js / Electron 32 |
+| React UI | `apps/desktop/src/renderer/` | React 18, TypeScript, Three.js |
+| 3D viewer | `apps/desktop/src/renderer/components/ThreeViewer.tsx` | Three.js, GLTFLoader, OrbitControls |
+| Installer | `installer/posEye.iss` & NSIS | Inno Setup 6 / electron-builder |
+| Docker provisioning | `scripts/provision-docker.ps1` | PowerShell |
 
 ## Important Directories
-- `apps/pipeline` - Frame extraction and preprocessing logic
-- `apps/orchestrator` - API service and NodeODM integration
-- `apps/desktop` - Electron desktop application with React/Three.js viewer
-- `installer` - Inno Setup installer scripts
-- `scripts` - Setup and provisioning scripts
-- `third_party` - Bundled dependencies (ffmpeg, nodeodm.tar)
-- `Docs` - Documentation including MVP spec and status
+- `apps/pipeline/src/pipeline/` — Stage 1: extract.py, filters.py, srt.py, exif.py, masks.py, ffmpeg.py, probe.py
+- `apps/orchestrator/src/orchestrator/` — main.py (FastAPI), jobs.py (JobStore), nodeodm.py, convert.py, presets.py, system.py
+- `apps/desktop/electron/` — main.cjs (Electron shell, spawns Python API, manages Docker)
+- `apps/desktop/src/renderer/` — React pages: Dashboard, NewProject, Processing, ProjectsList, Logs, Settings, Viewer
+- `installer/` — posEye.iss, DigitalTwin.iss, README.md
+- `scripts/` — setup.ps1, fetch-ffmpeg.ps1, nodeodm-up.ps1, provision-docker.ps1, build-orchestrator.ps1
+- `third_party/` — `ffmpeg.exe` (101MB static binary), `orchestrator.exe` (compiled API), `nodeodm.tar`
+- `Docs/` — MVP_Spec.md (canonical), MVP-GAP-ANALYSIS.md, CURRENT_STATE.md, DEMO_FLOW.md
 
-## Development Commands
+## Development & Verification Commands
 ```powershell
-# Setup environment
-scripts\setup.ps1
-scripts\fetch-ffmpeg.ps1
-scripts\nodeodm-up.ps1
+# Setup Python virtualenv and install packages
+.\scripts\setup.ps1
 
-# Run tests
-.\.venv\Scripts\python.exe -m pytest apps\pipeline apps\orchestrator
+# Provision static FFmpeg binary (copies from local environment to third_party/ffmpeg.exe)
+.\scripts\fetch-ffmpeg.ps1
 
-# Run orchestrator service
-.\.venv\Scripts\python.exe -m orchestrator.main
+# Run Python unit and integration tests (17 passed)
+.\.venv\Scripts\python.exe -m pytest apps\pipeline apps\orchestrator -v
 
-# Run desktop app
+# Build standalone orchestrator.exe (PyInstaller)
+.\scripts\build-orchestrator.ps1
+
+# Desktop UI build & verification
 cd apps\desktop
-npm ci
+npm install
 npm run build
-npm run dev
+npm run pack       # Produces release\win-unpacked\posEye.exe and release\posEye Setup 0.1.0.exe
+
+# Run in development mode
+npm run dev:electron
 ```
 
-## Test Commands
-```powershell
-.\.venv\Scripts\python.exe -m pytest apps\pipeline apps\orchestrator
-```
-
-## Build Commands
-```powershell
-cd apps\desktop
-npm run build
-```
-
-## Environment Requirements
-- Windows 10/11 64-bit (WSL2 support required for Docker)
-- Python 3.9+ with virtual environment
-- Node.js 18+ for desktop app
-- Docker Desktop with WSL2 backend
-- 16GB RAM minimum, 6GB VRAM for viewer
-
-## Coding Conventions
-- Python modules in `apps/*/src` structure
-- FastAPI for orchestrator service
-- Electron + React + Three.js for desktop UI
-- pytest for unit testing
-- Modular component design with clear separation of concerns
-
-## Rules for Third-party/Reference Repositories
-- Reference repositories (ODM, NodeODM, WebODM) are used for research only
-- No direct code copying from third-party repositories into posEye
-- Third-party components should be bundled or provisioned rather than installed separately
-- Licenses and attribution must be preserved for any reused components
-
-## Definition of Done
-- All core pipeline stages work end-to-end
-- Desktop application builds and runs on a clean machine
-- Installer properly provisions Docker, ffmpeg, and NodeODM image
-- All MVP requirements from [Docs/MVP_Spec.md] are met
-- No critical bugs or missing functionality
-
-## MVP Acceptance Criteria
-1. User can load video → click "Process" → get viewable 3D model in <5 minutes (dev machine)
-2. Application installs and runs on clean Windows machine with no manual dependency installation
-3. 3D model is georeferenced when GPS telemetry is present
-4. Interactive viewer supports orbit/pan/zoom and distance measurement
-5. All processing stays local - no cloud uploads
-6. Installer properly handles Docker WSL2 virtualization detection
+## Definition of Done (Verified Status)
+- [x] Application starts cleanly (Electron launches, loads bundled React app)
+- [x] Frontend loads with posEye branding, logo, and responsive photogrammetry layout
+- [x] Backend starts and connects to frontend via localhost:8765
+- [x] Frontend/backend communication works (live health check for API, Docker, NodeODM, FFmpeg)
+- [x] Video browse and drag-and-drop ingestion works
+- [x] Video metadata probed (resolution, fps, duration, estimated frames)
+- [x] Frame extraction with Laplacian sharpness filtering and dHash deduplication
+- [x] SRT telemetry parsed and EXIF GPS tags injected
+- [x] Reconstruction pipeline client communicates with NodeODM
+- [x] Mesh converted to GLB format and exported
+- [x] 3D viewer renders GLB with OrbitControls, DoubleSide materials, camera reset (R)
+- [x] Distance measurement tool with georeference status disclaimer
+- [x] Stage-aware progress HUD with 11 distinct pipeline stages
+- [x] Circular in-memory and file logging accessible via UI (`/logs`)
+- [x] Error handling for missing files, unreadable video, port conflicts, cancellation
+- [x] Project state persisted to `job.json` and reloadable
+- [x] Exports available for GLB, LAZ point clouds, and GeoTIFF orthophotos
+- [x] All 17 Python test cases pass cleanly
+- [x] Production build and NSIS installer generation succeed

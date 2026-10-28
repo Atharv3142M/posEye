@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
+import time
 import traceback
 import uuid
 from dataclasses import dataclass, field
@@ -55,6 +56,7 @@ class Job:
     extract_stats: dict[str, Any] = field(default_factory=dict)
     fps: float = 3.0
     blur_threshold: float = 40.0
+    duration_s: float = 0.0
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     events: list[JobEvent] = field(default_factory=list)
@@ -95,6 +97,7 @@ class JobStore:
                 created_at=data.get("createdAt") or "",
                 fps=float(data.get("fps") or 3.0),
                 blur_threshold=float(data.get("blurThreshold") or 40.0),
+                duration_s=float(data.get("durationS") or 0.0),
             )
             glb = meta.parent / "model.glb"
             if glb.is_file():
@@ -185,6 +188,7 @@ class JobStore:
             "extract": job.extract_stats,
             "fps": job.fps,
             "blurThreshold": job.blur_threshold,
+            "durationS": job.duration_s,
             "hasModel": bool(job.glb_path and job.glb_path.is_file()),
             "assets": {
                 "glb": (job.work_dir / "model.glb").is_file(),
@@ -206,7 +210,22 @@ class JobStore:
             for q in list(job.subscribers):
                 job.loop.call_soon_threadsafe(q.put_nowait, event)
 
+    @staticmethod
+    def _enrich_error(exc: Exception, error_code: str | None) -> str:
+        """Append helpful hints to known error messages."""
+        msg = str(exc)
+        if error_code == "NOT_ENOUGH_FRAMES":
+            msg += " Try lowering the blur threshold in Settings or use a longer video clip."
+        elif isinstance(exc, NodeODMError):
+            lower = msg.lower()
+            if "memory" in lower or "ram" in lower:
+                msg += " NodeODM ran out of memory. Try a lower quality preset."
+            elif "port" in lower or "connection refused" in lower:
+                msg += " Cannot reach NodeODM at port 3000. Check Docker is running."
+        return msg
+
     def run_job(self, job: Job) -> None:
+        _start = time.monotonic()
         try:
             if job.canceled:
                 raise NodeODMError("Job canceled")
@@ -249,9 +268,9 @@ class JobStore:
                 should_stop=lambda: job.canceled,
             )
             all_zip = client.download_asset(uuid_task, "all.zip", job.work_dir / "all.zip")
-            self._emit(job, "postprocessing", 86, "Unpacking NodeODM outputs")
+            self._emit(job, "postprocessing", 88, "Unpacking NodeODM outputs")
             unpacked = extract_all_zip(all_zip, job.work_dir / "odm")
-            self._emit(job, "converting", 88, "Converting mesh to GLB")
+            self._emit(job, "converting", 90, "Converting mesh to GLB")
 
             textured = unpacked / "odm_texturing" / "odm_textured_model_geo.obj"
             if not textured.is_file():
@@ -273,13 +292,17 @@ class JobStore:
                 ),
                 encoding="utf-8",
             )
+            job.duration_s = round(time.monotonic() - _start, 2)
             self._emit(job, "ready", 100, "Model ready")
         except (ExtractError, PipelineError, NodeODMError, ConvertError) as exc:
-            job.error = str(exc)
-            job.error_code = getattr(exc, "code", None) or "NODEODM_FAILED"
-            self._emit(job, "error", job.percent, str(exc))
+            error_code = getattr(exc, "code", None) or "NODEODM_FAILED"
+            job.error = self._enrich_error(exc, error_code)
+            job.error_code = error_code
+            job.duration_s = round(time.monotonic() - _start, 2)
+            self._emit(job, "error", job.percent, job.error)
         except Exception as exc:
             job.error = str(exc)
             job.error_code = "UNKNOWN"
+            job.duration_s = round(time.monotonic() - _start, 2)
             (job.work_dir / "error.txt").write_text(traceback.format_exc(), encoding="utf-8")
             self._emit(job, "error", job.percent, str(exc))

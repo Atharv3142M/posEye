@@ -103,7 +103,7 @@ class NodeODMClient:
         self,
         uuid: str,
         *,
-        poll_s: float = 1.0,
+        poll_s: float = 2.0,
         progress: ProgressCb | None = None,
         should_stop: Callable[[], bool] | None = None,
     ) -> TaskInfo:
@@ -113,7 +113,8 @@ class NodeODMClient:
                 raise NodeODMError("Job canceled")
             info = self.task_info(uuid)
             if progress:
-                pct = 40 + min(50.0, info.progress * 0.5)
+                # NodeODM 0-100% maps to orchestrator 42-88%
+                pct = 42 + min(46.0, info.progress * 0.46)
                 msg = info.raw.get("status", {}).get("errorMessage") or "Reconstructing"
                 if not isinstance(msg, str) or not msg:
                     msg = f"NodeODM {info.progress:.0f}%"

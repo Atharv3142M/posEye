@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import collections
 import os
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 
 from orchestrator.jobs import JobStore
@@ -15,6 +18,24 @@ from orchestrator.system import system_status
 JOBS_ROOT = Path(os.environ.get("DT_JOBS_DIR", Path.cwd() / ".jobs"))
 store = JobStore(JOBS_ROOT)
 
+# ---------------------------------------------------------------------------
+# In-memory circular buffer for orchestrator-level log entries (Task 3)
+# ---------------------------------------------------------------------------
+_APP_LOG: collections.deque[dict] = collections.deque(maxlen=500)
+
+
+def _app_log(level: str, message: str) -> None:
+    """Append an entry to the in-memory app log buffer."""
+    _APP_LOG.append(
+        {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "level": level,
+            "message": message,
+        }
+    )
+    print(message, flush=True)
+
+
 app = FastAPI(title="posEye Orchestrator", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
@@ -22,6 +43,56 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ---------------------------------------------------------------------------
+# Startup events (Tasks 4 & 7)
+# ---------------------------------------------------------------------------
+@app.on_event("startup")
+def on_startup() -> None:
+    # --- Task 4: log Python + dep versions ---
+    try:
+        import fastapi as _fastapi
+        import trimesh as _trimesh
+        import httpx as _httpx
+
+        fa_ver = getattr(_fastapi, "__version__", "?")
+        tm_ver = getattr(_trimesh, "__version__", "?")
+        hx_ver = getattr(_httpx, "__version__", "?")
+    except Exception:
+        fa_ver = tm_ver = hx_ver = "?"
+
+    py_ver = sys.version.split()[0]
+    _app_log(
+        "INFO",
+        f"posEye orchestrator started — Python {py_ver} | "
+        f"fastapi={fa_ver} trimesh={tm_ver} httpx={hx_ver}",
+    )
+
+    # --- Task 7: system check at startup ---
+    try:
+        status = system_status()
+    except Exception as exc:
+        _app_log("ERROR", f"[posEye] system_status() failed: {exc}")
+        return
+
+    ffmpeg = status.get("ffmpeg", {})
+    if ffmpeg.get("detected"):
+        _app_log("INFO", f"[posEye] ffmpeg: detected at {ffmpeg.get('path')}")
+    else:
+        _app_log("WARNING", f"[posEye] ffmpeg: NOT detected — {ffmpeg.get('error', 'not found')}")
+
+    docker = status.get("docker", {})
+    if docker.get("ok"):
+        _app_log("INFO", f"[posEye] Docker: Running {docker.get('version', '')}")
+    else:
+        _app_log("WARNING", "[posEye] Docker: not available or not running")
+
+    nodeodm = status.get("nodeodm", {})
+    if nodeodm.get("ok"):
+        _app_log("INFO", f"[posEye] NodeODM: Connected at {nodeodm.get('url')}")
+    else:
+        _app_log("WARNING", f"[posEye] NodeODM: not reachable at {nodeodm.get('url')} — is Docker running?")
 
 
 class CreateJob(BaseModel):
@@ -53,6 +124,7 @@ class JobOut(BaseModel):
     errorCode: str | None = None
     extract: dict = {}
     assets: dict = {}
+    durationS: float = 0.0
 
 
 @app.exception_handler(Exception)
@@ -62,15 +134,24 @@ async def unhandled(_: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=500, content={"error": str(exc), "stage": "unknown"})
 
 
+# ---------------------------------------------------------------------------
+# Health (Task 4: extended fields)
+# ---------------------------------------------------------------------------
 @app.get("/health")
 def health() -> dict:
     status = system_status()
+    terminal = {"ready", "error", "cancelled"}
+    active_jobs = sum(1 for j in store.jobs.values() if j.stage not in terminal)
     return {
         "ok": True,
         "defaultPreset": detect_preset(),
         "ffmpeg": status.get("ffmpeg"),
         "nodeodm": {"ok": status["nodeodm"]["ok"], "url": status["nodeodm"]["url"]},
         "docker": status.get("docker"),
+        "pythonVersion": sys.version.split()[0],
+        "orchestratorVersion": "0.1.0",
+        "jobsDir": str(JOBS_ROOT),
+        "activeJobs": active_jobs,
     }
 
 
@@ -83,6 +164,9 @@ class ProbeBody(BaseModel):
     videoPath: str
 
 
+# ---------------------------------------------------------------------------
+# Probe (Task 8: estimatedFrames, estimatedDuration, summary)
+# ---------------------------------------------------------------------------
 @app.post("/probe/video")
 def probe_video_endpoint(body: ProbeBody) -> dict:
     from pipeline.probe import probe_video
@@ -91,14 +175,32 @@ def probe_video_endpoint(body: ProbeBody) -> dict:
         info = probe_video(body.videoPath)
     except Exception as exc:
         raise HTTPException(400, str(exc)) from exc
+
+    default_fps = 3.0
+    estimated_frames = int((info.duration_s or 0) * default_fps) if info.duration_s else None
+
+    # Build friendly summary string
+    dur_s = info.duration_s or 0
+    minutes = int(dur_s // 60)
+    seconds = int(dur_s % 60)
+    dur_str = f"{minutes}m {seconds}s" if minutes else f"{seconds}s"
+    res_str = f"{info.width}×{info.height}" if info.width and info.height else "?"
+    fps_str = f"{info.fps:.0f}fps" if info.fps else "?"
+    size_mb = round((info.size_bytes or 0) / 1024 / 1024, 0)
+    size_str = f"{int(size_mb)}MB"
+    summary = f"{dur_str} · {res_str} · {fps_str} · {size_str}"
+
     return {
         "path": str(info.path),
         "durationS": info.duration_s,
+        "estimatedDuration": info.duration_s,
         "width": info.width,
         "height": info.height,
         "fps": info.fps,
         "sizeBytes": info.size_bytes,
         "name": info.path.name,
+        "estimatedFrames": estimated_frames,
+        "summary": summary,
     }
 
 
@@ -194,6 +296,27 @@ def job_logs(job_id: str) -> dict:
     return {"id": job.id, "events": [e.as_dict() for e in job.events]}
 
 
+# ---------------------------------------------------------------------------
+# Task 3: plain-text log endpoint
+# ---------------------------------------------------------------------------
+@app.get("/jobs/{job_id}/logs/text")
+def job_logs_text(job_id: str) -> PlainTextResponse:
+    job = store.get(job_id)
+    if not job:
+        raise HTTPException(404, "Unknown job")
+    last_events = job.events[-200:]
+    lines = [f"[{e.ts}] {e.stage} {e.percent:.0f}% {e.message}" for e in last_events]
+    return PlainTextResponse("\n".join(lines))
+
+
+# ---------------------------------------------------------------------------
+# Task 3: app-level log endpoint
+# ---------------------------------------------------------------------------
+@app.get("/logs/app")
+def app_logs() -> list[dict]:
+    return list(_APP_LOG)
+
+
 @app.get("/jobs/{job_id}/metadata")
 def job_metadata(job_id: str) -> dict:
     job = store.get(job_id)
@@ -268,6 +391,7 @@ def _out(job) -> JobOut:
             "orthophoto": (job.work_dir / "odm").exists()
             and any(job.work_dir.joinpath("odm").rglob("*orthophoto*.tif")),
         },
+        durationS=getattr(job, "duration_s", 0.0),
     )
 
 
