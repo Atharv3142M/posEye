@@ -82,3 +82,45 @@ def test_create_task_multi_stage_lifecycle(tmp_path: Path, monkeypatch):
 
     dest = client.download_asset(uuid, "all.zip", tmp_path / "all.zip")
     assert dest.read_bytes().startswith(b"PK")
+
+
+def test_create_task_fallback_to_single_shot(tmp_path: Path, monkeypatch):
+    images = tmp_path / "frames"
+    images.mkdir()
+    (images / "image_000001.png").write_bytes(b"\x89PNG")
+    (images / "image_000002.tif").write_bytes(b"II*\x00")
+
+    class _FallbackTransport(httpx.BaseTransport):
+        def handle_request(self, request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if url.endswith("task/new/init"):
+                return httpx.Response(404, text="Not Found")
+            if url.endswith("task/new"):
+                return httpx.Response(200, json={"uuid": "single-shot-uuid"})
+            if "task/cancel" in url:
+                return httpx.Response(200, json={"success": True})
+            return httpx.Response(404)
+
+    client = NodeODMClient("http://nodeodm.test")
+    transport = _FallbackTransport()
+    real_client = httpx.Client
+
+    def fake_client(*args, **kwargs):
+        kwargs["transport"] = transport
+        kwargs["base_url"] = "http://nodeodm.test"
+        return real_client(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "Client", fake_client)
+
+    uuid = client.create_task(images, preset_options("low"))
+    assert uuid == "single-shot-uuid"
+    assert client.cancel_task(uuid) is True
+
+
+def test_mime_for_types():
+    from orchestrator.nodeodm import _mime_for
+    assert _mime_for(Path("test.jpg")) == "image/jpeg"
+    assert _mime_for(Path("test.jpeg")) == "image/jpeg"
+    assert _mime_for(Path("test.png")) == "image/png"
+    assert _mime_for(Path("test.tif")) == "image/tiff"
+    assert _mime_for(Path("test.tiff")) == "image/tiff"

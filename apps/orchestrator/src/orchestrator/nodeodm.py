@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from dataclasses import dataclass
@@ -11,11 +12,22 @@ from zipfile import ZipFile
 
 import httpx
 
+logger = logging.getLogger("orchestrator.nodeodm")
+
 ProgressCb = Callable[[str, float, str], None]
 
 
 def nodeodm_url() -> str:
     return os.environ.get("NODEODM_URL", "http://127.0.0.1:3000").rstrip("/")
+
+
+def _mime_for(path: Path) -> str:
+    s = path.suffix.lower()
+    if s == ".png":
+        return "image/png"
+    if s in {".tif", ".tiff"}:
+        return "image/tiff"
+    return "image/jpeg"
 
 
 @dataclass
@@ -85,6 +97,8 @@ class NodeODMClient:
 
         with httpx.Client(timeout=120.0) as client:
             # 1. Try official multi-stage init/upload/commit lifecycle
+            multi_stage_supported = False
+            task_uuid = None
             try:
                 init_data: dict[str, str] = {"options": json.dumps(options)}
                 if name:
@@ -94,7 +108,7 @@ class NodeODMClient:
                     init_payload = init_res.json()
                     task_uuid = init_payload.get("uuid")
                     if task_uuid:
-                        # Batch upload images under field name 'images'
+                        multi_stage_supported = True
                         batch_size = 12
                         for i in range(0, len(images), batch_size):
                             batch = images[i : i + batch_size]
@@ -104,13 +118,17 @@ class NodeODMClient:
                                 for img in batch:
                                     fh = img.open("rb")
                                     file_handles.append(fh)
-                                    files_to_send.append(("images", (img.name, fh, "image/jpeg")))
+                                    files_to_send.append(("images", (img.name, fh, _mime_for(img))))
                                 upload_res = client.post(
                                     self._url(f"task/new/upload/{task_uuid}"),
                                     files=files_to_send,
                                 )
                                 if upload_res.status_code >= 400:
-                                    raise NodeODMError(f"Image upload rejected: {upload_res.status_code} {upload_res.text}")
+                                    self.cancel_task(task_uuid)
+                                    raise NodeODMError(
+                                        f"NodeODM batch upload rejected for task {task_uuid}: "
+                                        f"HTTP {upload_res.status_code} {upload_res.text}"
+                                    )
                             finally:
                                 for fh in file_handles:
                                     fh.close()
@@ -118,9 +136,34 @@ class NodeODMClient:
                         commit_res = client.post(self._url(f"task/new/commit/{task_uuid}"))
                         if commit_res.status_code < 400:
                             return str(task_uuid)
-            except Exception:
-                # Fall through to single-shot upload
-                pass
+                        self.cancel_task(task_uuid)
+                        raise NodeODMError(
+                            f"NodeODM commit rejected for task {task_uuid}: "
+                            f"HTTP {commit_res.status_code} {commit_res.text}"
+                        )
+                elif init_res.status_code in {404, 405}:
+                    logger.info(
+                        "NodeODM does not support /task/new/init (status %s); falling back to single-shot upload",
+                        init_res.status_code,
+                    )
+                else:
+                    logger.warning(
+                        "NodeODM /task/new/init returned status %s (%s); falling back to single-shot upload",
+                        init_res.status_code,
+                        init_res.text,
+                    )
+            except NodeODMError:
+                raise
+            except (httpx.ConnectError, httpx.TimeoutException) as exc:
+                if multi_stage_supported and task_uuid:
+                    self.cancel_task(task_uuid)
+                    raise NodeODMError(f"NodeODM connection failed during image upload: {exc}") from exc
+                logger.warning("NodeODM multi-stage init connection failed (%s); trying single-shot POST /task/new", exc)
+            except Exception as exc:
+                if multi_stage_supported and task_uuid:
+                    self.cancel_task(task_uuid)
+                    raise NodeODMError(f"NodeODM multi-stage upload failed: {exc}") from exc
+                logger.warning("NodeODM multi-stage init unexpected error (%s); trying single-shot POST /task/new", exc)
 
             # 2. Single-shot POST /task/new with field 'images'
             files_to_send = []
@@ -129,7 +172,7 @@ class NodeODMClient:
                 for img in images:
                     fh = img.open("rb")
                     file_handles.append(fh)
-                    files_to_send.append(("images", (img.name, fh, "image/jpeg")))
+                    files_to_send.append(("images", (img.name, fh, _mime_for(img))))
 
                 data_payload: dict[str, str] = {"options": json.dumps(options)}
                 if name:
@@ -174,8 +217,8 @@ class NodeODMClient:
                     data = r.json()
                     if isinstance(data, list):
                         return [str(item) for item in data if item]
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to fetch task output for %s line %s: %s", uuid, line, exc)
         return []
 
     def wait(
@@ -217,12 +260,21 @@ class NodeODMClient:
                 raise NodeODMError(info.message or f"NodeODM task {uuid} failed ({info.status_code})")
             time.sleep(poll_s)
 
-    def cancel_task(self, uuid: str) -> None:
+    def cancel_task(self, uuid: str) -> bool:
+        """Cancel task using POST /task/cancel or POST /task/{uuid}/cancel."""
+        cancelled = False
         try:
             with httpx.Client(timeout=self.timeout) as client:
-                client.post(self._url("task/cancel"), data={"uuid": uuid})
-        except Exception:
-            pass
+                r = client.post(self._url("task/cancel"), data={"uuid": uuid})
+                if r.status_code == 200:
+                    cancelled = True
+                else:
+                    r2 = client.post(self._url(f"task/{uuid}/cancel"))
+                    if r2.status_code == 200:
+                        cancelled = True
+        except Exception as exc:
+            logger.warning("Error sending cancel to NodeODM for task %s: %s", uuid, exc)
+        return cancelled
 
     def ping(self) -> dict[str, Any]:
         return self.info()

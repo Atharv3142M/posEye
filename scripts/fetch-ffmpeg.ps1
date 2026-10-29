@@ -19,6 +19,17 @@ foreach ($c in $candidates) {
   }
 }
 
+# Check if any ffmpeg.exe exists under chocolatey lib/ffmpeg
+$chocoTools = "C:\ProgramData\chocolatey\lib\ffmpeg"
+if (Test-Path $chocoTools) {
+  $found = Get-ChildItem -Path $chocoTools -Recurse -Filter "ffmpeg.exe" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch "chocolatey\\bin" } | Select-Object -First 1
+  if ($found -and (Test-Path $found.FullName)) {
+    Copy-Item -Force $found.FullName $dest
+    Write-Host "Copied $($found.FullName) -> $dest"
+    exit 0
+  }
+}
+
 $cmd = Get-Command ffmpeg -ErrorAction SilentlyContinue
 if ($cmd) {
   # If it's a choco shim, resolve target

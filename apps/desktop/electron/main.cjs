@@ -151,14 +151,39 @@ async function checkVirtualization() {
     // If docker daemon is already running, virtualization is demonstrably active
     if (await isDockerDaemonRunning()) return true;
 
-    // Check both HypervisorPresent (systems running Hyper-V / WSL2 root) and VirtualizationFirmwareEnabled
+    // Check for detect-virtualization.ps1 script first
+    const scriptCandidates = [
+      path.join(repoRoot(), "scripts", "detect-virtualization.ps1"),
+      app.isPackaged ? path.join(path.dirname(process.resourcesPath), "scripts", "detect-virtualization.ps1") : null,
+      app.isPackaged ? path.join(process.resourcesPath, "scripts", "detect-virtualization.ps1") : null,
+    ].filter(Boolean);
+
+    for (const s of scriptCandidates) {
+      if (fs.existsSync(s)) {
+        try {
+          await runWithTimeout("powershell.exe", [
+            "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", s
+          ], 8000);
+          return true; // Exit code 0 means virtualization / hypervisor is present
+        } catch (err) {
+          const msg = String(err.message || "");
+          if (/exit code 2/i.test(msg) || /Enable Intel VT-x/i.test(msg)) {
+            return false;
+          }
+        }
+      }
+    }
+
+    // Inline fallback checking both HypervisorPresent and VirtualizationFirmwareEnabled
     const out = await runWithTimeout("powershell.exe", [
-      "-NoProfile", "-Command",
-      "$cs = Get-CimInstance Win32_ComputerSystem; if ($cs.HypervisorPresent) { 'HYPERVISOR_OK' } else { $p = Get-CimInstance Win32_Processor; if ($p.VirtualizationFirmwareEnabled -contains $true -or $p.VirtualizationFirmwareEnabled -eq $true) { 'FIRMWARE_OK' } else { 'DISABLED' } }",
+      "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+      "& { $h = (Get-CimInstance Win32_ComputerSystem).HypervisorPresent; if ($h) { 'HYPERVISOR_OK'; exit 0 }; $v = (Get-CimInstance Win32_Processor | Select-Object -First 1).VirtualizationFirmwareEnabled; if ($v) { 'FIRMWARE_OK'; exit 0 }; 'DISABLED'; exit 2 }",
     ], 8000);
     return /OK/i.test(out);
-  } catch {
-    return true; // assume enabled if check fails
+  } catch (err) {
+    const msg = String(err.message || "");
+    if (/exit code 2/i.test(msg)) return false;
+    return true; // assume enabled if WMI fails or times out
   }
 }
 
@@ -272,22 +297,40 @@ async function ensureNodeOdm() {
     }
   }
 
-  // Try loading from bundled tar
+  // Try loading from bundled tar if image is not already present in Docker
   const tarPaths = [
     path.join(repoRoot(), "third_party", "nodeodm.tar"),
     app.isPackaged ? path.join(process.resourcesPath, "nodeodm.tar") : null,
+    app.isPackaged ? path.join(path.dirname(process.resourcesPath), "third_party", "nodeodm.tar") : null,
   ].filter(Boolean);
 
-  for (const tar of tarPaths) {
-    if (fs.existsSync(tar)) {
-      log("info", `Loading NodeODM image from ${tar} (this may take 1-2 minutes)…`);
-      try {
-        await runWithTimeout("docker", ["load", "-i", tar], 180000);
-        log("info", "NodeODM image loaded from tar");
-      } catch (e) {
-        log("warn", `Failed to load NodeODM tar: ${e.message}`);
+  let imageInDocker = false;
+  try {
+    const imagesOut = await run("docker", ["images", "-q", "opendronemap/nodeodm"]);
+    imageInDocker = Boolean(imagesOut && imagesOut.trim());
+  } catch { /* ignore */ }
+
+  if (!imageInDocker) {
+    for (const tar of tarPaths) {
+      if (fs.existsSync(tar)) {
+        log("info", `Loading NodeODM image from ${tar} (this may take 1-2 minutes)…`);
+        try {
+          await runWithTimeout("docker", ["load", "-i", tar], 300000);
+          log("info", "NodeODM image loaded from tar");
+          imageInDocker = true;
+          break;
+        } catch (e) {
+          log("warn", `Failed to load NodeODM tar: ${e.message}`);
+        }
       }
-      break;
+    }
+
+    if (!imageInDocker && app.isPackaged) {
+      throw new Error(
+        "Offline NodeODM image not found.\n\n" +
+        "The packaged application requires the NodeODM image in local Docker, but 'nodeodm.tar' was not found in application resources and 'opendronemap/nodeodm' is not loaded in Docker.\n\n" +
+        "To load it, run:\n  docker pull opendronemap/nodeodm\nor load your offline archive:\n  docker load -i <path-to-nodeodm.tar>"
+      );
     }
   }
 
