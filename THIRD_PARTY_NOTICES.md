@@ -106,3 +106,4 @@ posEye incorporates, bundles, or interfaces with several open-source and third-p
    - All notices, copyright lines, and disclaimer clauses contained in this document must be preserved in binary distributions and derivative source packages.
 3. **No Trademark Grant:**
    - Nothing in this repository or in the third-party licenses grants permission to use the trade names, trademarks, or service marks of the respective authors or projects without prior written permission.
+

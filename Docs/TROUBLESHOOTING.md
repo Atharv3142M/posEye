@@ -130,3 +130,4 @@ This guide addresses common setup, runtime, and reconstruction issues encountere
   1. Ensure your graphics drivers are up to date.
   2. Press `R` inside the viewer to reset the camera to the model's bounding sphere center.
   3. Verify that `model.glb` was generated in the project output directory (`%APPDATA%\posEye\jobs\<id>\assets\model.glb`).
+

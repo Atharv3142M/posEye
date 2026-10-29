@@ -30,6 +30,17 @@ export type Job = {
   assets?: { glb?: boolean; laz?: boolean; orthophoto?: boolean };
 };
 
+export type ServiceState = {
+  ok: boolean;
+  status: string; // "running" | "stopped" | "connected" | "unreachable" | "unavailable" | "detected" | "missing" | "not_installed" | "error"
+  message?: string;
+  recovery?: string;
+  version?: string;
+  url?: string;
+  path?: string | null;
+  info?: Record<string, any>;
+};
+
 export type SystemStatus = {
   cpuPercent: number;
   ramUsedGb: number;
@@ -38,23 +49,66 @@ export type SystemStatus = {
   diskUsedGb: number;
   diskFreeGb?: number;
   diskTotalGb: number;
-  docker: { ok: boolean; version: string };
-  nodeodm: { ok: boolean; url: string };
-  ffmpeg?: { detected: boolean; path: string | null; version: string | null };
+  docker: ServiceState;
+  nodeodm: ServiceState;
+  ffmpeg?: ServiceState & { detected?: boolean };
   gpuAvailable?: boolean;
-  gpuName?: string;
-  gpuUtilization?: number;
-  gpuMemoryUsed?: number;
-  gpuMemoryTotal?: number;
+  gpuName?: string | null;
+  nvidiaSmiAvailable?: boolean;
+  cudaAvailable?: boolean;
+  nodeodmAcceleration?: string;
+  gpuUtilization?: number | null;
+  gpuMemoryUsed?: number | null;
+  gpuMemoryTotal?: number | null;
+  gpuTemperature?: number | null;
 };
 
 export type HealthStatus = {
   ok: boolean;
   message: string;
-  docker?: boolean;
-  nodeodm?: boolean;
-  ffmpeg?: boolean;
+  docker?: ServiceState;
+  nodeodm?: ServiceState;
+  ffmpeg?: ServiceState & { detected?: boolean };
+  gpu?: {
+    available?: boolean;
+    name?: string | null;
+    nvidiaSmi?: boolean;
+    cuda?: boolean;
+    acceleration?: string;
+    message?: string;
+  };
 };
+
+/** Formats an ISO 8601 UTC timestamp string into local HH:MM:SS in user's timezone */
+export function formatLocalTime(isoStr: string | null | undefined): string {
+  if (!isoStr) return "--:--:--";
+  try {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) {
+      return isoStr.length >= 19 ? isoStr.slice(11, 19) : isoStr;
+    }
+    return d.toLocaleTimeString(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+  } catch {
+    return String(isoStr);
+  }
+}
+
+/** Formats an ISO 8601 UTC timestamp string into local Date + HH:MM:SS */
+export function formatLocalDateTime(isoStr: string | null | undefined): string {
+  if (!isoStr) return "—";
+  try {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return String(isoStr);
+    return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })} ${d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })}`;
+  } catch {
+    return String(isoStr);
+  }
+}
 
 declare global {
   interface Window {
@@ -133,26 +187,39 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
 }
 
 /** Poll /health every `intervalMs` ms and return connectivity status */
-export function useHealth(intervalMs = 15_000): HealthStatus {
+export function useHealth(intervalMs = 10_000): HealthStatus {
   const [status, setStatus] = useState<HealthStatus>({ ok: false, message: "Connecting…" });
 
   useEffect(() => {
     let mounted = true;
     async function check() {
       try {
-        const data = await fetchJson<{ status: string; docker?: { ok: boolean }; nodeodm?: { ok: boolean }; ffmpeg?: { detected: boolean } }>("/health");
+        const data = await fetchJson<{
+          ok: boolean;
+          docker?: ServiceState;
+          nodeodm?: ServiceState;
+          ffmpeg?: ServiceState & { detected?: boolean };
+          gpu?: any;
+        }>("/health");
         if (!mounted) return;
         setStatus({
-          ok: true,
-          message: "Backend connected",
-          docker: data.docker?.ok ?? false,
-          nodeodm: data.nodeodm?.ok ?? false,
-          ffmpeg: data.ffmpeg?.detected ?? false,
+          ok: data.ok ?? true,
+          message: data.ok ? "Backend connected" : "Backend degraded",
+          docker: data.docker,
+          nodeodm: data.nodeodm,
+          ffmpeg: data.ffmpeg,
+          gpu: data.gpu,
         });
       } catch (err) {
         if (!mounted) return;
         const msg = err instanceof ApiError ? err.message : "Backend not available.";
-        setStatus({ ok: false, message: msg, docker: false, nodeodm: false, ffmpeg: false });
+        setStatus({
+          ok: false,
+          message: msg,
+          docker: { ok: false, status: "unavailable", message: "Backend offline" },
+          nodeodm: { ok: false, status: "unavailable", message: "Backend offline" },
+          ffmpeg: { ok: false, status: "unavailable", message: "Backend offline" },
+        });
       }
     }
     void check();

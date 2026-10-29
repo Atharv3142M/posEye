@@ -105,10 +105,12 @@ export default function Dashboard() {
               </div>
               <div className="stat-row">
                 <span className="stat-label">GPU</span>
-                <span className="stat-value">
+                <span className="stat-value" style={{ fontSize: 12 }}>
                   {sys?.gpuAvailable
-                    ? `${sys.gpuName ?? "NVIDIA"} · ${Math.round(sys.gpuUtilization ?? 0)}% · ${sys.gpuMemoryUsed}/${sys.gpuMemoryTotal} MiB`
-                    : "Unavailable"}
+                    ? sys.nvidiaSmiAvailable && sys.gpuUtilization != null
+                      ? `${sys.gpuName ?? "NVIDIA"} · ${Math.round(sys.gpuUtilization)}% · ${sys.gpuMemoryUsed}/${sys.gpuMemoryTotal} MiB`
+                      : `${sys.gpuName ?? "GPU"} (Display Adapter · CPU Processing)`
+                    : "CPU-only (No discrete GPU)"}
                 </span>
               </div>
             </div>

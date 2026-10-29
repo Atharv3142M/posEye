@@ -181,7 +181,7 @@
   font-weight: 600;
 }
 
-/* ── Status dot ───────────────────────────────────────────── */
+/* ── Status dot & Badges ───────────────────────────────────── */
 .status-dot {
   display: inline-block;
   width: 7px;
@@ -189,9 +189,10 @@
   border-radius: 50%;
   flex-shrink: 0;
 }
-.status-dot.ok { background: #27ae60; }
-.status-dot.err { background: #c0392b; }
-.status-dot.warn { background: #f39c12; }
+.status-dot.ok { background: #27ae60; box-shadow: 0 0 5px rgba(39, 174, 96, 0.5); }
+.status-dot.err { background: #c0392b; box-shadow: 0 0 5px rgba(192, 57, 43, 0.4); }
+.status-dot.warn { background: #f39c12; box-shadow: 0 0 5px rgba(243, 156, 18, 0.4); }
+.status-dot.checking { background: #3498db; }
 .status-dot.unknown { background: #636e72; }
 
 .status-row {
@@ -200,8 +201,39 @@
   gap: 7px;
   font-size: 11px;
   color: var(--sidebar-text);
-  padding: 2px 0;
-  opacity: 0.85;
+  padding: 3px 0;
+  cursor: help;
+}
+
+.status-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-badge {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+.status-badge.ok {
+  background: rgba(39, 174, 96, 0.2);
+  color: #2ecc71;
+}
+.status-badge.err {
+  background: rgba(192, 57, 43, 0.25);
+  color: #ff6b6b;
+}
+.status-badge.warn {
+  background: rgba(243, 156, 18, 0.25);
+  color: #f39c12;
+}
+.status-badge.checking {
+  background: rgba(52, 152, 219, 0.2);
+  color: #3498db;
 }
 
 /* ── Badge ────────────────────────────────────────────────── */
@@ -409,3 +441,45 @@ details > summary:hover { color: var(--text-primary); }
   border-bottom: 1px solid rgba(0,0,0,0.2);
 }
 .topbar-title { font-weight: 600; font-size: 14px; flex: 1; }
+
+/* ── 3D Viewer Layout & Resizer ───────────────────────────── */
+.viewer-layout {
+  display: flex !important;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.viewer-sidebar {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border-light);
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.viewer-resizer {
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.15s;
+  z-index: 10;
+  flex-shrink: 0;
+}
+.viewer-resizer:hover,
+.viewer-resizer.active {
+  background: var(--color-primary);
+}
+
+.viewer-canvas-wrap {
+  flex: 1;
+  position: relative;
+  background: #1e272e;
+  overflow: hidden;
+  min-width: 0;
+}

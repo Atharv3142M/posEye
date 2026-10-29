@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { useHealth } from "../api";
+import { type ServiceState, useHealth } from "../api";
 import logoUrl from "../assets/posEye.png";
 
 const NAV_LINKS = [
@@ -50,21 +50,61 @@ export default function Sidebar() {
       {/* System status footer */}
       <div className="sidebar-footer">
         <div className="sidebar-footer-title">System Status</div>
-        <StatusRow label="Backend API" ok={health.ok} />
-        <StatusRow label="Docker Engine" ok={health.docker} />
-        <StatusRow label="NodeODM" ok={health.nodeodm} />
-        <StatusRow label="FFmpeg" ok={health.ffmpeg} />
+        <StatusRow label="Backend API" isApiOk={health.ok} />
+        <StatusRow label="Docker Engine" service={health.docker} />
+        <StatusRow label="NodeODM" service={health.nodeodm} />
+        <StatusRow label="FFmpeg" service={health.ffmpeg} />
       </div>
     </nav>
   );
 }
 
-function StatusRow({ label, ok }: { label: string; ok?: boolean }) {
-  const cls = ok === undefined ? "unknown" : ok ? "ok" : "err";
+function StatusRow({
+  label,
+  service,
+  isApiOk,
+}: {
+  label: string;
+  service?: ServiceState;
+  isApiOk?: boolean;
+}) {
+  let cls = "checking";
+  let statusText = "Checking…";
+  let tooltip = "";
+
+  if (isApiOk !== undefined) {
+    cls = isApiOk ? "ok" : "err";
+    statusText = isApiOk ? "Running" : "Offline";
+    tooltip = isApiOk ? "FastAPI backend active on port 8765" : "Backend orchestrator is not reachable";
+  } else if (service) {
+    if (service.ok) {
+      cls = "ok";
+      if (service.status === "running") statusText = "Running";
+      else if (service.status === "connected") statusText = "Connected";
+      else statusText = "Ready";
+      tooltip = service.message || `${label} is operational`;
+    } else {
+      if (service.status === "stopped") {
+        cls = "warn";
+        statusText = "Stopped";
+      } else if (service.status === "missing" || service.status === "not_installed") {
+        cls = "err";
+        statusText = "Missing";
+      } else {
+        cls = "err";
+        statusText = "Offline";
+      }
+      tooltip = service.recovery
+        ? `${service.message || label} — ${service.recovery}`
+        : (service.message || `${label} unavailable`);
+    }
+  }
+
   return (
-    <div className="status-row">
+    <div className="status-row" title={tooltip}>
       <span className={`status-dot ${cls}`} />
-      <span>{label}</span>
+      <span className="status-label">{label}</span>
+      <span className={`status-badge ${cls}`}>{statusText}</span>
     </div>
   );
 }

@@ -65,12 +65,47 @@ export default function Settings() {
         </Card>
 
         <Card>
-          <h2>System</h2>
-          <div className="stat-row"><span className="stat-label">FFmpeg</span><span className="stat-value" style={{ color: sys?.ffmpeg?.detected ? "var(--text-success)" : "var(--text-danger)" }}>{sys?.ffmpeg?.detected ? (sys.ffmpeg.version ?? sys.ffmpeg.path ?? "detected") : "Not found"}</span></div>
-          <div className="stat-row"><span className="stat-label">Docker</span><span className="stat-value" style={{ color: sys?.docker.ok ? "var(--text-success)" : "var(--text-danger)" }}>{sys?.docker.ok ? `Running (${sys.docker.version || "ok"})` : "Not running"}</span></div>
-          <div className="stat-row"><span className="stat-label">NodeODM</span><span className="stat-value" style={{ color: sys?.nodeodm.ok ? "var(--text-success)" : "var(--text-danger)" }}>{sys?.nodeodm.ok ? sys.nodeodm.url : "Disconnected"}</span></div>
-          <div className="stat-row"><span className="stat-label">GPU</span><span className="stat-value">{sys?.gpuAvailable ? (sys.gpuName ?? "detected") : "Unavailable"}</span></div>
-          <div className="stat-row"><span className="stat-label">Disk</span><span className="stat-value">{sys ? `${sys.diskUsedGb.toFixed(1)} / ${sys.diskTotalGb.toFixed(1)} GB` : "—"}</span></div>
+          <h2>System Environment</h2>
+          <div className="stat-row">
+            <span className="stat-label">FFmpeg</span>
+            <span className="stat-value" style={{ color: sys?.ffmpeg?.detected ? "var(--text-success)" : "var(--text-danger)" }}>
+              {sys?.ffmpeg?.detected ? (sys.ffmpeg.version ?? sys.ffmpeg.path ?? "Detected") : (sys?.ffmpeg?.message ?? "Not found")}
+            </span>
+          </div>
+          <div className="stat-row">
+            <span className="stat-label">Docker Engine</span>
+            <span className="stat-value" style={{ color: sys?.docker?.ok ? "var(--text-success)" : "var(--text-danger)" }}>
+              {sys?.docker?.ok ? `Running (${sys.docker.version || "ok"})` : (sys?.docker?.message || "Not running")}
+            </span>
+          </div>
+          {!sys?.docker?.ok && sys?.docker?.recovery && (
+            <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "2px 0 6px 0" }}>
+              💡 {sys.docker.recovery}
+            </div>
+          )}
+          <div className="stat-row">
+            <span className="stat-label">NodeODM Reconstruction</span>
+            <span className="stat-value" style={{ color: sys?.nodeodm?.ok ? "var(--text-success)" : "var(--text-danger)" }}>
+              {sys?.nodeodm?.ok ? `Connected (${sys.nodeodm.url})` : (sys?.nodeodm?.message || "Offline")}
+            </span>
+          </div>
+          {!sys?.nodeodm?.ok && sys?.nodeodm?.recovery && (
+            <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "2px 0 6px 0" }}>
+              💡 {sys.nodeodm.recovery}
+            </div>
+          )}
+          <div className="stat-row">
+            <span className="stat-label">Graphics / Acceleration</span>
+            <span className="stat-value" style={{ fontSize: 12 }}>
+              {sys?.gpuAvailable
+                ? `${sys.gpuName ?? "GPU"} (${sys.nodeodmAcceleration || "Display Adapter"})`
+                : "CPU-only (No discrete GPU)"}
+            </span>
+          </div>
+          <div className="stat-row">
+            <span className="stat-label">Disk Storage</span>
+            <span className="stat-value">{sys ? `${sys.diskUsedGb.toFixed(1)} / ${sys.diskTotalGb.toFixed(1)} GB (${sys.diskFreeGb ? `${sys.diskFreeGb.toFixed(1)} GB free` : ""})` : "—"}</span>
+          </div>
         </Card>
 
         <Card>

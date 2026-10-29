@@ -121,3 +121,4 @@ fix(viewer): preserve double-sided material rendering on camera reset
 3. Push to your fork: `git push origin feat/my-improvement`.
 4. Open a Pull Request against the `main` branch of `Atharv3142M/posEye`.
 5. Ensure all GitHub Actions CI checks are green.
+

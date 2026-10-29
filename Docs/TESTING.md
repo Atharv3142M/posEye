@@ -99,3 +99,4 @@ Prior to designating any build as a production-grade release, the following vali
 | **Clean-Machine VM Validation** | **NOT VERIFIED** | Must be installed and launched on a pristine Windows 10/11 VM without Python, Node.js, or Git installed. |
 | **End-to-End Drone Reconstruction** | **PARTIALLY VERIFIED** | Must be verified against a real 1080p/4K drone flight video and matching `.SRT` with multi-hour NodeODM processing. |
 | **Geospatial Metric Accuracy** | **NOT VERIFIED** | Distance measurements in the 3D viewer must be ground-truthed against surveyed Ground Control Points (GCPs). |
+

@@ -107,10 +107,10 @@ class JobStore:
     def create(
         self,
         video_path: Path,
-        srt_path: Path | None,
-        preset: str | None,
-        generate_masks: bool,
-        loop: asyncio.AbstractEventLoop,
+        srt_path: Path | None = None,
+        preset: str | None = None,
+        generate_masks: bool = False,
+        loop: asyncio.AbstractEventLoop | None = None,
         *,
         name: str = "",
         description: str = "",
@@ -199,6 +199,12 @@ class JobStore:
         (job.work_dir / "job.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     def _emit(self, job: Job, stage: Stage, percent: float, message: str) -> None:
+        # Duplicate suppression: do not store or broadcast identical consecutive stage/percent/message
+        if job.events:
+            last = job.events[-1]
+            if last.stage == stage and abs(last.percent - percent) < 0.1 and last.message == message:
+                return
+
         event = JobEvent(stage, percent, message)
         job.stage = stage
         job.percent = percent

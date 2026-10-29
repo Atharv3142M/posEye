@@ -81,3 +81,4 @@ When the geotagged JPEG image set is submitted to OpenDroneMap (NodeODM):
 | :--- | :--- | :--- | :--- | :--- |
 | **Video + SRT Telemetry** | WGS 84 / Local UTM | Meters (m) | $\pm 2\% - 5\%$ of measured distance | $\pm 1.5 - 3.0$ m (GNSS bound) |
 | **Video Only (No Telemetry)** | Arbitrary Local | Model Units | Proportional (uncalibrated) | None (unregistered) |
+

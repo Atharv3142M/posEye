@@ -40,3 +40,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - Loopback-only binding (`127.0.0.1`) for Orchestrator API (:8765) and NodeODM container (:3000).
 - Zero external cloud transmission; all imagery, telemetry, and 3D assets remain on the local machine.
+

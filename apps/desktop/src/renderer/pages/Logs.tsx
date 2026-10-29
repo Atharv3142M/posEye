@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { fetchJson } from "../api";
+import { fetchJson, formatLocalTime } from "../api";
 import Button from "../components/Button";
 import Card from "../components/Card";
 
@@ -108,7 +108,7 @@ export default function Logs() {
               )}
               {jobEvents.map((e, i) => (
                 <div key={i}>
-                  <span className="log-ts">{e.ts.slice(11, 19)}</span>
+                  <span className="log-ts">{formatLocalTime(e.ts)}</span>
                   <span className="log-stage">{e.stage}</span>
                   <span style={{ color: "var(--text-muted)", marginRight: 6 }}>{Math.round(e.percent)}%</span>
                   <span>{e.message}</span>
@@ -127,7 +127,7 @@ export default function Logs() {
               )}
               {appLogs.map((e, i) => (
                 <div key={i}>
-                  <span className="log-ts">{e.ts.slice(11, 19)}</span>
+                  <span className="log-ts">{formatLocalTime(e.ts)}</span>
                   <span style={{ color: levelColor(e.level), marginRight: 6, fontWeight: 600, fontSize: 10 }}>
                     {e.level}
                   </span>

@@ -49,3 +49,4 @@ posEye is designed with an offline-first, local-isolation security architecture:
    - Photogrammetry computations (OpenSfM, OpenMVS) execute within a Docker container, isolating compute-heavy processes from the host operating system.
 4. **Input Sanitization:**
    - Video file paths and subtitle inputs are validated on the backend before being passed to subprocesses, mitigating path traversal and command injection risks.
+

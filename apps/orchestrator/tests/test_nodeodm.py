@@ -124,3 +124,15 @@ def test_mime_for_types():
     assert _mime_for(Path("test.png")) == "image/png"
     assert _mime_for(Path("test.tif")) == "image/tiff"
     assert _mime_for(Path("test.tiff")) == "image/tiff"
+
+
+def test_parse_odm_phase():
+    from orchestrator.nodeodm import parse_odm_phase
+
+    assert parse_odm_phase("Running OpenSfM structure from motion...") is not None
+    assert "OpenSfM" in (parse_odm_phase("Running OpenSfM") or "")
+    assert "Feature Extraction" in (parse_odm_phase("Extracting features from image_001.jpg") or "")
+    assert "Dense Point Cloud" in (parse_odm_phase("OpenMVS densifying point cloud") or "")
+    assert "3D Surface Meshing" in (parse_odm_phase("ReconstructMesh model.ply") or "")
+    assert "Texture Mapping" in (parse_odm_phase("Texturing 3D model") or "")
+    assert parse_odm_phase("some uninformative log line") is None

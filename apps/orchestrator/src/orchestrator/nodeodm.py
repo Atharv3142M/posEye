@@ -55,6 +55,28 @@ class NodeODMError(RuntimeError):
     pass
 
 
+def parse_odm_phase(line: str) -> str | None:
+    """Extract human-readable photogrammetry stage from raw ODM/NodeODM console line."""
+    lower = line.lower()
+    if "opensfm" in lower or "structure from motion" in lower:
+        return "Sparse Reconstruction (OpenSfM camera alignment)"
+    if "extracting features" in lower or "detecting features" in lower:
+        return "Feature Extraction (identifying visual keypoints across frames)"
+    if "matching" in lower:
+        return "Feature Matching (linking keypoints across frames)"
+    if "openmvs" in lower or "densify" in lower:
+        return "Dense Point Cloud (generating 3D points via OpenMVS)"
+    if "meshing" in lower or "reconstructmesh" in lower:
+        return "3D Surface Meshing (generating polygon geometry)"
+    if "textur" in lower:
+        return "Texture Mapping (projecting photo textures onto 3D mesh)"
+    if "orthophoto" in lower or "georeferencing" in lower:
+        return "Georeferencing & Orthophoto generation"
+    if "dem" in lower or "dtm" in lower or "dsm" in lower:
+        return "Elevation Model Generation (DEM)"
+    return None
+
+
 class NodeODMClient:
     def __init__(self, base_url: str | None = None, timeout: float = 30.0):
         self.base_url = (base_url or nodeodm_url()).rstrip("/") + "/"
@@ -230,6 +252,10 @@ class NodeODMClient:
         should_stop: Callable[[], bool] | None = None,
     ) -> TaskInfo:
         last_line = 0
+        last_emitted_pct = -1.0
+        last_emitted_msg = ""
+        current_phase = "Running photogrammetry pipeline"
+
         while True:
             if should_stop and should_stop():
                 self.cancel_task(uuid)
@@ -242,17 +268,24 @@ class NodeODMClient:
 
             if progress:
                 # NodeODM 0-100% maps to orchestrator 42-88%
-                pct = 42.0 + min(46.0, info.progress * 0.46)
+                pct = round(42.0 + min(46.0, info.progress * 0.46), 1)
                 if new_lines:
                     for line in new_lines:
                         clean_line = line.strip()
                         if clean_line:
+                            phase = parse_odm_phase(clean_line)
+                            if phase:
+                                current_phase = phase
                             progress("reconstructing", pct, clean_line)
+                            last_emitted_pct = pct
+                            last_emitted_msg = clean_line
                 else:
-                    msg = info.raw.get("status", {}).get("errorMessage") or "Reconstructing"
-                    if not isinstance(msg, str) or not msg:
-                        msg = f"NodeODM {info.progress:.0f}%"
-                    progress("reconstructing", pct, msg)
+                    # Only emit fallback heartbeat if progress percentage increased by >= 1% or message changed
+                    fallback_msg = f"{current_phase} ({info.progress:.0f}%)"
+                    if abs(pct - last_emitted_pct) >= 1.0 or fallback_msg != last_emitted_msg:
+                        progress("reconstructing", pct, fallback_msg)
+                        last_emitted_pct = pct
+                        last_emitted_msg = fallback_msg
 
             if info.completed:
                 return info
