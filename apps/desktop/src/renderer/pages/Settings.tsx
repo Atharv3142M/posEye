@@ -75,7 +75,7 @@ export default function Settings() {
 
         <Card>
           <h2>About</h2>
-          <p className="muted">posEye 0.1.0 · SIH26158 — Single-Pass Drone Video to 3D Model</p>
+          <p className="muted">posEye 0.1.0 — Single-Pass Drone Video to 3D Model</p>
           <p className="muted">Local processing only. Imagery never leaves this machine.</p>
           <div className="actions" style={{ marginTop: 8 }}>
             <Button onClick={() => void window.dt?.openExternal("https://docs.opendronemap.org")}>

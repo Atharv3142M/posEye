@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 import cv2
 import numpy as np
@@ -34,13 +35,19 @@ def hamming64(a: int, b: int) -> int:
     return (a ^ b).bit_count()
 
 
-def score_frames(paths: list[Path]) -> list[FrameScore]:
+def score_frames(
+    paths: list[Path],
+    on_progress: Callable[[int, int], None] | None = None,
+) -> list[FrameScore]:
     scores: list[FrameScore] = []
-    for path in paths:
+    total = len(paths)
+    for i, path in enumerate(paths, start=1):
         image = cv2.imread(str(path))
         if image is None:
             continue
         scores.append(FrameScore(path, laplacian_variance(image), dhash64(image)))
+        if on_progress and (i % 10 == 0 or i == total):
+            on_progress(i, total)
     return scores
 
 

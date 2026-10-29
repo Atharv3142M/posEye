@@ -1,6 +1,6 @@
-# Digital Twin — MVP Build Specification
-**SIH26158 / Problem Statement 17 — "Single-Pass Drone Video to Accurate 3D Model Generation System"**
-Sponsor: NTRO (National Technical Research Organisation) · Category: Software · Theme: Drone/Robotics
+# posEye — MVP Build Specification
+**"Single-Pass Drone Video to Accurate 3D Model Generation System"**
+Category: Software · Theme: Drone/Robotics Photogrammetry
 
 This is the single source of truth for this build — for human engineers and for AI coding agents working on any part of the pipeline. If a decision in this doc needs to change, update this doc in the same commit.
 

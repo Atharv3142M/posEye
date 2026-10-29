@@ -62,7 +62,7 @@ def _emit(cb: ProgressCb | None, stage: str, pct: float, message: str) -> None:
         cb(stage, pct, message)
 
 
-def _run_ffmpeg(ffmpeg: str, video: Path, pattern: Path, fps: float, quality: int) -> None:
+def _run_ffmpeg(ffmpeg: str, video: Path, pattern: Path, fps: float, quality: int, progress: ProgressCb | None = None) -> None:
     qscale = max(2, min(10, round((100 - quality) / 10)))
     cmd = [
         ffmpeg,
@@ -78,6 +78,7 @@ def _run_ffmpeg(ffmpeg: str, video: Path, pattern: Path, fps: float, quality: in
         str(qscale),
         str(pattern),
     ]
+    _emit(progress, "extracting", 8.0, f"Running FFmpeg: extracting stills at {fps} fps...")
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         raise ExtractError(proc.stderr.strip() or "ffmpeg failed to extract frames")
@@ -101,16 +102,22 @@ def extract_frames(config: ExtractConfig, progress: ProgressCb | None = None) ->
     except FileNotFoundError as exc:
         raise FfmpegUnavailable(str(exc)) from exc
     info = probe_video(video)
-    _emit(progress, "validating", 3, "Validating video")
-    _emit(progress, "extracting", 5, "Extracting frames")
-    _run_ffmpeg(ffmpeg, video, raw_dir / "frame_%06d.jpg", config.fps, config.jpeg_quality)
+    _emit(progress, "validating", 3.0, f"Validated video container: {info.width}x{info.height} @ {info.fps:.1f} fps")
+    _emit(progress, "extracting", 6.0, f"Extracting stills from {video.name}...")
+    _run_ffmpeg(ffmpeg, video, raw_dir / "frame_%06d.jpg", config.fps, config.jpeg_quality, progress=progress)
 
     raw_paths = sorted(raw_dir.glob("frame_*.jpg"))
     if not raw_paths:
         raise ExtractError("No frames were extracted from the video")
 
-    _emit(progress, "filtering", 40, f"Scoring {len(raw_paths)} frames")
-    scores = score_frames(raw_paths)
+    total_raw = len(raw_paths)
+    _emit(progress, "filtering", 15.0, f"Extracted {total_raw} raw frames. Scoring sharpness & perceptual hash...")
+
+    def on_filter_tick(curr: int, total: int):
+        pct = 15.0 + (curr / total) * 30.0
+        _emit(progress, "filtering", pct, f"Filtering frames: scored {curr}/{total} frames")
+
+    scores = score_frames(raw_paths, on_progress=on_filter_tick)
     kept = select_frames(
         scores,
         blur_threshold=config.blur_threshold,
@@ -119,16 +126,20 @@ def extract_frames(config: ExtractConfig, progress: ProgressCb | None = None) ->
     dropped_blur = sum(1 for s in scores if s.sharpness < config.blur_threshold)
     dropped_dup = max(0, len(scores) - dropped_blur - len(kept))
 
+    _emit(progress, "filtering", 48.0, f"Filter result: kept {len(kept)} frames (dropped {dropped_blur} blur, {dropped_dup} duplicates)")
+
     if len(kept) < config.min_retained_frames:
         raise NotEnoughFrames(
             f"Only {len(kept)} sharp, unique frames remain (need at least "
             f"{config.min_retained_frames}). Lower the blur threshold or use a longer clip."
         )
 
-    _emit(progress, "geotagging", 55, "Matching telemetry")
+    _emit(progress, "geotagging", 50.0, "Parsing SRT flight telemetry & matching timestamps...")
     samples = parse_srt(config.srt_path) if config.srt_path else []
     geotagged = 0
     written: list[Path] = []
+    total_kept = len(kept)
+
     for index, score in enumerate(kept, start=1):
         dest = keep_dir / f"image_{index:06d}.jpg"
         shutil.copy2(score.path, dest)
@@ -142,21 +153,27 @@ def extract_frames(config: ExtractConfig, progress: ProgressCb | None = None) ->
             geotagged += 1
         written.append(dest)
 
+        if index % 10 == 0 or index == total_kept:
+            pct = 50.0 + (index / total_kept) * 25.0
+            _emit(progress, "geotagging", pct, f"Geotagging: processed {index}/{total_kept} frames ({geotagged} matched GPS)")
+
     mask_paths: list[Path] = []
     if config.generate_masks:
         try:
             from pipeline.masks import generate_moving_object_masks
 
-            _emit(progress, "masking", 80, "Masking moving objects")
+            _emit(progress, "masking", 78.0, "Detecting moving objects via YOLOv8n...")
             mask_paths = generate_moving_object_masks(written)
+            _emit(progress, "masking", 88.0, f"Generated {len(mask_paths)} dynamic object masks")
         except RuntimeError as _mask_err:
             warnings.warn(f"Masking skipped: {_mask_err}", stacklevel=2)
+            _emit(progress, "masking", 88.0, f"Masking skipped: {_mask_err}")
         except Exception as _mask_err:
             warnings.warn(f"Masking failed and will be skipped: {_mask_err}", stacklevel=2)
+            _emit(progress, "masking", 88.0, "Masking skipped: optional model not available")
 
     shutil.rmtree(raw_dir, ignore_errors=True)
-    last = "masking" if mask_paths else "geotagging"
-    _emit(progress, last, 100, f"Kept {len(written)} frames")
+    _emit(progress, "geotagging", 100.0, f"Preprocessing complete: {len(written)} sharp, geotagged frames ready for reconstruction")
     return ExtractResult(
         frames=written,
         geotagged=geotagged,

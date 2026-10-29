@@ -1,7 +1,7 @@
 # posEye — Current State
 
 **Date:** 2026-09-28  
-**Product name:** posEye (formerly JARVIS Digital Twin) · SIH26158  
+**Product name:** posEye  
 **Source of truth:** [MVP_Spec.md](MVP_Spec.md)
 
 ## Implemented

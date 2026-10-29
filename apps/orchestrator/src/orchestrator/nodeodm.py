@@ -61,29 +61,95 @@ class NodeODMClient:
         self,
         images_dir: Path,
         options: list[dict[str, str]],
-        zip_path: Path,
+        zip_path: Path | None = None,
+        name: str = "",
     ) -> str:
-        images = sorted(p for p in images_dir.iterdir() if p.suffix.lower() in {".jpg", ".jpeg", ".tif", ".tiff", ".png"})
+        """
+        Upload images to NodeODM. Uses official multi-step lifecycle (/task/new/init ->
+        /task/new/upload/{uuid} -> /task/new/commit/{uuid}) with field name 'images',
+        falling back to single-shot POST /task/new with multipart field name 'images'.
+        Prevents NodeODM 'Unexpected field' multer errors.
+        """
+        images = sorted(
+            p for p in images_dir.iterdir()
+            if p.suffix.lower() in {".jpg", ".jpeg", ".tif", ".tiff", ".png"}
+        )
         if not images:
             raise NodeODMError(f"No images in {images_dir}")
-        zip_path.parent.mkdir(parents=True, exist_ok=True)
-        with ZipFile(zip_path, "w") as zf:
-            for image in images:
-                zf.write(image, arcname=image.name)
+
+        if zip_path is not None:
+            zip_path.parent.mkdir(parents=True, exist_ok=True)
+            with ZipFile(zip_path, "w") as zf:
+                for image in images:
+                    zf.write(image, arcname=image.name)
+
         with httpx.Client(timeout=120.0) as client:
-            with zip_path.open("rb") as fh:
+            # 1. Try official multi-stage init/upload/commit lifecycle
+            try:
+                init_data: dict[str, str] = {"options": json.dumps(options)}
+                if name:
+                    init_data["name"] = name
+                init_res = client.post(self._url("task/new/init"), data=init_data)
+                if init_res.status_code == 200:
+                    init_payload = init_res.json()
+                    task_uuid = init_payload.get("uuid")
+                    if task_uuid:
+                        # Batch upload images under field name 'images'
+                        batch_size = 12
+                        for i in range(0, len(images), batch_size):
+                            batch = images[i : i + batch_size]
+                            files_to_send = []
+                            file_handles = []
+                            try:
+                                for img in batch:
+                                    fh = img.open("rb")
+                                    file_handles.append(fh)
+                                    files_to_send.append(("images", (img.name, fh, "image/jpeg")))
+                                upload_res = client.post(
+                                    self._url(f"task/new/upload/{task_uuid}"),
+                                    files=files_to_send,
+                                )
+                                if upload_res.status_code >= 400:
+                                    raise NodeODMError(f"Image upload rejected: {upload_res.status_code} {upload_res.text}")
+                            finally:
+                                for fh in file_handles:
+                                    fh.close()
+
+                        commit_res = client.post(self._url(f"task/new/commit/{task_uuid}"))
+                        if commit_res.status_code < 400:
+                            return str(task_uuid)
+            except Exception:
+                # Fall through to single-shot upload
+                pass
+
+            # 2. Single-shot POST /task/new with field 'images'
+            files_to_send = []
+            file_handles = []
+            try:
+                for img in images:
+                    fh = img.open("rb")
+                    file_handles.append(fh)
+                    files_to_send.append(("images", (img.name, fh, "image/jpeg")))
+
+                data_payload: dict[str, str] = {"options": json.dumps(options)}
+                if name:
+                    data_payload["name"] = name
+
                 r = client.post(
                     self._url("task/new"),
-                    data={"options": json.dumps(options), "skipPostProcessing": "false"},
-                    files={"zip": ("images.zip", fh, "application/zip")},
+                    data=data_payload,
+                    files=files_to_send,
                 )
-            if r.status_code >= 400:
-                raise NodeODMError(f"NodeODM rejected task: {r.status_code} {r.text}")
-            payload = r.json()
-        uuid = payload.get("uuid")
-        if not uuid:
-            raise NodeODMError(f"NodeODM did not return a uuid: {payload}")
-        return str(uuid)
+                if r.status_code >= 400:
+                    raise NodeODMError(f"NodeODM rejected task: {r.status_code} {r.text}")
+                payload = r.json()
+                task_uuid = payload.get("uuid")
+                if not task_uuid:
+                    raise NodeODMError(f"NodeODM did not return a uuid: {payload}")
+                return str(task_uuid)
+            finally:
+                for fh in file_handles:
+                    fh.close()
 
     def task_info(self, uuid: str) -> TaskInfo:
         with httpx.Client(timeout=self.timeout) as client:
@@ -99,26 +165,52 @@ class NodeODMClient:
             raw=data,
         )
 
+    def task_output(self, uuid: str, line: int = 0) -> list[str]:
+        """Fetch incremental console lines from OpenDroneMap."""
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                r = client.get(self._url(f"task/{uuid}/output"), params={"line": line})
+                if r.status_code == 200:
+                    data = r.json()
+                    if isinstance(data, list):
+                        return [str(item) for item in data if item]
+        except Exception:
+            pass
+        return []
+
     def wait(
         self,
         uuid: str,
         *,
-        poll_s: float = 2.0,
+        poll_s: float = 1.5,
         progress: ProgressCb | None = None,
         should_stop: Callable[[], bool] | None = None,
     ) -> TaskInfo:
+        last_line = 0
         while True:
             if should_stop and should_stop():
                 self.cancel_task(uuid)
                 raise NodeODMError("Job canceled")
+
             info = self.task_info(uuid)
+            new_lines = self.task_output(uuid, line=last_line)
+            if new_lines:
+                last_line += len(new_lines)
+
             if progress:
                 # NodeODM 0-100% maps to orchestrator 42-88%
-                pct = 42 + min(46.0, info.progress * 0.46)
-                msg = info.raw.get("status", {}).get("errorMessage") or "Reconstructing"
-                if not isinstance(msg, str) or not msg:
-                    msg = f"NodeODM {info.progress:.0f}%"
-                progress("reconstructing", pct, msg)
+                pct = 42.0 + min(46.0, info.progress * 0.46)
+                if new_lines:
+                    for line in new_lines:
+                        clean_line = line.strip()
+                        if clean_line:
+                            progress("reconstructing", pct, clean_line)
+                else:
+                    msg = info.raw.get("status", {}).get("errorMessage") or "Reconstructing"
+                    if not isinstance(msg, str) or not msg:
+                        msg = f"NodeODM {info.progress:.0f}%"
+                    progress("reconstructing", pct, msg)
+
             if info.completed:
                 return info
             if info.failed or info.canceled:
@@ -126,8 +218,11 @@ class NodeODMClient:
             time.sleep(poll_s)
 
     def cancel_task(self, uuid: str) -> None:
-        with httpx.Client(timeout=self.timeout) as client:
-            client.post(self._url("task/cancel"), data={"uuid": uuid})
+        try:
+            with httpx.Client(timeout=self.timeout) as client:
+                client.post(self._url("task/cancel"), data={"uuid": uuid})
+        except Exception:
+            pass
 
     def ping(self) -> dict[str, Any]:
         return self.info()

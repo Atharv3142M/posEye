@@ -1,7 +1,7 @@
 # posEye Project Reference & Architecture
 
 ## Project Purpose
-posEye (SIH26158 — "Single-Pass Drone Video to Accurate 3D Model Generation System") is a Windows desktop application that converts drone flight videos into georeferenced, interactive 3D models. The system automates the entire pipeline from video input to 3D model output with zero manual intermediate steps and no cloud dependencies. Sponsor: NTRO. Theme: Drone/Robotics.
+posEye ("Single-Pass Drone Video to Accurate 3D Model Generation System") is a Windows desktop application that converts drone flight videos into georeferenced, interactive 3D models. The system automates the entire pipeline from video input to 3D model output with zero manual intermediate steps and no cloud dependencies. Theme: Drone/Robotics Photogrammetry.
 
 ## Official MVP Requirements
 From [Docs/MVP_Spec.md](Docs/MVP_Spec.md):

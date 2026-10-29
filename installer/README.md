@@ -9,8 +9,8 @@ This Inno Setup script wraps the Electron app, bundled `ffmpeg.exe`, and a pre-e
 3. `scripts\export-nodeodm.ps1`  (multi-GB)
 4. `cd apps\desktop && npm ci && npm run dist`
 5. Download [Docker Desktop Installer](https://www.docker.com/products/docker-desktop/) into `installer/payload/Docker Desktop Installer.exe`
-6. Compile `installer/DigitalTwin.iss` with Inno Setup 6
-7. Test the resulting `dist-installer\DigitalTwin-Setup.exe` on a **clean Windows VM**, not the development workstation
+6. Compile `installer/posEye.iss` with Inno Setup 6
+7. Test the resulting `dist-installer\posEye-Setup-v0.1.0.exe` on a **clean Windows VM**, not the development workstation
 
 ## BIOS virtualization
 

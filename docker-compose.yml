@@ -1,7 +1,7 @@
 services:
   nodeodm:
     image: opendronemap/nodeodm:latest
-    container_name: digitaltwin-nodeodm
+    container_name: poseye-nodeodm
     ports:
       - "3000:3000"
     restart: unless-stopped

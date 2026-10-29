@@ -148,11 +148,15 @@ async function isPortInUse(port) {
 // ─── System checks ────────────────────────────────────────────────────────────
 async function checkVirtualization() {
   try {
+    // If docker daemon is already running, virtualization is demonstrably active
+    if (await isDockerDaemonRunning()) return true;
+
+    // Check both HypervisorPresent (systems running Hyper-V / WSL2 root) and VirtualizationFirmwareEnabled
     const out = await runWithTimeout("powershell.exe", [
       "-NoProfile", "-Command",
-      "(Get-CimInstance Win32_Processor).VirtualizationFirmwareEnabled",
+      "$cs = Get-CimInstance Win32_ComputerSystem; if ($cs.HypervisorPresent) { 'HYPERVISOR_OK' } else { $p = Get-CimInstance Win32_Processor; if ($p.VirtualizationFirmwareEnabled -contains $true -or $p.VirtualizationFirmwareEnabled -eq $true) { 'FIRMWARE_OK' } else { 'DISABLED' } }",
     ], 8000);
-    return /true/i.test(out);
+    return /OK/i.test(out);
   } catch {
     return true; // assume enabled if check fails
   }
@@ -391,16 +395,18 @@ async function waitForApi() {
 
 // ─── Window ───────────────────────────────────────────────────────────────────
 function createWindow() {
-  const iconPath = path.join(__dirname, "posEye.png");
+  const iconIco = path.join(__dirname, "posEye.ico");
+  const iconPng = path.join(__dirname, "posEye.png");
+  const iconPath = fs.existsSync(iconIco) ? iconIco : (fs.existsSync(iconPng) ? iconPng : undefined);
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 1024,
     minHeight: 600,
-    backgroundColor: "#f4f6f8",
+    backgroundColor: "#1a1f24",
     autoHideMenuBar: true,
     title: "posEye — 3D Drone Reconstruction",
-    icon: fs.existsSync(iconPath) ? iconPath : undefined,
+    icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,

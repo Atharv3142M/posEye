@@ -1,7 +1,7 @@
 # posEye — Implementation status
 
 **Date:** 2026-09-28  
-**Product:** posEye · SIH26158 · Team ICARUS  
+**Product:** posEye · Team ICARUS  
 **Spec:** [MVP_Spec.md](MVP_Spec.md)  
 **Audit snapshot:** [CURRENT_STATE.md](CURRENT_STATE.md)
 

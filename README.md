@@ -1,4 +1,4 @@
-# posEye (SIH26158)
+# posEye
 
 Windows desktop app: drone video in, georeferenced 3D model out. Processing stays on this machine (NodeODM in Docker). Spec: [Docs/MVP_Spec.md](Docs/MVP_Spec.md). Status: [Docs/IMPLEMENTATION_STATUS.md](Docs/IMPLEMENTATION_STATUS.md). Demo: [Docs/DEMO_FLOW.md](Docs/DEMO_FLOW.md).
 

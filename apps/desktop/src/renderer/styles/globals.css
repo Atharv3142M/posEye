@@ -28,7 +28,7 @@
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: "Consolas", "Courier New", monospace;
 
-  /* legacy compat — kept so existing components compile */
+  /* legacy compat */
   --bg-primary: var(--bg-panel);
   --bg-secondary: var(--bg-panel-header);
   --bg-tertiary: #ececf0;
@@ -47,7 +47,48 @@
   --font-size: 14px;
 }
 
-/* No dark-theme override — sidebar is always dark, content is always light */
+/* ── Dark Theme (WebODM-inspired sleek geospatial dark mode) ─ */
+[data-theme="dark"] {
+  --bg-app: #12181b;
+  --bg-panel: #1a2226;
+  --bg-panel-header: #212c32;
+  --border: #2d3b43;
+  --border-light: #243037;
+  --text-primary: #ecf0f1;
+  --text-secondary: #95a5a6;
+  --text-muted: #7f8c8d;
+  --color-primary-light: rgba(44, 138, 110, 0.22);
+  --bg-tertiary: #1e272e;
+  --button-secondary: #212c32;
+  --button-secondary-text: #ecf0f1;
+  --button-secondary-hover: #2d3b43;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.35);
+  --shadow-md: 0 2px 8px rgba(0,0,0,0.5);
+}
+
+[data-theme="dark"] input[type="text"],
+[data-theme="dark"] input[type="number"],
+[data-theme="dark"] input[type="search"],
+[data-theme="dark"] textarea,
+[data-theme="dark"] select {
+  background: #141b1e;
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .table-view th {
+  background: var(--bg-panel-header);
+  color: var(--text-secondary);
+}
+
+[data-theme="dark"] .table-view tr:hover td {
+  background: rgba(44, 138, 110, 0.15);
+}
+
+[data-theme="dark"] .drop-zone {
+  background: var(--bg-panel-header);
+  border-color: var(--border);
+}
 
 * { box-sizing: border-box; }
 
@@ -159,7 +200,7 @@ select:focus {
 .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
 
 /* ── Resource bars ────────────────────────────────────────── */
-.resource-bar { height: 6px; background: var(--bg-tertiary); border-radius: 3px; overflow: hidden; margin: 6px 0; }
+.resource-bar { height: 6px; background: var(--border-light); border-radius: 3px; overflow: hidden; margin: 6px 0; }
 .resource-bar > i { display: block; height: 100%; background: var(--color-primary); }
 
 @media (max-width: 1100px) {

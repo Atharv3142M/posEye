@@ -55,7 +55,7 @@
       "target": [
         "nsis"
       ],
-      "icon": "electron/posEye.png",
+      "icon": "electron/posEye.ico",
       "signAndEditExecutable": false
     },
     "nsis": {
