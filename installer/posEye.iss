@@ -2,7 +2,7 @@
 ; Compile after: scripts\fetch-ffmpeg.ps1, scripts\build-orchestrator.ps1, apps\desktop npm run dist
 
 #define MyAppName "posEye"
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "0.1.1"
 #define MyAppPublisher "Team ICARUS"
 #define MyAppURL "https://github.com/posEye"
 #define MyAppExeName "posEye.exe"

@@ -36,7 +36,7 @@ def _app_log(level: str, message: str) -> None:
     print(message, flush=True)
 
 
-app = FastAPI(title="posEye Orchestrator", version="0.1.0")
+app = FastAPI(title="posEye Orchestrator", version="0.1.1")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3001", "*"],
@@ -157,7 +157,7 @@ def health() -> dict:
             "message": status.get("message"),
         },
         "pythonVersion": sys.version.split()[0],
-        "orchestratorVersion": "0.1.0",
+        "orchestratorVersion": "0.1.1",
         "jobsDir": str(JOBS_ROOT),
         "activeJobs": active_jobs,
     }
@@ -408,7 +408,7 @@ def run() -> None:
 
     host = os.environ.get("DT_HOST", "127.0.0.1")
     port = int(os.environ.get("DT_PORT", "8765"))
-    uvicorn.run("orchestrator.main:app", host=host, port=port, reload=False)
+    uvicorn.run(app, host=host, port=port, reload=False)
 
 
 if __name__ == "__main__":

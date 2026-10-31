@@ -16,6 +16,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.1] - 2026-10-31
+
+### Added
+- **Unified Service Health Contract:** Standardized structured service state reporting across Docker, NodeODM, FFmpeg, and GPU in /health and /system/status.
+- **Honest System Status UI:** Sidebar and Settings render explicit status badges (Running, Connected, Stopped, Offline, Missing, Checking) with contextual colored indicators and troubleshooting recovery tooltips.
+- **Photogrammetry Stage Tracking:** Added parse_odm_phase() to recognize OpenSfM alignment, feature matching, OpenMVS densification, meshing, texturing, and orthophoto generation from NodeODM logs.
+- **Elapsed Duration Clock & Diagnostic Log:** Real-time elapsed timer (MM:SS) in processing view with expandable diagnostic console.
+- **Extreme Coordinate Centering:** Three.js scene normalization centering large geospatial/UTM coordinates to prevent depth-buffer jitter and clipping while preserving true coordinates in the HUD.
+- **Interactive Measurement UX:** Dedicated measuring mode with crosshair cursor, surface hover preview ring, visual point markers, connecting line, distance calculation, clear controls, and Esc shortcut.
+- **Draggable Viewer Sidebar:** Resizable left panel with draggable divider (220px–550px) and collapse/expand toolbar toggle.
+- **Hardware Telemetry Fallback:** Non-NVIDIA GPU detection via Windows CIM/WMI without fabricating 0% utilization.
+
+### Fixed
+- **Timezone Offset Bug:** Replaced naive string slicing (.slice(11, 19)) with ormatLocalTime(), eliminating the 5h30m time offset in Indian Standard Time (IST) and aligning with local system clock.
+- **Console Message Duplication:** Deduplicated NodeODM heartbeat polling messages and suppressed consecutive identical stage/progress events in the job store.
+- **Model Info Stuck on Loading:** Added explicit viewer state machine (idle, loading, 
+eady, error, 
+o_model) with direct BufferGeometry vertex and triangle calculation.
+- **Camera Reset:** Unified 
+esetCamera() via imperative ref handle, connecting both the toolbar button and R keyboard shortcut to fit camera to model bounding box.
+- **Layer Visibility:** Synchronized mesh visibility toggle with Three.js rendering and replaced dummy layer checkboxes with honest status labels.
+
+---
+
 ## [0.1.0] - 2026-10-29
 
 ### Added

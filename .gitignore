@@ -27,6 +27,7 @@ apps/pipeline/tests/fixtures/*.mp4
 *.tif
 
 # Bundled binaries (too large for git)
+*.exe
 third_party/*.exe
 third_party/*.tar
 third_party/*.tar.gz

@@ -1,0 +1,6 @@
+# posEye v0.1.1 Release Checksums
+# Algorithm: SHA-256
+# Generated: 2026-10-31
+
+677AC389EED44287A35AF572C1D2A69E19F9584CE31E8499081AB5D3434EB0CE *posEye.Setup.0.1.1.exe
+# Size: 192049732 bytes (183.15 MB)

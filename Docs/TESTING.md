@@ -23,7 +23,7 @@ The Python test suite covers:
 ```
 
 **Expected Outcome:**
-- 19 passed tests in $<5$ seconds.
+- 22 passed tests in $<10$ seconds.
 - Zero failures, zero skips.
 
 ### 1.2 Frontend TypeScript Typecheck
@@ -83,7 +83,7 @@ posEye uses deterministic, in-code test fixtures to ensure CI independence from 
 All pull requests and pushes to `main` execute via GitHub Actions on Windows runners (`.github/workflows/ci.yml`):
 - Provisions 64-bit static FFmpeg build via Chocolatey.
 - Verifies `ffmpeg -version` in a preflight diagnostic step.
-- Runs the 19-test Pytest suite.
+- Runs the 22-test Pytest suite.
 - Runs `npm ci`, `tsc --noEmit`, `vite build`, and `electron-builder --win --dir`.
 
 ---
@@ -92,9 +92,9 @@ All pull requests and pushes to `main` execute via GitHub Actions on Windows run
 
 Prior to designating any build as a production-grade release, the following validation gates are evaluated:
 
-| Gate | Status in v0.1.0 | Requirement for Production Release |
+| Gate | Status in v0.1.1 | Requirement for Production Release |
 | :--- | :--- | :--- |
-| **Automated Tests (19/19)** | **VERIFIED** | 100% pass on both local host and GitHub Actions Windows runners. |
+| **Automated Tests (22/22)** | **VERIFIED** | 100% pass on both local host and GitHub Actions Windows runners. |
 | **Electron Packaging** | **VERIFIED** | Successfully generates NSIS installer and unpacked portable executable. |
 | **Clean-Machine VM Validation** | **NOT VERIFIED** | Must be installed and launched on a pristine Windows 10/11 VM without Python, Node.js, or Git installed. |
 | **End-to-End Drone Reconstruction** | **PARTIALLY VERIFIED** | Must be verified against a real 1080p/4K drone flight video and matching `.SRT` with multi-hour NodeODM processing. |

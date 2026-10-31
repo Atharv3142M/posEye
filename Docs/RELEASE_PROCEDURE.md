@@ -24,7 +24,7 @@ Execute the following commands sequentially on a Windows build host:
 ```powershell
 .\.venv\Scripts\python.exe -m pytest apps\pipeline apps\orchestrator -v
 ```
-*Expected: 17 passed tests with zero failures.*
+*Expected: 22 passed tests with zero failures.*
 
 ### Step 2: Compile Standalone Backend (PyInstaller)
 If backend source files were modified, recompile the standalone orchestrator binary:
@@ -47,7 +47,7 @@ npm ci
 npx tsc --noEmit
 npm run build
 npm run pack   # Produces win-unpacked\posEye.exe
-npm run dist   # Produces release\posEye Setup 0.1.0.exe
+npm run dist   # Produces release\posEye Setup [version].exe
 cd ..\..
 ```
 
@@ -74,20 +74,20 @@ Record the hash and file size. Verify that the PE metadata displays:
 Ensure version string consistency in `apps/desktop/package.json` and `installer/posEye.iss`:
 ```powershell
 git add .
-git commit -m "chore(release): prepare release v1.0.0"
+git commit -m "chore(release): prepare release v0.1.1"
 ```
 
 ### Step 2: Create Annotated Git Tag
 ```powershell
-git tag -a v1.0.0 -m "posEye Production Release v1.0.0"
+git tag -a v0.1.1 -m "posEye Production Release v0.1.1"
 git push origin main
-git push origin v1.0.0
+git push origin v0.1.1
 ```
 
 ### Step 3: Create GitHub Release
 1. Navigate to `https://github.com/Atharv3142M/posEye/releases/new`.
-2. Select tag `v1.0.0`.
-3. Set title to: `posEye v1.0.0 — Automated Drone Video Photogrammetry`.
+2. Select tag `v0.1.1`.
+3. Set title to: `posEye v0.1.1 — Automated Drone Video Photogrammetry`.
 4. Attach `apps/desktop/release/posEye Setup 0.1.0.exe`.
 5. Include SHA-256 checksum and release notes in the description.
 
