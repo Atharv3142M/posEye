@@ -145,17 +145,25 @@ export class ApiError extends Error {
 }
 
 let cachedBase = "http://127.0.0.1:8765";
+let cachedToken = "";
 
 export async function apiBase(): Promise<string> {
   if (window.dt?.env) {
     const env = await window.dt.env();
     cachedBase = env.apiBase;
+    if ((env as any).apiToken) {
+      cachedToken = (env as any).apiToken;
+    }
   }
   return cachedBase;
 }
 
 export function apiBaseSync(): string {
   return cachedBase;
+}
+
+export function apiTokenSync(): string {
+  return cachedToken;
 }
 
 /** Wraps a fetch promise with a 30-second timeout */
@@ -173,9 +181,13 @@ function withTimeout<T>(promise: Promise<T>, ms = 30_000): Promise<T> {
 
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const base = await apiBase();
+  const headers = new Headers(init?.headers);
+  if (cachedToken && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${cachedToken}`);
+  }
   let res: Response;
   try {
-    res = await withTimeout(fetch(`${base}${path}`, init));
+    res = await withTimeout(fetch(`${base}${path}`, { ...init, headers }));
   } catch (err) {
     if (err instanceof ApiError) throw err;
     throw new ApiError(0, "Backend not available. Check that the orchestrator is running.");

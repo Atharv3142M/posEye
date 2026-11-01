@@ -14,6 +14,10 @@ class ExtractError(PipelineError):
     code = "VIDEO_UNREADABLE"
 
 
+class ExtractCanceledError(ExtractError):
+    code = "CANCELLED"
+
+
 class InputInvalid(PipelineError):
     code = "INPUT_INVALID"
 

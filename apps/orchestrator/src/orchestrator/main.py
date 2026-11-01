@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 import collections
+import json
 import os
+import secrets
 import sys
+import threading
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 from orchestrator.jobs import JobStore
@@ -18,14 +24,16 @@ from orchestrator.system import system_status
 JOBS_ROOT = Path(os.environ.get("DT_JOBS_DIR", Path.cwd() / ".jobs"))
 store = JobStore(JOBS_ROOT)
 
+# Per-launch API token for local API security (empty string disables auth in dev/tests if env not set)
+API_TOKEN = os.environ.get("DT_API_TOKEN", "")
+
 # ---------------------------------------------------------------------------
-# In-memory circular buffer for orchestrator-level log entries (Task 3)
+# In-memory circular buffer for orchestrator-level log entries
 # ---------------------------------------------------------------------------
 _APP_LOG: collections.deque[dict] = collections.deque(maxlen=500)
 
 
 def _app_log(level: str, message: str) -> None:
-    """Append an entry to the in-memory app log buffer."""
     _APP_LOG.append(
         {
             "ts": datetime.now(timezone.utc).isoformat(),
@@ -36,21 +44,9 @@ def _app_log(level: str, message: str) -> None:
     print(message, flush=True)
 
 
-app = FastAPI(title="posEye Orchestrator", version="0.1.2")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3001", "*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-# ---------------------------------------------------------------------------
-# Startup events (Tasks 4 & 7)
-# ---------------------------------------------------------------------------
-@app.on_event("startup")
-def on_startup() -> None:
-    # --- Task 4: log Python + dep versions ---
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup diagnostics
     try:
         import fastapi as _fastapi
         import trimesh as _trimesh
@@ -65,34 +61,65 @@ def on_startup() -> None:
     py_ver = sys.version.split()[0]
     _app_log(
         "INFO",
-        f"posEye orchestrator started — Python {py_ver} | "
+        f"posEye orchestrator v0.1.3 started — Python {py_ver} | "
         f"fastapi={fa_ver} trimesh={tm_ver} httpx={hx_ver}",
     )
 
-    # --- Task 7: system check at startup ---
     try:
         status = system_status()
+        ffmpeg = status.get("ffmpeg", {})
+        if ffmpeg.get("ok"):
+            _app_log("INFO", f"[posEye] ffmpeg: detected at {ffmpeg.get('path')}")
+        else:
+            _app_log("WARNING", f"[posEye] ffmpeg: NOT detected — {ffmpeg.get('error', 'not found')}")
+
+        docker = status.get("docker", {})
+        if docker.get("ok"):
+            _app_log("INFO", f"[posEye] Docker: Running {docker.get('version', '')}")
+        else:
+            _app_log("WARNING", "[posEye] Docker: not available or not running")
+
+        nodeodm = status.get("nodeodm", {})
+        if nodeodm.get("ok"):
+            _app_log("INFO", f"[posEye] NodeODM: Connected at {nodeodm.get('url')}")
+        else:
+            _app_log("WARNING", f"[posEye] NodeODM: not reachable at {nodeodm.get('url')} — is Docker running?")
     except Exception as exc:
-        _app_log("ERROR", f"[posEye] system_status() failed: {exc}")
+        _app_log("ERROR", f"[posEye] system_status() check failed: {exc}")
+
+    yield
+
+
+app = FastAPI(title="posEye Orchestrator", version="0.1.3", lifespan=lifespan)
+
+# Restrict CORS to allowed local origins (no wildcard '*')
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+    ],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
+
+
+# Token authentication dependency
+bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def verify_api_token(request: Request, creds: HTTPAuthorizationCredentials | None = Depends(bearer_scheme)) -> None:
+    if not API_TOKEN:
         return
-
-    ffmpeg = status.get("ffmpeg", {})
-    if ffmpeg.get("ok"):
-        _app_log("INFO", f"[posEye] ffmpeg: detected at {ffmpeg.get('path')}")
-    else:
-        _app_log("WARNING", f"[posEye] ffmpeg: NOT detected — {ffmpeg.get('error', 'not found')}")
-
-    docker = status.get("docker", {})
-    if docker.get("ok"):
-        _app_log("INFO", f"[posEye] Docker: Running {docker.get('version', '')}")
-    else:
-        _app_log("WARNING", "[posEye] Docker: not available or not running")
-
-    nodeodm = status.get("nodeodm", {})
-    if nodeodm.get("ok"):
-        _app_log("INFO", f"[posEye] NodeODM: Connected at {nodeodm.get('url')}")
-    else:
-        _app_log("WARNING", f"[posEye] NodeODM: not reachable at {nodeodm.get('url')} — is Docker running?")
+    token = None
+    if creds:
+        token = creds.credentials
+    if not token:
+        token = request.headers.get("x-api-token") or request.query_params.get("token")
+    if token != API_TOKEN:
+        raise HTTPException(status_code=401, detail="Unauthorized: invalid or missing API token")
 
 
 class CreateJob(BaseModel):
@@ -119,6 +146,8 @@ class JobOut(BaseModel):
     preset: str
     hasModel: bool = False
     isGeoreferenced: bool = False
+    georeferencing: dict = {}
+    modelStats: dict = {}
     createdAt: str = ""
     updatedAt: str = ""
     videoPath: str = ""
@@ -136,7 +165,7 @@ async def unhandled(_: Request, exc: Exception) -> JSONResponse:
 
 
 # ---------------------------------------------------------------------------
-# Health (Task 4: extended fields)
+# Health endpoint (service identity & version contract)
 # ---------------------------------------------------------------------------
 @app.get("/health")
 def health() -> dict:
@@ -144,6 +173,10 @@ def health() -> dict:
     terminal = {"ready", "error", "cancelled", "interrupted"}
     active_jobs = sum(1 for j in store.jobs.values() if j.stage not in terminal)
     return {
+        "serviceId": "poseye-orchestrator",
+        "product": "posEye",
+        "component": "Orchestrator",
+        "orchestratorVersion": "0.1.3",
         "ok": True,
         "defaultPreset": detect_preset(),
         "ffmpeg": status.get("ffmpeg"),
@@ -158,13 +191,12 @@ def health() -> dict:
             "message": status.get("message"),
         },
         "pythonVersion": sys.version.split()[0],
-        "orchestratorVersion": "0.1.2",
         "jobsDir": str(JOBS_ROOT),
         "activeJobs": active_jobs,
     }
 
 
-@app.get("/system/status")
+@app.get("/system/status", dependencies=[Depends(verify_api_token)])
 def get_system() -> dict:
     return system_status()
 
@@ -173,10 +205,7 @@ class ProbeBody(BaseModel):
     videoPath: str
 
 
-# ---------------------------------------------------------------------------
-# Probe (Task 8: estimatedFrames, estimatedDuration, summary)
-# ---------------------------------------------------------------------------
-@app.post("/probe/video")
+@app.post("/probe/video", dependencies=[Depends(verify_api_token)])
 def probe_video_endpoint(body: ProbeBody) -> dict:
     from pipeline.probe import probe_video
 
@@ -188,7 +217,6 @@ def probe_video_endpoint(body: ProbeBody) -> dict:
     default_fps = 3.0
     estimated_frames = int((info.duration_s or 0) * default_fps) if info.duration_s else None
 
-    # Build friendly summary string
     dur_s = info.duration_s or 0
     minutes = int(dur_s // 60)
     seconds = int(dur_s % 60)
@@ -213,12 +241,12 @@ def probe_video_endpoint(body: ProbeBody) -> dict:
     }
 
 
-@app.get("/presets/default")
+@app.get("/presets/default", dependencies=[Depends(verify_api_token)])
 def default_preset() -> dict:
     return {"preset": detect_preset()}
 
 
-@app.post("/jobs", response_model=JobOut)
+@app.post("/jobs", response_model=JobOut, dependencies=[Depends(verify_api_token)])
 async def create_job(body: CreateJob) -> JobOut:
     video = Path(body.videoPath)
     if not video.is_file():
@@ -239,16 +267,18 @@ async def create_job(body: CreateJob) -> JobOut:
         fps=body.fps if body.fps and body.fps > 0 else 3.0,
         blur_threshold=body.blurThreshold if body.blurThreshold and body.blurThreshold > 0 else 40.0,
     )
-    asyncio.get_running_loop().run_in_executor(None, store.run_job, job)
+    # Track worker thread
+    worker = threading.Thread(target=store.run_job, args=(job,), name=f"poseye-worker-{job.id}", daemon=True)
+    worker.start()
     return _out(job)
 
 
-@app.get("/jobs", response_model=list[JobOut])
+@app.get("/jobs", response_model=list[JobOut], dependencies=[Depends(verify_api_token)])
 def list_jobs() -> list[JobOut]:
     return [_out(j) for j in store.list()]
 
 
-@app.get("/jobs/{job_id}", response_model=JobOut)
+@app.get("/jobs/{job_id}", response_model=JobOut, dependencies=[Depends(verify_api_token)])
 def get_job(job_id: str) -> JobOut:
     job = store.get(job_id)
     if not job:
@@ -256,7 +286,7 @@ def get_job(job_id: str) -> JobOut:
     return _out(job)
 
 
-@app.post("/jobs/{job_id}/cancel", response_model=JobOut)
+@app.post("/jobs/{job_id}/cancel", response_model=JobOut, dependencies=[Depends(verify_api_token)])
 def cancel_job(job_id: str) -> JobOut:
     job = store.get(job_id)
     if not job:
@@ -265,18 +295,19 @@ def cancel_job(job_id: str) -> JobOut:
     return _out(job)
 
 
-@app.delete("/jobs/{job_id}")
+@app.delete("/jobs/{job_id}", dependencies=[Depends(verify_api_token)])
 def delete_job(job_id: str) -> dict:
     job = store.get(job_id)
     if not job:
         raise HTTPException(404, "Unknown job")
-    if job.stage not in {"ready", "error", "cancelled", "interrupted"}:
-        raise HTTPException(409, f"Cannot delete active job in stage '{job.stage}'. Cancel it first.")
-    store.delete(job)
+    try:
+        store.delete(job)
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc)) from exc
     return {"ok": True}
 
 
-@app.get("/jobs/{job_id}/assets/{asset}")
+@app.get("/jobs/{job_id}/assets/{asset}", dependencies=[Depends(verify_api_token)])
 def job_asset(job_id: str, asset: str) -> FileResponse:
     job = store.get(job_id)
     if not job:
@@ -308,7 +339,7 @@ def job_asset(job_id: str, asset: str) -> FileResponse:
     return FileResponse(path, filename=path.name)
 
 
-@app.get("/jobs/{job_id}/logs")
+@app.get("/jobs/{job_id}/logs", dependencies=[Depends(verify_api_token)])
 def job_logs(job_id: str) -> dict:
     job = store.get(job_id)
     if not job:
@@ -316,10 +347,7 @@ def job_logs(job_id: str) -> dict:
     return {"id": job.id, "events": [e.as_dict() for e in job.events]}
 
 
-# ---------------------------------------------------------------------------
-# Task 3: plain-text log endpoint
-# ---------------------------------------------------------------------------
-@app.get("/jobs/{job_id}/logs/text")
+@app.get("/jobs/{job_id}/logs/text", dependencies=[Depends(verify_api_token)])
 def job_logs_text(job_id: str) -> PlainTextResponse:
     job = store.get(job_id)
     if not job:
@@ -329,25 +357,22 @@ def job_logs_text(job_id: str) -> PlainTextResponse:
     return PlainTextResponse("\n".join(lines))
 
 
-# ---------------------------------------------------------------------------
-# Task 3: app-level log endpoint
-# ---------------------------------------------------------------------------
-@app.get("/logs/app")
+@app.get("/logs/app", dependencies=[Depends(verify_api_token)])
 def app_logs() -> list[dict]:
     return list(_APP_LOG)
 
 
-@app.get("/jobs/{job_id}/metadata")
+@app.get("/jobs/{job_id}/metadata", dependencies=[Depends(verify_api_token)])
 def job_metadata(job_id: str) -> dict:
     job = store.get(job_id)
     if not job:
         raise HTTPException(404, "Unknown job")
     store.persist(job)
     meta_path = job.work_dir / "job.json"
-    return json_load(meta_path) if meta_path.is_file() else _out(job).model_dump()
+    return json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.is_file() else _out(job).model_dump()
 
 
-@app.get("/jobs/{job_id}/diagnostics")
+@app.get("/jobs/{job_id}/diagnostics", dependencies=[Depends(verify_api_token)])
 def job_diagnostics(job_id: str) -> dict:
     job = store.get(job_id)
     if not job:
@@ -363,14 +388,15 @@ def job_diagnostics(job_id: str) -> dict:
     }
 
 
-def json_load(path: Path) -> dict:
-    import json
-
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
 @app.websocket("/jobs/{job_id}/events")
-async def job_events(websocket: WebSocket, job_id: str) -> None:
+async def job_events(websocket: WebSocket, job_id: str, token: str | None = Query(None)) -> None:
+    if API_TOKEN:
+        auth_header = websocket.headers.get("authorization", "")
+        token_val = token or (auth_header.split(" ", 1)[1] if " " in auth_header else "")
+        if token_val != API_TOKEN:
+            await websocket.close(code=4401)
+            return
+
     job = store.get(job_id)
     if not job:
         await websocket.close(code=4404)
@@ -406,6 +432,8 @@ def _out(job) -> JobOut:
         preset=job.preset,
         hasModel=bool(job.glb_path and job.glb_path.is_file()),
         isGeoreferenced=bool(getattr(job, "is_georeferenced", False)),
+        georeferencing=getattr(job, "georeferencing", {}),
+        modelStats=getattr(job, "model_stats", {}),
         createdAt=job.created_at,
         updatedAt=job.updated_at,
         videoPath=str(job.video_path),

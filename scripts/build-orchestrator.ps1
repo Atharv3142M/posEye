@@ -15,13 +15,16 @@ Write-Host "Ensuring pyinstaller is installed..."
 $outDir = Join-Path $root "third_party"
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
-Write-Host "Compiling posEye orchestrator to standalone executable..."
+$versionFile = Join-Path $root "scripts\version_info.txt"
+
+Write-Host "Compiling posEye orchestrator to branded standalone executable..."
 & $py -m PyInstaller `
     --onefile `
     --noconfirm `
     --clean `
     --name posEye.Orchestrator `
     --distpath $outDir `
+    --version-file $versionFile `
     --paths "apps\pipeline\src" `
     --paths "apps\orchestrator\src" `
     --hidden-import "uvicorn.logging" `
@@ -41,10 +44,13 @@ Write-Host "Compiling posEye orchestrator to standalone executable..."
 $brandedExe = Join-Path $outDir "posEye.Orchestrator.exe"
 $legacyExe = Join-Path $outDir "orchestrator.exe"
 
+if (Test-Path $legacyExe) {
+    Remove-Item -Path $legacyExe -Force -ErrorAction SilentlyContinue
+    Write-Host "Cleaned legacy unbranded duplicate binary: $legacyExe"
+}
+
 if (Test-Path $brandedExe) {
-    Copy-Item -Path $brandedExe -Destination $legacyExe -Force
-    Write-Host "Successfully built: $brandedExe and synchronized $legacyExe"
+    Write-Host "Successfully built verified branded binary: $brandedExe"
 } else {
     Write-Error "posEye.Orchestrator.exe build failed."
 }
-

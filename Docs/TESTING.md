@@ -14,7 +14,10 @@ The Python test suite covers:
 - Subtitle telemetry parsing (DJI/Autel format matching) and EXIF GPS metadata injection via Piexif.
 - YOLOv8 moving-object masking with graceful degradation when optional models are missing.
 - FastAPI REST endpoints (`/jobs`, `/probe/video`, `/health`, `/logs`).
-- Trimesh OBJ-to-GLB conversion and glTF structure validation.
+- Trimesh OBJ-to-GLB conversion, deep binary GLB structure validation, and texture completeness checks.
+- State machine lifecycle, terminal immutability, active worker thread tracking, and monotonic progress enforcement.
+- Zip security guards against directory traversal, absolute paths, drive letters, UNC paths, and symlinks.
+- Geospatial telemetry boundary validation, relative altitude non-promotion, and EXIF altitude reference handling.
 - NodeODM client multi-stage task lifecycle (`init`, `upload`, `commit`), fallback behavior, MIME detection, output line polling, and cancellation.
 
 **Command:**
@@ -23,7 +26,7 @@ The Python test suite covers:
 ```
 
 **Expected Outcome:**
-- 26 passed tests in $<10$ seconds.
+- 43 passed tests in $<20$ seconds.
 - Zero failures, zero skips.
 
 ### 1.2 Frontend TypeScript Typecheck

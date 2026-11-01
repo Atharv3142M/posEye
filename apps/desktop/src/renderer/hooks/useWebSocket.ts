@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { apiBase } from "../api";
+import { apiBase, apiTokenSync } from "../api";
 
 export type WsEvent = { stage: string; percent: number; message: string; ts: string };
 
@@ -13,8 +13,10 @@ export function useJobEvents(jobId: string | undefined) {
     let closed = false;
     void (async () => {
       const base = (await apiBase()).replace(/^http/, "ws");
+      const token = apiTokenSync();
       if (closed) return;
-      const ws = new WebSocket(`${base}/jobs/${jobId}/events`);
+      const wsUrl = token ? `${base}/jobs/${jobId}/events?token=${encodeURIComponent(token)}` : `${base}/jobs/${jobId}/events`;
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
       ws.onmessage = (ev) => {
         const data = JSON.parse(ev.data) as WsEvent;

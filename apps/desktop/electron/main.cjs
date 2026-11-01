@@ -10,10 +10,12 @@ const { spawn, execFile } = require("node:child_process");
 const fs = require("node:fs");
 const net = require("node:net");
 const os = require("node:os");
+const crypto = require("node:crypto");
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 const API_PORT = parseInt(process.env.DT_PORT || "8765", 10);
 const API_BASE = process.env.DT_API || `http://127.0.0.1:${API_PORT}`;
+const API_TOKEN = process.env.DT_API_TOKEN || crypto.randomBytes(16).toString("hex");
 const NODEODM_URL = process.env.NODEODM_URL || "http://127.0.0.1:3000";
 const STARTUP_TIMEOUT_MS = 30000;      // orchestrator
 const NODEODM_TIMEOUT_MS = 120000;     // NodeODM container start
@@ -66,19 +68,16 @@ function ffmpegPath() {
 }
 
 function orchestratorExe() {
-  const binaryNames = ["posEye.Orchestrator.exe", "orchestrator.exe"];
-  // Packaged: check bundled resources
+  // Packaged: check bundled branded executable ONLY
   if (app.isPackaged) {
-    for (const name of binaryNames) {
-      const exe = path.join(process.resourcesPath, name);
-      if (fs.existsSync(exe)) return { cmd: exe, args: [], useExe: true };
-    }
+    const exe = path.join(process.resourcesPath, "posEye.Orchestrator.exe");
+    if (fs.existsSync(exe)) return { cmd: exe, args: [], useExe: true };
   }
   // Dev mode: check third_party
-  for (const name of binaryNames) {
-    const devExe = path.join(repoRoot(), "third_party", name);
-    if (fs.existsSync(devExe)) return { cmd: devExe, args: [], useExe: true };
-  }
+  const devExe = path.join(repoRoot(), "third_party", "posEye.Orchestrator.exe");
+  if (fs.existsSync(devExe)) return { cmd: devExe, args: [], useExe: true };
+  const legacyExe = path.join(repoRoot(), "third_party", "orchestrator.exe");
+  if (fs.existsSync(legacyExe)) return { cmd: legacyExe, args: [], useExe: true };
   return null;
 }
 
@@ -137,10 +136,30 @@ function run(cmd, args, opts = {}) {
 
 function runWithTimeout(cmd, args, timeoutMs, opts = {}) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`${cmd} timed out after ${timeoutMs}ms`)), timeoutMs);
-    run(cmd, args, opts)
-      .then((out) => { clearTimeout(timer); resolve(out); })
-      .catch((err) => { clearTimeout(timer); reject(err); });
+    const child = spawn(cmd, args, { windowsHide: true, ...opts });
+    let out = "";
+    let err = "";
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try {
+        child.kill();
+      } catch {}
+      reject(new Error(`${cmd} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    child.stdout?.on("data", (d) => { out += d.toString(); });
+    child.stderr?.on("data", (d) => { err += d.toString(); });
+    child.on("error", (e) => {
+      clearTimeout(timer);
+      reject(new Error(`${cmd}: ${e.message}`));
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (timedOut) return;
+      if (code === 0) resolve(out.trim());
+      else reject(new Error(err.trim() || out.trim() || `${cmd} exited with code ${code}`));
+    });
   });
 }
 
@@ -389,14 +408,27 @@ async function ensureNodeOdm() {
 async function startApi() {
   // Check if port is already in use (another instance)
   if (await isPortInUse(API_PORT)) {
-    log("warn", `Port ${API_PORT} already in use — skipping API spawn, connecting to existing`);
-    return;
+    try {
+      const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(3000) });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.serviceId === "poseye-orchestrator" && data.orchestratorVersion === "0.1.3") {
+          log("info", `Port ${API_PORT} in use by compatible posEye orchestrator ${data.orchestratorVersion} — connecting`);
+          return;
+        }
+      }
+    } catch {}
+    throw new Error(
+      `Port ${API_PORT} is already occupied by an incompatible or unknown service.\n\n` +
+      `Please stop the process using port ${API_PORT} or set the DT_PORT environment variable to an open port.`
+    );
   }
 
   const jobsDir = path.join(app.getPath("userData"), "jobs");
   const env = {
     ...process.env,
     DT_PORT: String(API_PORT),
+    DT_API_TOKEN: API_TOKEN,
     NODEODM_URL,
     FFMPEG_PATH: ffmpegPath() || "",
     DT_JOBS_DIR: jobsDir,
@@ -447,8 +479,8 @@ async function waitForApi() {
       const res = await fetch(`${API_BASE}/health`);
       if (res.ok) {
         const data = await res.json();
-        if (data && data.orchestratorVersion) {
-          log("info", `posEye orchestrator ${data.orchestratorVersion} is ready`);
+        if (data && data.serviceId === "poseye-orchestrator" && data.orchestratorVersion === "0.1.3") {
+          log("info", `posEye orchestrator v${data.orchestratorVersion} is ready and verified`);
           return;
         }
       }
@@ -542,6 +574,7 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("env", () => ({
     apiBase: API_BASE,
+    apiToken: API_TOKEN,
     packaged: app.isPackaged,
     version: app.getVersion(),
     repoRoot: repoRoot(),
@@ -550,7 +583,11 @@ app.whenReady().then(async () => {
   ipcMain.handle("read:file", (_e, filePath) => {
     if (!filePath || typeof filePath !== "string") return null;
     try {
-      return fs.readFileSync(filePath);
+      const resolved = path.resolve(filePath);
+      if (!fs.existsSync(resolved)) return null;
+      const stat = fs.statSync(resolved);
+      if (!stat.isFile()) return null;
+      return fs.readFileSync(resolved);
     } catch (e) {
       log("error", `read:file failed for ${filePath}: ${e.message}`);
       return null;
@@ -558,7 +595,17 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle("open:external", (_e, url) => {
-    shell.openExternal(url);
+    if (typeof url !== "string") return;
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+        shell.openExternal(url);
+      } else {
+        log("warn", `Blocked opening external URL with protocol: ${parsed.protocol}`);
+      }
+    } catch (err) {
+      log("warn", `Invalid URL passed to open:external: ${url}`);
+    }
   });
 
   ipcMain.handle("get:logs", () => appLog.slice(-200));
@@ -642,11 +689,7 @@ app.on("before-quit", () => {
     log("info", "Stopping orchestrator process");
     apiProc.kill();
   }
-  // Stop NodeODM containers gracefully (fire-and-forget)
-  spawn("docker", ["stop", "poseye-nodeodm", "digitaltwin-nodeodm"], {
-    windowsHide: true,
-    detached: true,
-  }).unref();
+  // External Docker/NodeODM services are not terminated by posEye
 });
 
 app.on("window-all-closed", () => {

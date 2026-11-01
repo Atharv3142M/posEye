@@ -2,17 +2,18 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import time
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from pipeline.errors import ExtractError, FfmpegUnavailable, NotEnoughFrames
+from pipeline.errors import ExtractCanceledError, ExtractError, FfmpegUnavailable, NotEnoughFrames
 from pipeline.exif import write_gps_exif
 from pipeline.ffmpeg import resolve_ffmpeg
 from pipeline.filters import select_frames, score_frames
 from pipeline.probe import probe_video
-from pipeline.srt import parse_srt, sample_at
+from pipeline.srt import MatchStats, parse_srt, sample_at
 
 ProgressCb = Callable[[str, float, str], None]
 
@@ -42,9 +43,10 @@ class ExtractResult:
     source_fps: float | None = None
     width: int | None = None
     height: int | None = None
+    match_stats: dict = field(default_factory=dict)
 
     def as_dict(self) -> dict:
-        return {
+        data = {
             "rawFrames": self.raw_count,
             "retainedFrames": len(self.frames),
             "droppedBlur": self.dropped_blur,
@@ -55,6 +57,9 @@ class ExtractResult:
             "fps": self.source_fps,
             "resolution": f"{self.width}x{self.height}" if self.width and self.height else None,
         }
+        if self.match_stats:
+            data.update(self.match_stats)
+        return data
 
 
 def _emit(cb: ProgressCb | None, stage: str, pct: float, message: str) -> None:
@@ -62,7 +67,15 @@ def _emit(cb: ProgressCb | None, stage: str, pct: float, message: str) -> None:
         cb(stage, pct, message)
 
 
-def _run_ffmpeg(ffmpeg: str, video: Path, pattern: Path, fps: float, quality: int, progress: ProgressCb | None = None) -> None:
+def _run_ffmpeg(
+    ffmpeg: str,
+    video: Path,
+    pattern: Path,
+    fps: float,
+    quality: int,
+    progress: ProgressCb | None = None,
+    should_stop: Callable[[], bool] | None = None,
+) -> None:
     qscale = max(2, min(10, round((100 - quality) / 10)))
     cmd = [
         ffmpeg,
@@ -79,9 +92,43 @@ def _run_ffmpeg(ffmpeg: str, video: Path, pattern: Path, fps: float, quality: in
         str(pattern),
     ]
     _emit(progress, "extracting", 8.0, f"Running FFmpeg: extracting stills at {fps} fps...")
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    if proc.returncode != 0:
-        raise ExtractError(proc.stderr.strip() or "ffmpeg failed to extract frames")
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        while True:
+            if should_stop and should_stop():
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=2.0)
+                except (subprocess.TimeoutExpired, Exception):
+                    try:
+                        proc.kill()
+                        proc.wait(timeout=1.0)
+                    except Exception:
+                        pass
+                raise ExtractCanceledError("Extraction canceled during FFmpeg processing")
+
+            try:
+                ret = proc.wait(timeout=0.15)
+                break
+            except subprocess.TimeoutExpired:
+                continue
+
+        stderr = proc.stderr.read() if proc.stderr else ""
+        if ret != 0:
+            raise ExtractError(stderr.strip() or "ffmpeg failed to extract frames")
+    except ExtractCanceledError:
+        raise
+    except Exception as exc:
+        if proc.poll() is None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=1.0)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+        raise exc
 
 
 def extract_frames(
@@ -97,9 +144,9 @@ def extract_frames(
     raw_dir = out / "raw"
     keep_dir = out / "frames"
     if out.exists():
-        shutil.rmtree(out)
-    raw_dir.mkdir(parents=True)
-    keep_dir.mkdir(parents=True)
+        shutil.rmtree(out, ignore_errors=True)
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    keep_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         ffmpeg = resolve_ffmpeg()
@@ -107,31 +154,50 @@ def extract_frames(
         raise FfmpegUnavailable(str(exc)) from exc
 
     if should_stop and should_stop():
-        raise ExtractError("Extraction canceled")
+        shutil.rmtree(out, ignore_errors=True)
+        raise ExtractCanceledError("Extraction canceled")
 
     info = probe_video(video)
     _emit(progress, "validating", 3.0, f"Validated video container: {info.width}x{info.height} @ {info.fps:.1f} fps")
     _emit(progress, "extracting", 6.0, f"Extracting stills from {video.name}...")
-    _run_ffmpeg(ffmpeg, video, raw_dir / "frame_%06d.jpg", config.fps, config.jpeg_quality, progress=progress)
+
+    try:
+        _run_ffmpeg(
+            ffmpeg,
+            video,
+            raw_dir / "frame_%06d.jpg",
+            config.fps,
+            config.jpeg_quality,
+            progress=progress,
+            should_stop=should_stop,
+        )
+    except ExtractCanceledError:
+        shutil.rmtree(out, ignore_errors=True)
+        raise
 
     if should_stop and should_stop():
-        raise ExtractError("Extraction canceled")
+        shutil.rmtree(out, ignore_errors=True)
+        raise ExtractCanceledError("Extraction canceled")
 
     raw_paths = sorted(raw_dir.glob("frame_*.jpg"))
     if not raw_paths:
+        shutil.rmtree(out, ignore_errors=True)
         raise ExtractError("No frames were extracted from the video")
 
     total_raw = len(raw_paths)
     _emit(progress, "filtering", 15.0, f"Extracted {total_raw} raw frames. Scoring sharpness & perceptual hash...")
 
     def on_filter_tick(curr: int, total: int):
+        if should_stop and should_stop():
+            return
         pct = 15.0 + (curr / total) * 30.0
         _emit(progress, "filtering", pct, f"Filtering frames: scored {curr}/{total} frames")
 
     scores = score_frames(raw_paths, on_progress=on_filter_tick)
 
     if should_stop and should_stop():
-        raise ExtractError("Extraction canceled")
+        shutil.rmtree(out, ignore_errors=True)
+        raise ExtractCanceledError("Extraction canceled")
 
     kept = select_frames(
         scores,
@@ -144,6 +210,7 @@ def extract_frames(
     _emit(progress, "filtering", 48.0, f"Filter result: kept {len(kept)} frames (dropped {dropped_blur} blur, {dropped_dup} duplicates)")
 
     if len(kept) < config.min_retained_frames:
+        shutil.rmtree(out, ignore_errors=True)
         raise NotEnoughFrames(
             f"Only {len(kept)} sharp, unique frames remain (need at least "
             f"{config.min_retained_frames}). Lower the blur threshold or use a longer clip."
@@ -154,10 +221,12 @@ def extract_frames(
     geotagged = 0
     written: list[Path] = []
     total_kept = len(kept)
+    stats = MatchStats(total_frames=total_kept)
 
     for index, score in enumerate(kept, start=1):
         if should_stop and should_stop():
-            raise ExtractError("Extraction canceled")
+            shutil.rmtree(out, ignore_errors=True)
+            raise ExtractCanceledError("Extraction canceled")
 
         dest = keep_dir / f"image_{index:06d}.jpg"
         shutil.copy2(score.path, dest)
@@ -165,9 +234,9 @@ def extract_frames(
         digits = "".join(ch for ch in stem if ch.isdigit())
         raw_index = int(digits) if digits else index
         t = max(0.0, (raw_index - 1) / config.fps)
-        sample = sample_at(samples, t, max_offset_s=1.5)
+        sample = sample_at(samples, t, max_offset_s=1.5, stats=stats)
         if sample and sample.latitude is not None and sample.longitude is not None:
-            write_gps_exif(dest, sample.latitude, sample.longitude, sample.altitude)
+            write_gps_exif(dest, sample.latitude, sample.longitude, sample.altitude, sample.altitude_ref)
             geotagged += 1
         written.append(dest)
 
@@ -177,6 +246,9 @@ def extract_frames(
 
     mask_paths: list[Path] = []
     if config.generate_masks:
+        if should_stop and should_stop():
+            shutil.rmtree(out, ignore_errors=True)
+            raise ExtractCanceledError("Extraction canceled")
         try:
             from pipeline.masks import generate_moving_object_masks
 
@@ -203,4 +275,5 @@ def extract_frames(
         source_fps=info.fps,
         width=info.width,
         height=info.height,
+        match_stats=stats.as_dict() if samples else {},
     )

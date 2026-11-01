@@ -11,7 +11,10 @@ def test_health():
     assert res.status_code == 200
     data = res.json()
     assert data["ok"] is True
-    assert data["orchestratorVersion"] == "0.1.2"
+    assert data["serviceId"] == "poseye-orchestrator"
+    assert data["product"] == "posEye"
+    assert data["component"] == "Orchestrator"
+    assert data["orchestratorVersion"] == "0.1.3"
     assert "docker" in data
     assert "nodeodm" in data
     assert "ffmpeg" in data

@@ -384,6 +384,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     }
     picksRef.current = [];
     modelOffsetRef.current.set(0, 0, 0);
+    onStats?.({ vertices: 0, triangles: 0 });
 
     if (!modelUrl) return;
 
@@ -422,6 +423,13 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
             }
           }
         });
+
+        if (totalVerts === 0 || totalTriangles === 0) {
+          disposeObjectTree(gltf.scene);
+          onStats?.({ vertices: 0, triangles: 0 });
+          onLoadError?.("Model contains no usable polygon geometry.");
+          return;
+        }
 
         // Compute original bounding box
         const origBox = new Box3().setFromObject(gltf.scene);

@@ -21,7 +21,7 @@ def _to_deg_min_sec(value: float) -> tuple[tuple[int, int], tuple[int, int], tup
 
 
 def _rational_altitude(meters: float) -> tuple[int, int]:
-    frac = Fraction(abs(meters)).limit_denominator(100)
+    frac = Fraction(abs(meters)).limit_denominator(1000)
     return (frac.numerator, frac.denominator)
 
 
@@ -30,6 +30,7 @@ def write_gps_exif(
     latitude: float,
     longitude: float,
     altitude: float | None = None,
+    altitude_ref: str = "absolute",
 ) -> None:
     path = Path(image_path)
     try:
@@ -44,9 +45,17 @@ def write_gps_exif(
     gps[piexif.GPSIFD.GPSLatitude] = _to_deg_min_sec(abs(latitude))
     gps[piexif.GPSIFD.GPSLongitudeRef] = lon_ref.encode("ascii")
     gps[piexif.GPSIFD.GPSLongitude] = _to_deg_min_sec(abs(longitude))
-    if altitude is not None:
+
+    # Only write GPSAltitude if altitude is an absolute altitude, never relative altitude
+    if altitude is not None and altitude_ref in {"absolute", "msl", "ellipsoidal"}:
+        # GPSAltitudeRef: 0 = Above sea level, 1 = Below sea level
         gps[piexif.GPSIFD.GPSAltitudeRef] = 0 if altitude >= 0 else 1
         gps[piexif.GPSIFD.GPSAltitude] = _rational_altitude(altitude)
+    else:
+        # Leave EXIF altitude unset if semantics are relative or unknown
+        gps.pop(piexif.GPSIFD.GPSAltitude, None)
+        gps.pop(piexif.GPSIFD.GPSAltitudeRef, None)
+
     exif["GPS"] = gps
     piexif.insert(piexif.dump(exif), str(path))
 
@@ -80,6 +89,7 @@ def read_gps_exif(image_path: str | Path) -> tuple[float | None, float | None, f
         num, den = gps[piexif.GPSIFD.GPSAltitude]
         alt = num / den if den else None
         ref = gps.get(piexif.GPSIFD.GPSAltitudeRef, 0)
-        if ref == 1 and alt is not None:
+        # If byte or int 1, negative altitude below sea level
+        if ref in {1, b"\x01"} and alt is not None:
             alt = -alt
     return lat, lon, alt

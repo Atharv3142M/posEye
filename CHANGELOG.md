@@ -10,13 +10,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- Ground Control Points (GCP) text import for millimeter-level survey georeferencing.
+- Ground Control Points (GCP) text import to enable improved georeferencing and accuracy validation.
 - Volumetric analysis and elevation profile plotting backed by Digital Elevation Models (DEM/DTM).
 - GPU-accelerated video decoding integration (NVDEC / QuickSync).
 
 ---
 
-## [0.1.2] - 2026-11-01
+## [0.1.3] - 2026-11-01
+
+### Added
+- **Formal State Transition Graph:** Thread-safe state transition table with permanently immutable terminal states (`ready`, `cancelled`, `error`, `interrupted`) and monotonic progress enforcement.
+- **Worker Registry & Cancellation Tracking:** Thread-safe worker process tracking with graceful termination, cancellation callbacks, and race-free job deletion safety (`HTTP 409 Conflict`).
+- **Managed Subprocess Lifecycle:** Replaced blocking subprocess calls in extraction with managed `subprocess.Popen`, graceful shutdown timeout (2s), force-kill fallback, and cancellation file cleanup.
+- **GLB Model Deep Validation:** Binary glTF header verification, JSON chunk structure check, non-empty vertex buffers, finite bounding boxes, and missing texture detection before transitioning to ready.
+- **Strict Zip-Slip & Archive Security:** Path normalization rejection for directory traversal, drive letters, UNC paths, symlinks, encrypted archives, and zip bombs.
+- **Local API Authentication:** Secured orchestrator with session-scoped `DT_API_TOKEN` across HTTP and WebSocket channels and removed wildcard CORS.
+- **Windows Version Resource Embedding:** Standalone `posEye.Orchestrator.exe` compiled with embedded Windows version resource metadata (`0.1.3.0`, product name `posEye`).
+- **Regression Test Coverage:** Expanded automated test suite from 26 to 43 passing unit and integration tests.
+
+### Fixed
+- **Desktop CI TypeScript Failure:** Resolved stale `georef` identifier in `Viewer.tsx`, restoring clean TypeScript compilation and automated desktop packaging in CI.
+- **SRT Relative Altitude Promotion:** Removed dangerous fallback promoting relative flight altitude to absolute EXIF `GPSAltitude`. Added regex word boundary anchors (`\b`) to eliminate spurious pattern matching.
+- **EXIF Altitude Reference Flag:** Configured `GPSAltitudeRef` to correctly encode 0 for above sea level and 1 for below sea level, leaving altitude unset when semantics are relative or unknown.
+- **SRT Telemetry Bounds & Matching:** Enforced 1.5s maximum telemetry time delta tolerance and rejection of out-of-bounds geographic coordinates.
+- **Duplicate Binary Bloat:** Removed redundant duplicate `orchestrator.exe` from desktop package resources, reducing installer payload size from ~273 MB to ~192 MB.
+- **External Docker Container Preservation:** Electron quit lifecycle cleanly stops local orchestrator without killing external Docker daemon containers.
+- **npm Dependency Hardening:** Resolved all critical npm vulnerabilities via explicit overrides for `tar` and `builder-util-runtime`.
 
 ### Added
 - **Zip-Slip & Decompression Bomb Protection:** Hardened zip extraction with canonical path validation (`path.resolve().relative_to(dest_dir.resolve())`) and limits (50,000 files, 10 GB uncompressed size).

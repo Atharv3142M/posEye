@@ -15,8 +15,66 @@ from orchestrator.nodeodm import NodeODMClient, nodeodm_url
 logger = logging.getLogger(__name__)
 
 
+def _check_docker_gpu_passthrough() -> bool:
+    """Check if Docker daemon supports nvidia runtime for GPU passthrough."""
+    docker_bin = shutil.which("docker")
+    if not docker_bin:
+        return False
+    try:
+        proc = subprocess.run(
+            ["docker", "info", "--format", "{{json .Runtimes}}"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if proc.returncode == 0 and "nvidia" in proc.stdout.lower():
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def _gpu() -> dict[str, Any]:
-    # 1. Try nvidia-smi first for NVIDIA GPU telemetry
+    display_adapter_name: str | None = None
+    display_adapter_detected = False
+    adapter_ram_mb: float | None = None
+
+    # 1. Query display adapter via CIM/WMI on Windows
+    if os.name == "nt":
+        try:
+            ps_cmd = "Get-CimInstance Win32_VideoController | Select-Object -Property Name, AdapterRAM | ConvertTo-Json"
+            proc = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", ps_cmd],
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            if proc.returncode == 0 and proc.stdout.strip():
+                data = json.loads(proc.stdout)
+                adapters = data if isinstance(data, list) else [data]
+                real_adapters = [
+                    a for a in adapters
+                    if a.get("Name") and "Virtual" not in a.get("Name", "") and "RDP" not in a.get("Name", "")
+                ]
+                chosen = real_adapters[0] if real_adapters else (adapters[0] if adapters else None)
+                if chosen and chosen.get("Name"):
+                    display_adapter_name = chosen["Name"]
+                    display_adapter_detected = True
+                    if chosen.get("AdapterRAM"):
+                        adapter_ram_mb = round(chosen["AdapterRAM"] / (1024 * 1024), 1)
+        except Exception:
+            pass
+
+    # 2. Check NVIDIA GPU & telemetry via nvidia-smi
+    nvidia_detected = False
+    nvidia_driver_ok = False
+    nvidia_smi_ok = False
+    gpu_name: str | None = None
+    gpu_util: float | None = None
+    mem_used: float | None = None
+    mem_total: float | None = None
+    temp: float | None = None
+
     try:
         proc = subprocess.run(
             [
@@ -32,73 +90,59 @@ def _gpu() -> dict[str, Any]:
             first_line = proc.stdout.strip().splitlines()[0]
             parts = [p.strip() for p in first_line.split(",")]
             if len(parts) >= 5:
-                name, util, mem_used, mem_total, temp = parts[:5]
-                has_cuda_toolkit = bool(shutil.which("nvidia-container-cli") or shutil.which("nvcc"))
-                return {
-                    "gpuAvailable": True,
-                    "gpuName": name,
-                    "nvidiaSmiAvailable": True,
-                    "cudaAvailable": has_cuda_toolkit,
-                    "cudaDriverAvailable": True,
-                    "gpuUtilization": float(util),
-                    "gpuMemoryUsed": float(mem_used),
-                    "gpuMemoryTotal": float(mem_total),
-                    "gpuTemperature": float(temp),
-                    "nodeodmAcceleration": (
-                        "CUDA GPU container acceleration active"
-                        if has_cuda_toolkit
-                        else "CUDA GPU detected (requires nvidia-container-toolkit for container passthrough)"
-                    ),
-                    "message": f"{name} (NVIDIA)",
-                }
+                nvidia_detected = True
+                nvidia_driver_ok = True
+                nvidia_smi_ok = True
+                gpu_name = parts[0]
+                try:
+                    gpu_util = float(parts[1])
+                    mem_used = float(parts[2])
+                    mem_total = float(parts[3])
+                    temp = float(parts[4])
+                except ValueError:
+                    pass
     except Exception:
         pass
 
-    # 2. On Windows, detect display adapter via CIM/WMI without fabricating 0% utilization
-    if os.name == "nt":
-        try:
-            ps_cmd = "Get-CimInstance Win32_VideoController | Select-Object -Property Name, AdapterRAM | ConvertTo-Json"
-            proc = subprocess.run(
-                ["powershell", "-NoProfile", "-Command", ps_cmd],
-                capture_output=True,
-                text=True,
-                timeout=3,
-            )
-            if proc.returncode == 0 and proc.stdout.strip():
-                data = json.loads(proc.stdout)
-                adapters = data if isinstance(data, list) else [data]
-                # Filter out virtual display drivers if possible
-                real_adapters = [
-                    a for a in adapters
-                    if a.get("Name") and "Virtual" not in a.get("Name", "") and "RDP" not in a.get("Name", "")
-                ]
-                chosen = real_adapters[0] if real_adapters else (adapters[0] if adapters else None)
-                if chosen and chosen.get("Name"):
-                    name = chosen["Name"]
-                    ram_mb = round(chosen.get("AdapterRAM", 0) / (1024 * 1024)) if chosen.get("AdapterRAM") else None
-                    return {
-                        "gpuAvailable": True,
-                        "gpuName": name,
-                        "nvidiaSmiAvailable": False,
-                        "cudaAvailable": False,
-                        "gpuUtilization": None,
-                        "gpuMemoryUsed": None,
-                        "gpuMemoryTotal": ram_mb,
-                        "gpuTemperature": None,
-                        "nodeodmAcceleration": "CPU-only (standard NodeODM container)",
-                        "message": f"{name} (Display Adapter, CPU processing)",
-                    }
-        except Exception:
-            pass
+    # 3. Check NVIDIA Container Toolkit
+    has_container_toolkit = bool(shutil.which("nvidia-container-cli") or shutil.which("nvidia-ctk"))
+
+    # 4. Check Docker GPU Passthrough
+    docker_gpu_passthrough = _check_docker_gpu_passthrough() if nvidia_detected else False
+
+    # 5. Determine acceleration state truthfully
+    if docker_gpu_passthrough and has_container_toolkit:
+        accel = "CUDA GPU container acceleration active"
+        message = f"{gpu_name or 'NVIDIA GPU'} (CUDA acceleration active)"
+    elif nvidia_detected:
+        accel = "CPU processing (CUDA GPU detected; requires nvidia-container-toolkit for container passthrough)"
+        message = f"{gpu_name or 'NVIDIA GPU'} (Driver OK, CPU processing)"
+    elif display_adapter_detected:
+        accel = "CPU processing (standard NodeODM container)"
+        message = f"{display_adapter_name} (Display Adapter, CPU processing)"
+    else:
+        accel = "CPU processing"
+        message = "No discrete GPU detected. NodeODM will use CPU processing."
 
     return {
-        "gpuAvailable": False,
-        "gpuName": None,
-        "nvidiaSmiAvailable": False,
-        "cudaAvailable": False,
-        "gpuUtilization": None,
-        "nodeodmAcceleration": "CPU-only",
-        "message": "No discrete GPU detected. NodeODM will use CPU processing.",
+        "gpuAvailable": bool(nvidia_detected or display_adapter_detected),
+        "gpuName": gpu_name or display_adapter_name,
+        "displayAdapterDetected": display_adapter_detected,
+        "displayAdapterName": display_adapter_name,
+        "nvidiaGpuDetected": nvidia_detected,
+        "nvidiaDriverAvailable": nvidia_driver_ok,
+        "nvidiaSmiAvailable": nvidia_smi_ok,
+        "nvidiaContainerToolkitAvailable": has_container_toolkit,
+        "dockerGpuPassthrough": docker_gpu_passthrough,
+        "containerCudaActive": bool(docker_gpu_passthrough and has_container_toolkit),
+        "cudaAvailable": bool(docker_gpu_passthrough and has_container_toolkit),
+        "cudaDriverAvailable": nvidia_driver_ok,
+        "gpuUtilization": gpu_util,
+        "gpuMemoryUsed": mem_used,
+        "gpuMemoryTotal": mem_total if mem_total is not None else adapter_ram_mb,
+        "gpuTemperature": temp,
+        "nodeodmAcceleration": accel,
+        "message": message,
     }
 
 

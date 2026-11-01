@@ -31,17 +31,20 @@ posEye automatically parses and extracts telemetry from subtitle streams across 
    ```
 
 ### Timestamp Matching & Nearest-Neighbor Interpolation
-During frame extraction, posEye calculates the exact video time offset for each extracted frame. The pipeline matches each frame against the telemetry sample list using a nearest-neighbor temporal search with a maximum allowable drift threshold (default: 0.5s).
+During frame extraction, posEye calculates the exact video time offset for each extracted frame. The pipeline matches each frame against the telemetry sample list using a nearest-neighbor temporal search with a maximum allowable drift threshold (enforced: 1.5s). Frames outside this temporal window are flagged as gaps and rejected from geotagging.
 
 ---
 
-## 2. EXIF Metadata Injection
+## 2. EXIF Metadata Injection & Altitude Semantics
 
 For each retained frame passing the Laplacian sharpness filter and dHash deduplication:
 1. **Coordinate Conversion:** Latitude and longitude decimal degrees are converted into EXIF-compliant Degrees, Minutes, and Seconds (DMS) rational fractions:
    $$\text{DMS} = [(\text{deg}, 1), (\text{min}, 1), (\text{sec} \times 1000, 1000)]$$
-2. **Datum:** All coordinates are referenced to the **WGS 84 (EPSG:4326)** geodetic reference system.
-3. **Altitude:** Recorded as rational fraction meters relative to sea level (`GPSAltitudeRef = 0`).
+2. **Datum & Coordinate Boundaries:** All coordinates are referenced to the **WGS 84 (EPSG:4326)** geodetic reference system. Values outside valid geographic bounds ($[-90.0, 90.0]$ latitude, $[-180.0, 180.0]$ longitude) are rejected.
+3. **Altitude Semantics (v0.1.3 Correction):**
+   - **Absolute Altitude:** Only true absolute altitude values (AMSL) are written into EXIF `GPSAltitude`.
+   - **Relative Altitude:** Takeoff-relative flight altitude (e.g. `rel_alt`) is **never** promoted to absolute altitude in EXIF, preventing severe z-axis registration skew in photogrammetry solvers.
+   - **Altitude Reference (`GPSAltitudeRef`):** Encoded as a byte flag according to EXIF specifications: `0` represents altitude above sea level; `1` represents altitude below sea level. Negative absolute altitudes are preserved using this reference flag.
 4. **EXIF Injection:** Injected directly into the JPEG binary headers via `piexif` (`GPSLatitude`, `GPSLatitudeRef`, `GPSLongitude`, `GPSLongitudeRef`, `GPSAltitude`, `GPSAltitudeRef`).
 
 ---
@@ -65,12 +68,12 @@ When the geotagged JPEG image set is submitted to OpenDroneMap (NodeODM):
 ## 4. Accuracy Boundaries & Error Sources
 
 ### 4.1 Inherent Drone GPS Accuracy
-- **Standard GNSS (Consumer Drones):** Standard single-frequency GPS/GLONASS receivers without RTK/PPK typically have horizontal positioning errors of $\pm 1.5 - 3.0$ meters and vertical barometric/GNSS errors of $\pm 3.0 - 5.0$ meters.
+- **Standard GNSS (Consumer Drones):** Standard single-frequency GPS/GLONASS receivers without RTK/PPK typically have nominal horizontal positioning errors of $\pm 2.0 - 5.0$ meters and vertical barometric/GNSS errors of $\pm 3.0 - 5.0$ meters.
 - **Relative vs Absolute Accuracy:** While absolute geographic positioning may drift by several meters, the relative accuracy between adjacent frames within a single continuous flight is significantly higher ($\approx 0.1 - 0.5$ m), allowing coherent 3D mesh reconstruction.
 
 ### 4.2 Measurement Limitations
 - **Not Survey-Grade:** posEye reconstructions generated solely from drone video and standard consumer GNSS are intended for situational awareness, asset inspection, visualization, and approximate planning. They are **not** certified for boundary surveys or legal property demarcation.
-- **Ground Control Points (GCPs):** Achieving millimeter-to-centimeter survey-grade accuracy requires surveyed Ground Control Points (GCPs) marked on the ground with RTK GPS, which are outside the scope of single-pass video without manual marker collection.
+- **Ground Control Points (GCPs):** Achieving survey-grade accuracy requires surveyed Ground Control Points (GCPs) marked on the ground with RTK GPS; GCP support enables improved georeferencing and accuracy validation, but achieved accuracy must be established through independent checkpoints.
 - **Optical Distortions:** Rolling shutter artifacts from non-global-shutter drone cameras and motion blur can introduce localized geometric variations.
 
 ---
@@ -79,6 +82,6 @@ When the geotagged JPEG image set is submitted to OpenDroneMap (NodeODM):
 
 | Input Mode | Coordinate System | Scale Unit | Expected Relative Accuracy | Expected Absolute Accuracy |
 | :--- | :--- | :--- | :--- | :--- |
-| **Video + SRT Telemetry** | WGS 84 / Local UTM | Meters (m) | $\pm 2\% - 5\%$ of measured distance | $\pm 1.5 - 3.0$ m (GNSS bound) |
+| **Video + SRT Telemetry** | WGS 84 / Local UTM | Meters (m) | $\pm 2\% - 5\%$ of measured distance | $\pm 2.0 - 5.0$ m (nominal GNSS bound; not posEye benchmark) |
 | **Video Only (No Telemetry)** | Arbitrary Local | Model Units | Proportional (uncalibrated) | None (unregistered) |
 

@@ -1,10 +1,44 @@
 # posEye — Current State
 
-**Date:** 2026-10-29  
+**Date:** 2026-11-01  
+**Product version:** 0.1.3  
 **Product name:** posEye  
 **Source of truth:** [MVP_Spec.md](MVP_Spec.md)
 
-## Production Bug Fixes & UX Overhaul (Verified 2026-10-29)
+## v0.1.3 Engineering & Security Hardening (Verified 2026-11-01)
+
+1. **State Machine & Terminal State Immutability:**
+   - Formal state transition model (`VALID_TRANSITIONS`) with permanent immutability for terminal states (`ready`, `cancelled`, `error`, `interrupted`).
+   - Thread-safe worker tracking with `cancellation_requested` stage.
+   - Deletion blocked (`HTTP 409 Conflict`) for active and cancelling jobs.
+   - Monotonic progress enforcement preventing percentage regression.
+
+2. **Managed Subprocess Lifecycle & Cancellation:**
+   - Replaced blocking subprocess calls with managed `subprocess.Popen` in frame extraction and shell invocations.
+   - Graceful shutdown timeout (2s) with force-kill fallback.
+   - Partial file cleanup on cancellation; returns specialized `ExtractCanceledError`.
+
+3. **Geospatial & Telemetry Accuracy:**
+   - Word boundary anchors (`\b`) on all SRT telemetry regex patterns.
+   - Eliminated fallback promoting relative flight altitude to absolute EXIF altitude.
+   - EXIF `GPSAltitudeRef` accurately indicates sea level reference (0 = above, 1 = below).
+   - Reject telemetry coordinates exceeding physical boundaries ($[-90, 90]$ latitude, $[-180, 180]$ longitude) or exceeding 1.5s time gap tolerance.
+
+4. **Model Validation & Archive Security:**
+   - Deep GLB verification (`validate_glb`) checking binary magic headers, JSON chunk validity, non-empty vertex buffers, and finite bounding boxes.
+   - Hardened `safe_extract_zip()` rejecting directory traversal, absolute paths, drive letters, UNC paths, symlinks, encrypted archives, and zip bombs.
+
+5. **Local API Security & Electron Hardening:**
+   - Orchestrator protected with dynamic session bearer token (`DT_API_TOKEN`) on REST and WebSockets.
+   - Removed wildcard CORS headers.
+   - Electron stops orchestrator on quit without killing user Docker daemon containers.
+
+6. **Payload Optimization & Branded Binaries:**
+   - Removed duplicate 82MB `orchestrator.exe` from desktop package resources.
+   - Standalone `posEye.Orchestrator.exe` compiled with Windows version metadata (`0.1.3.0`).
+   - Built verified NSIS installer `posEye.Setup.0.1.3.exe` (192,072,051 bytes).
+
+## Production Bug Fixes & UX Overhaul (Verified in v0.1.1 / v0.1.2)
 
 1. **System Health & Service State Contract:**
    - Unified `/health`, `/system/status`, and frontend `useHealth()` hook with structured service states (`running`, `stopped`, `connected`, `unreachable`, `unavailable`, `detected`, `missing`).
@@ -47,6 +81,7 @@
 
 ## Test & Build Verification
 
-- **Python Tests:** 22 passed cleanly in 7.04s (`pytest apps/pipeline apps/orchestrator -v`).
+- **Python Tests:** 43 passed cleanly in 16.14s (`pytest apps/pipeline apps/orchestrator -v`).
 - **TypeScript:** 0 errors (`npx tsc --noEmit`).
 - **Production Bundle:** Vite build succeeded (`npm run build`).
+- **NSIS Installer:** `posEye.Setup.0.1.3.exe` built successfully.

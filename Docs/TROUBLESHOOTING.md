@@ -42,7 +42,7 @@ This guide addresses common setup, runtime, and reconstruction issues encountere
 ## 2. Port Conflicts & Network Connectivity
 
 ### Symptom: "Port 8765 is already in use"
-- **Cause:** Another instance of posEye or a lingering `orchestrator.exe` process is binding to port 8765.
+- **Cause:** Another instance of posEye or a lingering `posEye.Orchestrator.exe` process is binding to port 8765.
 - **Resolution:**
   1. Open PowerShell and check for processes listening on port 8765:
      ```powershell

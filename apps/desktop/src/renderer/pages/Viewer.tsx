@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { apiBaseSync } from "../api";
+import { apiBaseSync, apiTokenSync } from "../api";
 import Button from "../components/Button";
 import MeasurementTools from "../components/MeasurementTools";
 import ThreeViewer, { type MeasureResult, type ModelStats, type ThreeViewerHandle } from "../components/ThreeViewer";
@@ -27,10 +27,18 @@ export default function Viewer() {
 
   const viewerRef = useRef<ThreeViewerHandle>(null);
 
+  const assetUrl = useCallback(
+    (asset: string) => {
+      const token = apiTokenSync();
+      return `${apiBaseSync()}/jobs/${id}/assets/${asset}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+    },
+    [id]
+  );
+
   const modelUrl = useMemo(() => {
     if (!id || !job?.hasModel) return null;
-    return `${apiBaseSync()}/jobs/${id}/assets/model.glb`;
-  }, [id, job?.hasModel]);
+    return assetUrl("model.glb");
+  }, [id, job?.hasModel, assetUrl]);
 
   // Sync initial model status
   useEffect(() => {
@@ -110,31 +118,31 @@ export default function Viewer() {
 
         {id && job?.hasModel && (
           <>
-            <a className="btn btn-secondary" href={`${apiBaseSync()}/jobs/${id}/assets/model.glb`} download>
+            <a className="btn btn-secondary" href={assetUrl("model.glb")} download>
               Export GLB
             </a>
             {job.assets?.laz && (
-              <a className="btn btn-secondary" href={`${apiBaseSync()}/jobs/${id}/assets/model.laz`} download>
+              <a className="btn btn-secondary" href={assetUrl("model.laz")} download>
                 Export LAZ
               </a>
             )}
             {job.assets?.orthophoto && (
-              <a className="btn btn-secondary" href={`${apiBaseSync()}/jobs/${id}/assets/orthophoto.tif`} download>
+              <a className="btn btn-secondary" href={assetUrl("orthophoto.tif")} download>
                 Export GeoTIFF
               </a>
             )}
             {job.assets?.dsm && (
-              <a className="btn btn-secondary" href={`${apiBaseSync()}/jobs/${id}/assets/dsm.tif`} download>
+              <a className="btn btn-secondary" href={assetUrl("dsm.tif")} download>
                 Export DSM
               </a>
             )}
             {job.assets?.dtm && (
-              <a className="btn btn-secondary" href={`${apiBaseSync()}/jobs/${id}/assets/dtm.tif`} download>
+              <a className="btn btn-secondary" href={assetUrl("dtm.tif")} download>
                 Export DTM
               </a>
             )}
             {job.assets?.report && (
-              <a className="btn btn-secondary" href={`${apiBaseSync()}/jobs/${id}/assets/report.pdf`} download>
+              <a className="btn btn-secondary" href={assetUrl("report.pdf")} download>
                 Export Report
               </a>
             )}
@@ -373,7 +381,7 @@ export default function Viewer() {
               }}
             >
               <span>
-                Distance: {measure.distance.toFixed(2)} {georef ? "m (approx.)" : "model units"}
+                Distance: {measure.distance.toFixed(2)} {isGeoreferenced ? "m (approx.)" : "model units"}
               </span>
               <button
                 type="button"
