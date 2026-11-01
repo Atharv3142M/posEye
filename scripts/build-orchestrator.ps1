@@ -5,8 +5,13 @@ Set-Location $root
 
 $py = Join-Path $root ".venv\Scripts\python.exe"
 if (-not (Test-Path $py)) {
-    Write-Error "Virtual environment not found at $py. Run .\scripts\setup.ps1 first."
-    exit 1
+    $pyCmd = Get-Command "python" -ErrorAction SilentlyContinue
+    if ($pyCmd) {
+        $py = $pyCmd.Source
+    } else {
+        Write-Error "Python executable not found. Run .\scripts\setup.ps1 or ensure python is in PATH."
+        exit 1
+    }
 }
 
 Write-Host "Ensuring pyinstaller is installed..."
