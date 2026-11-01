@@ -1,6 +1,6 @@
 {
   "name": "poseye-desktop",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "posEye — Single-Pass Drone Video to Accurate 3D Model Generation System",
   "main": "electron/main.cjs",
@@ -47,6 +47,7 @@
         "to": ".",
         "filter": [
           "ffmpeg.exe",
+          "posEye.Orchestrator.exe",
           "orchestrator.exe"
         ]
       }
@@ -60,7 +61,8 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "${productName}.Setup.${version}.${ext}"
     }
   }
 }

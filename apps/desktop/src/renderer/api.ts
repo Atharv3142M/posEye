@@ -13,6 +13,7 @@ export type Job = {
   frameCount: number;
   preset: string;
   hasModel: boolean;
+  isGeoreferenced?: boolean;
   createdAt: string;
   updatedAt?: string;
   videoPath: string;
@@ -27,7 +28,7 @@ export type Job = {
     fps?: number | null;
     resolution?: string | null;
   };
-  assets?: { glb?: boolean; laz?: boolean; orthophoto?: boolean };
+  assets?: { glb?: boolean; laz?: boolean; orthophoto?: boolean; dsm?: boolean; dtm?: boolean; report?: boolean };
 };
 
 export type ServiceState = {

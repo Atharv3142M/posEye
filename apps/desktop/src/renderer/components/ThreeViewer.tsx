@@ -89,6 +89,26 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
   meshVisibleRef.current = meshVisible;
 
   const picksRef = useRef<Vector3[]>([]);
+  const loadIdRef = useRef<number>(0);
+
+  // Helper to dispose of geometries, materials, and textures to prevent memory leaks
+  const disposeObjectTree = (obj: any) => {
+    if (!obj) return;
+    obj.traverse((child: any) => {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach((m: any) => {
+            m.map?.dispose();
+            m.dispose();
+          });
+        } else {
+          child.material.map?.dispose();
+          child.material.dispose();
+        }
+      }
+    });
+  };
 
   // Expose imperative methods to parent
   const doResetCamera = () => {
@@ -140,6 +160,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
       antialias: true,
       alpha: true,
       powerPreference: "high-performance",
+      preserveDrawingBuffer: true,
     });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
@@ -324,6 +345,9 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
       window.removeEventListener("keydown", onKeyDown);
       ro.disconnect();
       renderer.setAnimationLoop(null);
+      disposeObjectTree(root);
+      disposeObjectTree(measures);
+      disposeObjectTree(hoverMarker);
       renderer.dispose();
     };
   }, [onCoords, onMeasure]);
@@ -346,13 +370,18 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     }
   }, [meshVisible]);
 
-  // Load Model from URL with robust error handling and bounding normalization
+  // Load Model from URL with robust error handling, stale request rejection, and memory cleanup
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
 
+    const currentLoadId = ++loadIdRef.current;
+    disposeObjectTree(root);
     root.clear();
-    if (measuresRef.current) measuresRef.current.clear();
+    if (measuresRef.current) {
+      disposeObjectTree(measuresRef.current);
+      measuresRef.current.clear();
+    }
     picksRef.current = [];
     modelOffsetRef.current.set(0, 0, 0);
 
@@ -364,6 +393,10 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     loader.load(
       modelUrl,
       (gltf) => {
+        if (currentLoadId !== loadIdRef.current) {
+          disposeObjectTree(gltf.scene);
+          return;
+        }
         let totalVerts = 0;
         let totalTriangles = 0;
 
@@ -420,6 +453,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
       },
       undefined,
       (err) => {
+        if (currentLoadId !== loadIdRef.current) return;
         const errorMsg = err instanceof Error ? err.message : "Failed to load 3D GLB model.";
         onLoadError?.(errorMsg);
       }

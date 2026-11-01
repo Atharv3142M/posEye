@@ -33,16 +33,22 @@ def _gpu() -> dict[str, Any]:
             parts = [p.strip() for p in first_line.split(",")]
             if len(parts) >= 5:
                 name, util, mem_used, mem_total, temp = parts[:5]
+                has_cuda_toolkit = bool(shutil.which("nvidia-container-cli") or shutil.which("nvcc"))
                 return {
                     "gpuAvailable": True,
                     "gpuName": name,
                     "nvidiaSmiAvailable": True,
-                    "cudaAvailable": True,
+                    "cudaAvailable": has_cuda_toolkit,
+                    "cudaDriverAvailable": True,
                     "gpuUtilization": float(util),
                     "gpuMemoryUsed": float(mem_used),
                     "gpuMemoryTotal": float(mem_total),
                     "gpuTemperature": float(temp),
-                    "nodeodmAcceleration": "CUDA GPU acceleration supported if CUDA container is deployed",
+                    "nodeodmAcceleration": (
+                        "CUDA GPU container acceleration active"
+                        if has_cuda_toolkit
+                        else "CUDA GPU detected (requires nvidia-container-toolkit for container passthrough)"
+                    ),
                     "message": f"{name} (NVIDIA)",
                 }
     except Exception:
@@ -105,6 +111,7 @@ def _ffmpeg() -> dict[str, Any]:
         ver = ffmpeg_version(path)
         return {
             "status": "detected",
+            "ok": True,
             "detected": True,
             "path": path,
             "version": ver,
@@ -114,6 +121,7 @@ def _ffmpeg() -> dict[str, Any]:
     except Exception as exc:
         return {
             "status": "missing",
+            "ok": False,
             "detected": False,
             "path": None,
             "version": None,

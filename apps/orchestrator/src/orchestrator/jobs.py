@@ -19,6 +19,7 @@ from orchestrator.nodeodm import NodeODMClient, NodeODMError
 from orchestrator.presets import canonical_preset, detect_preset, preset_options
 
 Stage = str
+TERMINAL_STAGES = {"ready", "error", "cancelled", "interrupted"}
 
 
 @dataclass
@@ -57,6 +58,7 @@ class Job:
     fps: float = 3.0
     blur_threshold: float = 40.0
     duration_s: float = 0.0
+    is_georeferenced: bool = False
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     events: list[JobEvent] = field(default_factory=list)
@@ -79,6 +81,24 @@ class JobStore:
             except Exception:
                 continue
             job_id = data.get("id") or meta.parent.name
+            raw_stage = data.get("stage") or "queued"
+            glb = meta.parent / "model.glb"
+            has_model = glb.is_file()
+
+            # Startup recovery: reconcile abandoned/interrupted jobs
+            if raw_stage not in TERMINAL_STAGES:
+                if has_model:
+                    raw_stage = "ready"
+                    percent = 100.0
+                    msg = "Model ready"
+                else:
+                    raw_stage = "interrupted"
+                    percent = float(data.get("percent") or 0)
+                    msg = "Job interrupted by shutdown or restart. Ready to retry."
+            else:
+                percent = float(data.get("percent") or 0)
+                msg = data.get("message") or ""
+
             job = Job(
                 id=job_id,
                 video_path=Path(data.get("videoPath") or ""),
@@ -88,9 +108,9 @@ class JobStore:
                 work_dir=meta.parent,
                 name=data.get("name") or job_id,
                 description=data.get("description") or "",
-                stage=data.get("stage") or "queued",
-                percent=float(data.get("percent") or 0),
-                message=data.get("message") or "",
+                stage=raw_stage,
+                percent=percent,
+                message=msg,
                 error=data.get("error"),
                 geotagged=int(data.get("geotagged") or 0),
                 frame_count=int(data.get("frameCount") or 0),
@@ -98,10 +118,13 @@ class JobStore:
                 fps=float(data.get("fps") or 3.0),
                 blur_threshold=float(data.get("blurThreshold") or 40.0),
                 duration_s=float(data.get("durationS") or 0.0),
+                is_georeferenced=bool(data.get("isGeoreferenced", False)),
             )
-            glb = meta.parent / "model.glb"
-            if glb.is_file():
+            if has_model:
                 job.glb_path = glb
+            if raw_stage == "interrupted":
+                job.error_code = "INTERRUPTED"
+                self.persist(job)
             self.jobs[job_id] = job
 
     def create(
@@ -156,18 +179,28 @@ class JobStore:
     def delete(self, job: Job) -> None:
         import shutil
 
+        if job.stage not in TERMINAL_STAGES:
+            raise RuntimeError(f"Cannot delete active job in stage '{job.stage}'. Cancel it first.")
+
         with self.lock:
             self.jobs.pop(job.id, None)
         shutil.rmtree(job.work_dir, ignore_errors=True)
 
     def subscribe(self, job: Job) -> asyncio.Queue:
         q: asyncio.Queue = asyncio.Queue()
-        job.subscribers.append(q)
+        with self.lock:
+            job.subscribers.append(q)
         for event in job.events[-40:]:
             q.put_nowait(event)
         return q
 
+    def unsubscribe(self, job: Job, q: asyncio.Queue) -> None:
+        with self.lock:
+            if q in job.subscribers:
+                job.subscribers.remove(q)
+
     def persist(self, job: Job) -> None:
+        odm_dir = job.work_dir / "odm"
         payload = {
             "id": job.id,
             "name": job.name,
@@ -183,6 +216,7 @@ class JobStore:
             "errorCode": job.error_code,
             "geotagged": job.geotagged,
             "frameCount": job.frame_count,
+            "isGeoreferenced": job.is_georeferenced,
             "createdAt": job.created_at,
             "updatedAt": job.updated_at,
             "extract": job.extract_stats,
@@ -192,13 +226,20 @@ class JobStore:
             "hasModel": bool(job.glb_path and job.glb_path.is_file()),
             "assets": {
                 "glb": (job.work_dir / "model.glb").is_file(),
-                "laz": any(job.work_dir.joinpath("odm").rglob("*.laz")) if (job.work_dir / "odm").exists() else False,
-                "orthophoto": any(job.work_dir.joinpath("odm").rglob("*orthophoto*.tif")) if (job.work_dir / "odm").exists() else False,
+                "laz": odm_dir.exists() and any(odm_dir.rglob("*.laz")),
+                "orthophoto": odm_dir.exists() and any(odm_dir.rglob("*orthophoto*.tif")),
+                "dsm": odm_dir.exists() and any(odm_dir.rglob("*dsm*.tif")),
+                "dtm": odm_dir.exists() and any(odm_dir.rglob("*dtm*.tif")),
+                "report": odm_dir.exists() and any(odm_dir.rglob("*report*.pdf")),
             },
         }
         (job.work_dir / "job.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     def _emit(self, job: Job, stage: Stage, percent: float, message: str) -> None:
+        # Never allow active stage emissions to overwrite a terminal state (cancelled, error, ready, interrupted)
+        if job.stage in TERMINAL_STAGES and stage not in TERMINAL_STAGES:
+            return
+
         # Duplicate suppression: do not store or broadcast identical consecutive stage/percent/message
         if job.events:
             last = job.events[-1]
@@ -213,7 +254,9 @@ class JobStore:
         job.events.append(event)
         self.persist(job)
         if job.loop:
-            for q in list(job.subscribers):
+            with self.lock:
+                subs = list(job.subscribers)
+            for q in subs:
                 job.loop.call_soon_threadsafe(q.put_nowait, event)
 
     @staticmethod
@@ -239,6 +282,8 @@ class JobStore:
             self._emit(job, "extracting", 2, "Extracting frames")
 
             def on_progress(stage: str, pct: float, message: str) -> None:
+                if job.canceled:
+                    return
                 mapped = min(35.0, max(2.0, pct * 0.35))
                 self._emit(job, stage or "extracting", mapped, message)
 
@@ -252,6 +297,7 @@ class JobStore:
                     blur_threshold=job.blur_threshold,
                 ),
                 progress=on_progress,
+                should_stop=lambda: job.canceled,
             )
             if job.canceled:
                 raise NodeODMError("Job canceled")
@@ -278,6 +324,14 @@ class JobStore:
             unpacked = extract_all_zip(all_zip, job.work_dir / "odm")
             self._emit(job, "converting", 90, "Converting mesh to GLB")
 
+            # Check if reconstruction generated georeferenced output
+            is_geo = (
+                (unpacked / "odm_texturing" / "odm_textured_model_geo.obj").is_file()
+                or (unpacked / "odm_georeferencing" / "coords.txt").is_file()
+                or any(unpacked.rglob("*_geo.obj"))
+            )
+            job.is_georeferenced = is_geo
+
             textured = unpacked / "odm_texturing" / "odm_textured_model_geo.obj"
             if not textured.is_file():
                 textured = next(unpacked.rglob("*.obj"), None) or next(unpacked.rglob("*.glb"), None)
@@ -292,6 +346,7 @@ class JobStore:
                         "preset": job.preset,
                         "frames": len(result.frames),
                         "geotagged": result.geotagged,
+                        "isGeoreferenced": job.is_georeferenced,
                         "nodeodm": uuid_task,
                     },
                     indent=2,
@@ -301,12 +356,16 @@ class JobStore:
             job.duration_s = round(time.monotonic() - _start, 2)
             self._emit(job, "ready", 100, "Model ready")
         except (ExtractError, PipelineError, NodeODMError, ConvertError) as exc:
+            if job.canceled:
+                return
             error_code = getattr(exc, "code", None) or "NODEODM_FAILED"
             job.error = self._enrich_error(exc, error_code)
             job.error_code = error_code
             job.duration_s = round(time.monotonic() - _start, 2)
             self._emit(job, "error", job.percent, job.error)
         except Exception as exc:
+            if job.canceled:
+                return
             job.error = str(exc)
             job.error_code = "UNKNOWN"
             job.duration_s = round(time.monotonic() - _start, 2)

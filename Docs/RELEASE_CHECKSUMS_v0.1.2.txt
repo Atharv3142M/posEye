@@ -1,0 +1,4 @@
+# posEye v0.1.2 Release Artifact Checksums
+# Generated on: November 1, 2026
+
+B5D41677D994D49A05720B7264BF568515EC53A12EE61DFDE7E583031671BB80 *posEye.Setup.0.1.2.exe

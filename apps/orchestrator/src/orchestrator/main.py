@@ -36,7 +36,7 @@ def _app_log(level: str, message: str) -> None:
     print(message, flush=True)
 
 
-app = FastAPI(title="posEye Orchestrator", version="0.1.1")
+app = FastAPI(title="posEye Orchestrator", version="0.1.2")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3001", "*"],
@@ -77,7 +77,7 @@ def on_startup() -> None:
         return
 
     ffmpeg = status.get("ffmpeg", {})
-    if ffmpeg.get("detected"):
+    if ffmpeg.get("ok"):
         _app_log("INFO", f"[posEye] ffmpeg: detected at {ffmpeg.get('path')}")
     else:
         _app_log("WARNING", f"[posEye] ffmpeg: NOT detected — {ffmpeg.get('error', 'not found')}")
@@ -118,6 +118,7 @@ class JobOut(BaseModel):
     frameCount: int = 0
     preset: str
     hasModel: bool = False
+    isGeoreferenced: bool = False
     createdAt: str = ""
     updatedAt: str = ""
     videoPath: str = ""
@@ -140,7 +141,7 @@ async def unhandled(_: Request, exc: Exception) -> JSONResponse:
 @app.get("/health")
 def health() -> dict:
     status = system_status()
-    terminal = {"ready", "error", "cancelled"}
+    terminal = {"ready", "error", "cancelled", "interrupted"}
     active_jobs = sum(1 for j in store.jobs.values() if j.stage not in terminal)
     return {
         "ok": True,
@@ -157,7 +158,7 @@ def health() -> dict:
             "message": status.get("message"),
         },
         "pythonVersion": sys.version.split()[0],
-        "orchestratorVersion": "0.1.1",
+        "orchestratorVersion": "0.1.2",
         "jobsDir": str(JOBS_ROOT),
         "activeJobs": active_jobs,
     }
@@ -269,6 +270,8 @@ def delete_job(job_id: str) -> dict:
     job = store.get(job_id)
     if not job:
         raise HTTPException(404, "Unknown job")
+    if job.stage not in {"ready", "error", "cancelled", "interrupted"}:
+        raise HTTPException(409, f"Cannot delete active job in stage '{job.stage}'. Cancel it first.")
     store.delete(job)
     return {"ok": True}
 
@@ -288,6 +291,15 @@ def job_asset(job_id: str, asset: str) -> FileResponse:
         path = hits[0] if hits else None
     elif asset == "model.laz":
         hits = list(odm.rglob("*.laz"))
+        path = hits[0] if hits else None
+    elif asset == "dsm.tif":
+        hits = list(odm.rglob("*dsm*.tif"))
+        path = hits[0] if hits else None
+    elif asset == "dtm.tif":
+        hits = list(odm.rglob("*dtm*.tif"))
+        path = hits[0] if hits else None
+    elif asset == "report.pdf":
+        hits = list(odm.rglob("*report*.pdf"))
         path = hits[0] if hits else None
     else:
         path = mapping.get(asset)
@@ -369,13 +381,18 @@ async def job_events(websocket: WebSocket, job_id: str) -> None:
         while True:
             event = await queue.get()
             await websocket.send_json(event.as_dict())
-            if event.stage in {"ready", "error", "cancelled"}:
+            if event.stage in {"ready", "error", "cancelled", "interrupted"}:
                 break
     except WebSocketDisconnect:
         return
+    except Exception:
+        return
+    finally:
+        store.unsubscribe(job, queue)
 
 
 def _out(job) -> JobOut:
+    odm_dir = job.work_dir / "odm"
     return JobOut(
         id=job.id,
         name=job.name,
@@ -388,6 +405,7 @@ def _out(job) -> JobOut:
         frameCount=job.frame_count,
         preset=job.preset,
         hasModel=bool(job.glb_path and job.glb_path.is_file()),
+        isGeoreferenced=bool(getattr(job, "is_georeferenced", False)),
         createdAt=job.created_at,
         updatedAt=job.updated_at,
         videoPath=str(job.video_path),
@@ -395,9 +413,11 @@ def _out(job) -> JobOut:
         extract=job.extract_stats,
         assets={
             "glb": bool(job.glb_path and job.glb_path.is_file()),
-            "laz": (job.work_dir / "odm").exists() and any(job.work_dir.joinpath("odm").rglob("*.laz")),
-            "orthophoto": (job.work_dir / "odm").exists()
-            and any(job.work_dir.joinpath("odm").rglob("*orthophoto*.tif")),
+            "laz": odm_dir.exists() and any(odm_dir.rglob("*.laz")),
+            "orthophoto": odm_dir.exists() and any(odm_dir.rglob("*orthophoto*.tif")),
+            "dsm": odm_dir.exists() and any(odm_dir.rglob("*dsm*.tif")),
+            "dtm": odm_dir.exists() and any(odm_dir.rglob("*dtm*.tif")),
+            "report": odm_dir.exists() and any(odm_dir.rglob("*report*.pdf")),
         },
         durationS=getattr(job, "duration_s", 0.0),
     )

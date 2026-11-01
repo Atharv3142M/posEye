@@ -84,7 +84,11 @@ def _run_ffmpeg(ffmpeg: str, video: Path, pattern: Path, fps: float, quality: in
         raise ExtractError(proc.stderr.strip() or "ffmpeg failed to extract frames")
 
 
-def extract_frames(config: ExtractConfig, progress: ProgressCb | None = None) -> ExtractResult:
+def extract_frames(
+    config: ExtractConfig,
+    progress: ProgressCb | None = None,
+    should_stop: Callable[[], bool] | None = None,
+) -> ExtractResult:
     video = config.video_path.resolve()
     if not video.is_file():
         raise ExtractError(f"Video not found: {video}")
@@ -101,10 +105,17 @@ def extract_frames(config: ExtractConfig, progress: ProgressCb | None = None) ->
         ffmpeg = resolve_ffmpeg()
     except FileNotFoundError as exc:
         raise FfmpegUnavailable(str(exc)) from exc
+
+    if should_stop and should_stop():
+        raise ExtractError("Extraction canceled")
+
     info = probe_video(video)
     _emit(progress, "validating", 3.0, f"Validated video container: {info.width}x{info.height} @ {info.fps:.1f} fps")
     _emit(progress, "extracting", 6.0, f"Extracting stills from {video.name}...")
     _run_ffmpeg(ffmpeg, video, raw_dir / "frame_%06d.jpg", config.fps, config.jpeg_quality, progress=progress)
+
+    if should_stop and should_stop():
+        raise ExtractError("Extraction canceled")
 
     raw_paths = sorted(raw_dir.glob("frame_*.jpg"))
     if not raw_paths:
@@ -118,6 +129,10 @@ def extract_frames(config: ExtractConfig, progress: ProgressCb | None = None) ->
         _emit(progress, "filtering", pct, f"Filtering frames: scored {curr}/{total} frames")
 
     scores = score_frames(raw_paths, on_progress=on_filter_tick)
+
+    if should_stop and should_stop():
+        raise ExtractError("Extraction canceled")
+
     kept = select_frames(
         scores,
         blur_threshold=config.blur_threshold,
@@ -141,13 +156,16 @@ def extract_frames(config: ExtractConfig, progress: ProgressCb | None = None) ->
     total_kept = len(kept)
 
     for index, score in enumerate(kept, start=1):
+        if should_stop and should_stop():
+            raise ExtractError("Extraction canceled")
+
         dest = keep_dir / f"image_{index:06d}.jpg"
         shutil.copy2(score.path, dest)
         stem = score.path.stem
         digits = "".join(ch for ch in stem if ch.isdigit())
         raw_index = int(digits) if digits else index
         t = max(0.0, (raw_index - 1) / config.fps)
-        sample = sample_at(samples, t)
+        sample = sample_at(samples, t, max_offset_s=1.5)
         if sample and sample.latitude is not None and sample.longitude is not None:
             write_gps_exif(dest, sample.latitude, sample.longitude, sample.altitude)
             geotagged += 1

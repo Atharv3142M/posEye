@@ -85,7 +85,8 @@ export default function Viewer() {
     window.addEventListener("mouseup", onMouseUp);
   };
 
-  const georef = job && job.geotagged > 0;
+  const isGeoreferenced = Boolean(job?.isGeoreferenced);
+  const hasGpsTelemetry = Boolean(job && job.geotagged > 0);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
@@ -122,6 +123,21 @@ export default function Viewer() {
                 Export GeoTIFF
               </a>
             )}
+            {job.assets?.dsm && (
+              <a className="btn btn-secondary" href={`${apiBaseSync()}/jobs/${id}/assets/dsm.tif`} download>
+                Export DSM
+              </a>
+            )}
+            {job.assets?.dtm && (
+              <a className="btn btn-secondary" href={`${apiBaseSync()}/jobs/${id}/assets/dtm.tif`} download>
+                Export DTM
+              </a>
+            )}
+            {job.assets?.report && (
+              <a className="btn btn-secondary" href={`${apiBaseSync()}/jobs/${id}/assets/report.pdf`} download>
+                Export Report
+              </a>
+            )}
           </>
         )}
         <Button onClick={screenshot}>Screenshot</Button>
@@ -154,9 +170,11 @@ export default function Viewer() {
                 info={{
                   verts: stats ? stats.vertices.toLocaleString() : modelStatus === "loading" ? "Loading…" : "—",
                   faces: stats ? stats.triangles.toLocaleString() : modelStatus === "loading" ? "Loading…" : "—",
-                  georef: georef
-                    ? `GPS EXIF present · ${job.geotagged} frames`
-                    : "Relative / unreferenced model",
+                  georef: isGeoreferenced
+                    ? `Metric (Consumer GNSS) · ${job?.geotagged ?? 0} geotags`
+                    : hasGpsTelemetry
+                    ? `Relative · ${job?.geotagged ?? 0} GPS frames`
+                    : "Dimensionless / Relative",
                 }}
                 assets={job?.assets}
               />
@@ -166,26 +184,43 @@ export default function Viewer() {
                 style={{
                   marginTop: 16,
                   padding: "10px 12px",
-                  background: georef ? "rgba(39, 174, 96, 0.12)" : "rgba(243, 156, 18, 0.12)",
-                  border: `1px solid ${georef ? "rgba(39, 174, 96, 0.3)" : "rgba(243, 156, 18, 0.3)"}`,
+                  background: isGeoreferenced
+                    ? "rgba(39, 174, 96, 0.12)"
+                    : hasGpsTelemetry
+                    ? "rgba(52, 152, 219, 0.12)"
+                    : "rgba(243, 156, 18, 0.12)",
+                  border: `1px solid ${
+                    isGeoreferenced
+                      ? "rgba(39, 174, 96, 0.3)"
+                      : hasGpsTelemetry
+                      ? "rgba(52, 152, 219, 0.3)"
+                      : "rgba(243, 156, 18, 0.3)"
+                  }`,
                   borderRadius: "var(--radius)",
                   fontSize: 11,
                   lineHeight: 1.4,
                   color: "var(--text-primary)",
                 }}
               >
-                {georef ? (
+                {isGeoreferenced ? (
                   <>
-                    <strong style={{ color: "#27ae60" }}>✓ Georeferenced Dataset</strong>
+                    <strong style={{ color: "#27ae60" }}>✓ Metric Scale (Consumer GNSS)</strong>
                     <div style={{ marginTop: 4, color: "var(--text-secondary)" }}>
-                      Derived from {job.geotagged} GPS geotagged frames. Distance measurements reflect metric scale (approx. 2–5m GPS variance).
+                      Reconstructed with {job?.geotagged} geotagged frames. Subject to standalone drone GNSS variance (±2–5m horizontal). Suitable for visual planning and approximate dimensions. Not ground-truthed with GCPs.
+                    </div>
+                  </>
+                ) : hasGpsTelemetry ? (
+                  <>
+                    <strong style={{ color: "#3498db" }}>ℹ GPS Telemetry Present (Relative Model)</strong>
+                    <div style={{ marginTop: 4, color: "var(--text-secondary)" }}>
+                      {job?.geotagged} frames carry GPS EXIF, but bundle adjustment produced a relative coordinate model. Measurements are uncalibrated.
                     </div>
                   </>
                 ) : (
                   <>
-                    <strong style={{ color: "#e67e22" }}>⚠ Relative Coordinate Space</strong>
+                    <strong style={{ color: "#e67e22" }}>⚠ Dimensionless / Relative Coordinates</strong>
                     <div style={{ marginTop: 4, color: "var(--text-secondary)" }}>
-                      No GPS telemetry detected in flight SRT/EXIF. Distance measurements are in dimensionless model units.
+                      No GPS telemetry detected in flight SRT or image metadata. Coordinates and distance measurements are in arbitrary dimensionless units.
                     </div>
                   </>
                 )}

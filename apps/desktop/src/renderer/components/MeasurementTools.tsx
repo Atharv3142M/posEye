@@ -22,7 +22,7 @@ export default function MeasurementTools({
   onLayer: (key: keyof typeof layers, value: boolean) => void;
   coords: string;
   info: { verts?: string; faces?: string; georef?: string };
-  assets?: { glb?: boolean; laz?: boolean; orthophoto?: boolean };
+  assets?: { glb?: boolean; laz?: boolean; orthophoto?: boolean; dsm?: boolean; dtm?: boolean; report?: boolean };
   modelStatus: "idle" | "loading" | "ready" | "error" | "no_model";
 }) {
   return (
@@ -108,9 +108,16 @@ export default function MeasurementTools({
         </div>
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, padding: "3px 0" }}>
-          <span className="muted">DEM / Elevation</span>
-          <span className="badge badge-queued" style={{ fontSize: 9 }}>
-            Disabled
+          <span className="muted">DEM (DSM / DTM)</span>
+          <span className={`badge ${assets?.dsm || assets?.dtm ? "badge-active" : "badge-queued"}`} style={{ fontSize: 9 }}>
+            {assets?.dsm || assets?.dtm ? "Available" : "Not generated"}
+          </span>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, padding: "3px 0" }}>
+          <span className="muted">Quality Report (PDF)</span>
+          <span className={`badge ${assets?.report ? "badge-active" : "badge-queued"}`} style={{ fontSize: 9 }}>
+            {assets?.report ? "Available" : "Not generated"}
           </span>
         </div>
       </div>

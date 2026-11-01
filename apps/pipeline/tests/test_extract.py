@@ -88,6 +88,9 @@ def test_parse_srt_and_sample(tmp_path: Path) -> None:
     assert first.latitude == pytest.approx(28.6139, abs=1e-4)
     mid = sample_at(samples, 0.7)
     assert mid is not None and mid.longitude == pytest.approx(77.2091, abs=1e-4)
+    # Beyond max_offset_s tolerance
+    far = sample_at(samples, 10.0, max_offset_s=1.5)
+    assert far is None
 
 
 def test_exif_roundtrip(tmp_path: Path) -> None:

@@ -2,7 +2,7 @@
 ; Compile after: scripts\fetch-ffmpeg.ps1, scripts\build-orchestrator.ps1, apps\desktop npm run dist
 
 #define MyAppName "posEye"
-#define MyAppVersion "0.1.1"
+#define MyAppVersion "0.1.2"
 #define MyAppPublisher "Team ICARUS"
 #define MyAppURL "https://github.com/posEye"
 #define MyAppExeName "posEye.exe"
@@ -38,6 +38,7 @@ Source: "..\apps\desktop\release\win-unpacked\*"; DestDir: "{app}"; Flags: recur
 ; Bundled static ffmpeg binary (101MB local static build)
 Source: "..\third_party\ffmpeg.exe"; DestDir: "{app}\resources"; Flags: ignoreversion
 ; Standalone Orchestrator API binary (Python PyInstaller)
+Source: "..\third_party\posEye.Orchestrator.exe"; DestDir: "{app}\resources"; Flags: skipifsourcedoesntexist
 Source: "..\third_party\orchestrator.exe"; DestDir: "{app}\resources"; Flags: skipifsourcedoesntexist
 ; NodeODM Docker image archive (offline deployment)
 Source: "..\third_party\nodeodm.tar"; DestDir: "{app}\third_party"; Flags: skipifsourcedoesntexist

@@ -16,6 +16,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.2] - 2026-11-01
+
+### Added
+- **Zip-Slip & Decompression Bomb Protection:** Hardened zip extraction with canonical path validation (`path.resolve().relative_to(dest_dir.resolve())`) and limits (50,000 files, 10 GB uncompressed size).
+- **Startup Crash Recovery:** Automatically reconciles non-terminal jobs on startup, marking ready models as completed and incomplete runs as `interrupted` with a ready-to-retry state.
+- **True WebGL Screenshot Capture:** Configured WebGLRenderer with `preserveDrawingBuffer: true` to prevent blank/black canvas exports.
+- **Full Viewport Memory Disposal:** Hierarchically disposes geometries, materials, and textures on scene unmount to prevent GPU memory leaks.
+- **WebODM Asset Inventory:** Exposed Digital Surface Models (`dsm.tif`), Digital Terrain Models (`dtm.tif`), and quality reports (`report.pdf`) with dedicated download endpoints and UI badges.
+- **Orchestrator Rebranding:** First-class compilation to `posEye.Orchestrator.exe` with API identity verification on startup.
+
+### Fixed
+- **FFmpeg Health Status Bug:** Added explicit `"ok": True/False` in `system.py` to prevent false "Offline" display in UI sidebar.
+- **Georeference Status Semantics:** Separated metadata presence (`geotagged > 0`) from photogrammetric georeferencing (`is_georeferenced`), with explicit consumer GNSS accuracy disclaimers.
+- **SRT Time Tolerance & Out-of-Bounds Rejection:** Enforced 1.5s maximum telemetry time delta in `sample_at()` and validated latitude/longitude bounds.
+- **Safe Job Deletion:** Returns HTTP 409 Conflict when attempting to delete an active running job.
+- **Terminal State Guard:** Prevented late worker events from overwriting terminal states (`ready`, `error`, `cancelled`, `interrupted`).
+- **WebSocket Resource Leak:** Added explicit `JobStore.unsubscribe()` in WebSocket endpoint disconnect handling.
+
+---
+
 ## [0.1.1] - 2026-10-31
 
 ### Added
@@ -29,13 +49,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Hardware Telemetry Fallback:** Non-NVIDIA GPU detection via Windows CIM/WMI without fabricating 0% utilization.
 
 ### Fixed
-- **Timezone Offset Bug:** Replaced naive string slicing (.slice(11, 19)) with ormatLocalTime(), eliminating the 5h30m time offset in Indian Standard Time (IST) and aligning with local system clock.
+- **Timezone Offset Bug:** Replaced naive string slicing (.slice(11, 19)) with formatLocalTime(), eliminating the 5h30m time offset in Indian Standard Time (IST) and aligning with local system clock.
 - **Console Message Duplication:** Deduplicated NodeODM heartbeat polling messages and suppressed consecutive identical stage/progress events in the job store.
-- **Model Info Stuck on Loading:** Added explicit viewer state machine (idle, loading, 
-eady, error, 
-o_model) with direct BufferGeometry vertex and triangle calculation.
-- **Camera Reset:** Unified 
-esetCamera() via imperative ref handle, connecting both the toolbar button and R keyboard shortcut to fit camera to model bounding box.
+- **Model Info Stuck on Loading:** Added explicit viewer state machine (idle, loading, ready, error, no_model) with direct BufferGeometry vertex and triangle calculation.
+- **Camera Reset:** Unified resetCamera() via imperative ref handle, connecting both the toolbar button and R keyboard shortcut to fit camera to model bounding box.
 - **Layer Visibility:** Synchronized mesh visibility toggle with Three.js rendering and replaced dummy layer checkboxes with honest status labels.
 
 ---
@@ -48,20 +65,3 @@ esetCamera() via imperative ref handle, connecting both the toolbar button and R
 - **Telemetry Georeferencing:** Subtitle stream parser supporting DJI parenthesized, CSV, and key-value formats, with WGS84 EXIF GPS tag injection (`GPSLatitude`, `GPSLongitude`, `GPSAltitude`).
 - **Interactive 3D Viewer:** WebGL Three.js viewport with OrbitControls, directional studio lighting, DoubleSide material rendering, camera reset (`R`), and two-click point-to-point Euclidean measurement.
 - **Real-Time Progress HUD & Terminal:** Live 11-stage progress timeline with WebSocket event broadcasting and incremental OpenDroneMap console log streaming (`/task/{uuid}/output`).
-- **Windows Release Packaging:** Automated NSIS installer generation (`posEye Setup 0.1.0.exe`) and portable standalone directory (`release\win-unpacked\posEye.exe`) incorporating bundled 64-bit static `ffmpeg.exe` (101 MB) and compiled `orchestrator.exe` (82 MB).
-- **Multi-Resolution Windows Icon:** Embedded 16x16 to 256x256 `.ico` icon for desktop shortcuts, installer headers, and application taskbar.
-- **Dark Mode Support:** WebODM-inspired dark theme stylesheet with persistent user theme toggle.
-- **Continuous Integration:** GitHub Actions Windows CI pipeline covering Pytest (19 tests), TypeScript typechecking, Vite bundling, and Electron packaging.
-
-### Fixed
-- **NodeODM Task Submission Bug:** Replaced non-standard `zip` multipart parameter with the official multi-stage NodeODM REST protocol (`/task/new/init` $\rightarrow$ `/task/new/upload/{uuid}` with form field `"images"` $\rightarrow$ `/task/new/commit/{uuid}`), fixing `MulterError: Unexpected field`.
-- **Hyper-V / WSL2 Virtualization False Negative:** Fixed virtualization detection check by querying `Win32_ComputerSystem.HypervisorPresent` and running Docker status, eliminating false BIOS warning dialogues on Windows 11.
-- **Dynamic Image MIME Types:** Added dynamic MIME detection (`image/jpeg`, `image/png`, `image/tiff`) for uploaded imagery.
-- **Orphaned Task Cleanup:** Implemented automated cancellation cleanup on NodeODM if chunk upload or commit fails midway.
-- **Offline NodeODM Safety Check:** Packaged application now validates local Docker presence and checks for `nodeodm.tar` before starting container, preventing unhandled online download attempts on offline hosts.
-- **npm Lockfile Synchronization:** Reconciled `package-lock.json` with `package.json` to include `electron-builder-squirrel-windows` and Windows native build dependencies for reproducible `npm ci`.
-
-### Security
-- Loopback-only binding (`127.0.0.1`) for Orchestrator API (:8765) and NodeODM container (:3000).
-- Zero external cloud transmission; all imagery, telemetry, and 3D assets remain on the local machine.
-

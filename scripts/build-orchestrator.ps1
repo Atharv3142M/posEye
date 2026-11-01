@@ -20,7 +20,7 @@ Write-Host "Compiling posEye orchestrator to standalone executable..."
     --onefile `
     --noconfirm `
     --clean `
-    --name orchestrator `
+    --name posEye.Orchestrator `
     --distpath $outDir `
     --paths "apps\pipeline\src" `
     --paths "apps\orchestrator\src" `
@@ -38,9 +38,13 @@ Write-Host "Compiling posEye orchestrator to standalone executable..."
     --hidden-import "orchestrator" `
     "apps\orchestrator\src\orchestrator\__main__.py"
 
-if (Test-Path (Join-Path $outDir "orchestrator.exe")) {
-    Write-Host "Successfully built: $(Join-Path $outDir 'orchestrator.exe')"
+$brandedExe = Join-Path $outDir "posEye.Orchestrator.exe"
+$legacyExe = Join-Path $outDir "orchestrator.exe"
+
+if (Test-Path $brandedExe) {
+    Copy-Item -Path $brandedExe -Destination $legacyExe -Force
+    Write-Host "Successfully built: $brandedExe and synchronized $legacyExe"
 } else {
-    Write-Error "orchestrator.exe build failed."
+    Write-Error "posEye.Orchestrator.exe build failed."
 }
 

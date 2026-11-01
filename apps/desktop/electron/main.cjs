@@ -66,10 +66,18 @@ function ffmpegPath() {
 }
 
 function orchestratorExe() {
-  // Packaged: compiled orchestrator exe
+  const binaryNames = ["posEye.Orchestrator.exe", "orchestrator.exe"];
+  // Packaged: check bundled resources
   if (app.isPackaged) {
-    const exe = path.join(process.resourcesPath, "orchestrator.exe");
-    if (fs.existsSync(exe)) return { cmd: exe, args: [], useExe: true };
+    for (const name of binaryNames) {
+      const exe = path.join(process.resourcesPath, name);
+      if (fs.existsSync(exe)) return { cmd: exe, args: [], useExe: true };
+    }
+  }
+  // Dev mode: check third_party
+  for (const name of binaryNames) {
+    const devExe = path.join(repoRoot(), "third_party", name);
+    if (fs.existsSync(devExe)) return { cmd: devExe, args: [], useExe: true };
   }
   return null;
 }
@@ -431,9 +439,25 @@ async function startApi() {
 }
 
 async function waitForApi() {
-  log("info", `Waiting for orchestrator at ${API_BASE}/health…`);
-  await waitForUrl(`${API_BASE}/health`, STARTUP_TIMEOUT_MS, "posEye orchestrator");
-  log("info", "Orchestrator is ready");
+  log("info", `Waiting for posEye orchestrator at ${API_BASE}/health…`);
+  const start = Date.now();
+  let lastError = "";
+  while (Date.now() - start < STARTUP_TIMEOUT_MS) {
+    try {
+      const res = await fetch(`${API_BASE}/health`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.orchestratorVersion) {
+          log("info", `posEye orchestrator ${data.orchestratorVersion} is ready`);
+          return;
+        }
+      }
+    } catch (e) {
+      lastError = e.message;
+    }
+    await sleep(400);
+  }
+  throw new Error(`Orchestrator failed to respond at ${API_BASE}/health after ${STARTUP_TIMEOUT_MS}ms: ${lastError}`);
 }
 
 // ─── Window ───────────────────────────────────────────────────────────────────
