@@ -1,0 +1,5 @@
+
+.hero{background:radial-gradient(ellipse at 72% 45%,rgba(255,75,11,.12),transparent 36%),linear-gradient(135deg,#08090b 45%,#111319)}
+.hero-grid{opacity:.23}
+.story-sticky{background:radial-gradient(ellipse at 70% 50%,rgba(255,75,11,.08),transparent 45%),#08090b}
+.story-sticky:after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(120deg,transparent 40%,rgba(255,75,11,.045),transparent 70%)}
