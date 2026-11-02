@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#08090b">
+  <meta name="description" content="posEye 3D Reconstruction Workstation — Interactive Photogrammetric Mesh, Point Cloud, and Flight Trajectory Inspection.">
+  <title>posEye — 3D Reconstruction Workstation & Inspection</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./src/styles/main.css">
+  <link rel="icon" type="image/png" href="./public/posEye.png">
+</head>
+<body style="overflow: hidden;">
+  <!-- Global Navigation Bar -->
+  <header class="site-nav">
+    <div class="container nav-container">
+      <a class="nav-brand" href="./index.html">
+        <img src="./public/posEye.png" alt="posEye logo">
+        <span>pos<span class="accent">Eye</span></span>
+      </a>
+      <nav class="nav-links">
+        <a class="nav-link" href="./index.html">Home</a>
+        <a class="nav-link" href="./technology.html">Technology</a>
+        <a class="nav-link active" href="./reconstruction.html">Reconstruction</a>
+        <a class="nav-link" href="./product.html">Product</a>
+        <a class="nav-link" href="./research.html">Research</a>
+        <a class="nav-link" href="./releases.html">Releases</a>
+      </nav>
+      <div class="nav-actions">
+        <button class="btn-search" data-search-trigger title="Search documentation and pages">
+          <span>Search</span><kbd>⌘K</kbd>
+        </button>
+        <button class="theme-toggle-btn" id="theme-toggle" title="Toggle theme">☼</button>
+        <a class="nav-cta" href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">
+          GITHUB <span>↗</span>
+        </a>
+        <button class="mobile-menu-toggle" id="mobile-menu-toggle" aria-label="Toggle navigation">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile Drawer -->
+  <div class="mobile-nav-drawer" id="mobile-nav-drawer">
+    <a href="./index.html">01 · HOME</a>
+    <a href="./technology.html">02 · TECHNOLOGY</a>
+    <a href="./reconstruction.html" class="accent">03 · RECONSTRUCTION</a>
+    <a href="./product.html">04 · PRODUCT</a>
+    <a href="./research.html">05 · RESEARCH</a>
+    <a href="./releases.html">06 · RELEASES</a>
+    <button class="btn btn-secondary" data-search-trigger style="margin-top: 12px; width: 100%;">
+      🔍 Open Quick Search (⌘K)
+    </button>
+  </div>
+
+  <main>
+    <!-- Full-Screen 3D Workstation Viewport -->
+    <div class="viewer-workspace">
+      <canvas class="viewer-canvas" id="workstation-canvas"></canvas>
+
+      <!-- Center Toolbar -->
+      <div class="viewer-toolbar">
+        <button class="tool-btn active" data-mode="all">Composite</button>
+        <button class="tool-btn" data-mode="textured">Textured</button>
+        <button class="tool-btn" data-mode="wireframe">Wireframe</button>
+        <button class="tool-btn" data-mode="points">Point Cloud</button>
+        <button class="tool-btn" data-mode="flight">Flight Path</button>
+        <span style="width: 1px; height: 18px; background: var(--border); margin: 0 4px;"></span>
+        <button class="tool-btn" id="toggle-measure-btn">Measure Tool</button>
+        <button class="tool-btn" id="btn-top-view">Top View</button>
+        <button class="tool-btn" id="btn-reset-view" title="Reset Camera (R)">Reset (R)</button>
+      </div>
+
+      <!-- Illustrative scene status HUD -->
+      <div class="viewer-side-stats">
+        <div style="font-weight: 700; color: var(--accent); margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;">
+          <span>SPATIAL HUD</span>
+          <span class="pill-dot"></span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-key">Scene:</span>
+          <span class="stat-val">Procedural illustration</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-key">Geometry:</span>
+          <span class="stat-val">Generated in browser</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-key">Topology:</span>
+          <span class="stat-val">Synthetic mesh</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-key">Point layer:</span>
+          <span class="stat-val">Illustrative</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-key">GSD:</span>
+          <span class="stat-val">Not available</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-key">CRS:</span>
+          <span class="stat-val">Not georeferenced</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-key">Camera poses:</span>
+          <span class="stat-val">Illustrative</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-key">Control points:</span>
+          <span class="stat-val">Not surveyed</span>
+        </div>
+      </div>
+
+      <!-- Bottom Interactive Measurement Readout -->
+      <div class="viewer-measure-readout" id="measure-readout" style="display: none;">
+        <span>Measured scene distance (unitless):</span>
+        <strong id="measure-dist-text" style="color: #fff; font-size: 1rem;">-- m</strong>
+        <button class="tool-btn" id="clear-measure-btn" style="padding: 4px 8px; font-size: 0.72rem; background: rgba(255,255,255,0.1);">Clear</button>
+      </div>
+
+      <!-- Right Bottom Attribution -->
+      <div style="position: absolute; bottom: 16px; right: 20px; font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-dim); background: rgba(8,9,11,0.7); padding: 6px 12px; border-radius: 4px; pointer-events: none;">
+        DEMO SCENE · NO REAL SURVEY SCALE
+      </div>
+    </div>
+  </main>
+
+  <!-- Global Command Palette Modal (Ctrl+K) -->
+  <div class="command-palette-backdrop" id="search-modal-backdrop">
+    <div class="command-palette-box">
+      <div class="palette-input-wrap">
+        <span style="color: var(--orange); font-size: 1.2rem;">⌕</span>
+        <input class="palette-input" id="search-modal-input" placeholder="Search pages, pipeline stages, research topics..." autocomplete="off">
+        <kbd style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-dim); background: rgba(255,255,255,0.06); padding: 4px 6px; border-radius: 4px;">ESC</kbd>
+      </div>
+      <div class="palette-results" id="search-modal-results"></div>
+      <div class="palette-footer">
+        <span>Navigation: <kbd>↑</kbd> <kbd>↓</kbd> to select, <kbd>↵</kbd> to open</span>
+        <span>posEye Command Palette</span>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./src/pages/reconstruction.js"></script>
+</body>
+</html>

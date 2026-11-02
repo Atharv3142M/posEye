@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#08090b">
+  <meta name="description" content="posEye Technology — The 11-Stage Automated Photogrammetry Pipeline from Video to 3D.">
+  <title>posEye — Technology & 11-Stage Pipeline Architecture</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./src/styles/main.css">
+  <link rel="icon" type="image/png" href="./public/posEye.png">
+  <style>
+    .stage-item {
+      padding: 14px 18px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--bg-card);
+      cursor: pointer;
+      transition: var(--transition);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .stage-item:hover, .stage-item.active {
+      border-color: var(--orange);
+      background: var(--bg-card-hover);
+      transform: translateX(4px);
+    }
+    .stage-item.active {
+      border-left: 3px solid var(--orange);
+    }
+  </style>
+</head>
+<body>
+  <!-- Global Navigation Bar -->
+  <header class="site-nav">
+    <div class="container nav-container">
+      <a class="nav-brand" href="./index.html">
+        <img src="./public/posEye.png" alt="posEye logo">
+        <span>pos<span class="accent">Eye</span></span>
+      </a>
+      <nav class="nav-links">
+        <a class="nav-link" href="./index.html">Home</a>
+        <a class="nav-link active" href="./technology.html">Technology</a>
+        <a class="nav-link" href="./reconstruction.html">Reconstruction</a>
+        <a class="nav-link" href="./product.html">Product</a>
+        <a class="nav-link" href="./research.html">Research</a>
+        <a class="nav-link" href="./releases.html">Releases</a>
+      </nav>
+      <div class="nav-actions">
+        <button class="btn-search" data-search-trigger title="Search documentation and pages">
+          <span>Search</span><kbd>⌘K</kbd>
+        </button>
+        <button class="theme-toggle-btn" id="theme-toggle" title="Toggle theme">☼</button>
+        <a class="nav-cta" href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">
+          GITHUB <span>↗</span>
+        </a>
+        <button class="mobile-menu-toggle" id="mobile-menu-toggle" aria-label="Toggle navigation">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile Drawer -->
+  <div class="mobile-nav-drawer" id="mobile-nav-drawer">
+    <a href="./index.html">01 · HOME</a>
+    <a href="./technology.html" class="accent">02 · TECHNOLOGY</a>
+    <a href="./reconstruction.html">03 · RECONSTRUCTION</a>
+    <a href="./product.html">04 · PRODUCT</a>
+    <a href="./research.html">05 · RESEARCH</a>
+    <a href="./releases.html">06 · RELEASES</a>
+    <button class="btn btn-secondary" data-search-trigger style="margin-top: 12px; width: 100%;">
+      🔍 Open Quick Search (⌘K)
+    </button>
+  </div>
+
+  <main>
+    <section class="section" style="padding-top: calc(var(--nav-height) + 40px);">
+      <div class="container">
+        <div class="section-head">
+          <div class="pill" style="margin-bottom: 12px;"><span class="pill-dot"></span> PIPELINE ARCHITECTURE · 02</div>
+          <h1 class="section-title">From uncalibrated footage to metric geometry.</h1>
+          <p class="section-desc">
+            posEye bridges the gap between raw aerial video and photogrammetric structure-from-motion with zero manual intermediate steps.
+          </p>
+        </div>
+
+        <!-- 11-Stage Interactive Pipeline Explorer -->
+        <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 28px; margin: 40px 0; align-items: start;">
+          <!-- Left: Stage List -->
+          <div id="pipeline-stage-list" style="display: flex; flex-direction: column; gap: 8px;">
+            <div class="stage-item active">
+              <span class="mono" style="font-weight: 700; color: var(--orange);">01 · Ingestion & Probe</span>
+              <span class="mono" style="font-size: 0.75rem; color: var(--text-dim);">FFmpeg</span>
+            </div>
+            <div class="stage-item">
+              <span class="mono" style="font-weight: 700; color: var(--orange);">02 · Telemetry Sync</span>
+              <span class="mono" style="font-size: 0.75rem; color: var(--text-dim);">SRT Parse</span>
+            </div>
+            <div class="stage-item">
+              <span class="mono" style="font-weight: 700; color: var(--orange);">03 · Laplacian Blur Filter</span>
+              <span class="mono" style="font-size: 0.75rem; color: var(--text-dim);">OpenCV</span>
+            </div>
+            <div class="stage-item">
+              <span class="mono" style="font-weight: 700; color: var(--orange);">04 · dHash Deduplication</span>
+              <span class="mono" style="font-size: 0.75rem; color: var(--text-dim);">Difference Hash</span>
+            </div>
+            <div class="stage-item">
+              <span class="mono" style="font-weight: 700; color: var(--orange);">05 · EXIF GPS Geotagging</span>
+              <span class="mono" style="font-size: 0.75rem; color: var(--text-dim);">piexif</span>
+            </div>
+            <div class="stage-item">
+              <span class="mono" style="font-weight: 700; color: var(--orange);">06 · Dynamic Masking</span>
+              <span class="mono" style="font-size: 0.75rem; color: var(--text-dim);">YOLOv8</span>
+            </div>
+            <div class="stage-item">
+              <span class="mono" style="font-weight: 700; color: var(--orange);">07 · Structure-from-Motion</span>
+              <span class="mono" style="font-size: 0.75rem; color: var(--text-dim);">OpenSfM</span>
+            </div>
+            <div class="stage-item">
+              <span class="mono" style="font-weight: 700; color: var(--orange);">08 · Multi-View Stereo</span>
+              <span class="mono" style="font-size: 0.75rem; color: var(--text-dim);">OpenMVS</span>
+            </div>
+            <div class="stage-item">
+              <span class="mono" style="font-weight: 700; color: var(--orange);">09 · 2.5D Mesh Generation</span>
+              <span class="mono" style="font-size: 0.75rem; color: var(--text-dim);">Poisson</span>
+            </div>
+            <div class="stage-item">
+              <span class="mono" style="font-weight: 700; color: var(--orange);">10 · Texture Mapping</span>
+              <span class="mono" style="font-size: 0.75rem; color: var(--text-dim);">UV Atlas</span>
+            </div>
+            <div class="stage-item">
+              <span class="mono" style="font-weight: 700; color: var(--orange);">11 · Multi-Format Export</span>
+              <span class="mono" style="font-size: 0.75rem; color: var(--text-dim);">GLB / LAZ / GeoTIFF</span>
+            </div>
+          </div>
+
+          <!-- Right: Dynamic Stage Detail Box -->
+          <div id="stage-detail-box" style="padding: 32px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); position: sticky; top: calc(var(--nav-height) + 20px);">
+            <!-- Populated dynamically by technology.js -->
+          </div>
+        </div>
+
+        <!-- Technical Architecture Diagram -->
+        <div style="margin: 80px 0;">
+          <div class="section-tag">SYSTEM TOPOLOGY</div>
+          <h2 class="section-title">Four distinct component layers.</h2>
+          <div class="page-grid" style="margin-top: 32px;">
+            <div class="page-card">
+              <div>
+                <div class="page-card-num">LAYER 1 · EXTRACTION</div>
+                <h3 class="page-card-title">apps/pipeline</h3>
+                <p class="page-card-desc">
+                  Python-based frame extraction, OpenCV Laplacian variance sharpness detection, dHash perceptual deduplication, SRT subtitle telemetry parser, and piexif geotagging.
+                </p>
+              </div>
+              <span class="mono" style="font-size: 0.75rem; color: var(--orange);">Python 3.10+ · OpenCV · FFmpeg</span>
+            </div>
+
+            <div class="page-card">
+              <div>
+                <div class="page-card-num">LAYER 2 · ORCHESTRATION</div>
+                <h3 class="page-card-title">apps/orchestrator</h3>
+                <p class="page-card-desc">
+                  FastAPI service on <code>localhost:8765</code>. Manages the lifecycle of stages 1→2→3, handles WebSocket status progress streaming, and interacts with Docker.
+                </p>
+              </div>
+              <span class="mono" style="font-size: 0.75rem; color: var(--orange);">FastAPI · uvicorn · httpx</span>
+            </div>
+
+            <div class="page-card">
+              <div>
+                <div class="page-card-num">LAYER 3 · RECONSTRUCTION</div>
+                <h3 class="page-card-title">NodeODM Engine</h3>
+                <p class="page-card-desc">
+                  Isolated Docker container running OpenDroneMap on port 3000. Computes camera poses, sparse tie points, dense multi-view stereo, and surface texturing.
+                </p>
+              </div>
+              <span class="mono" style="font-size: 0.75rem; color: var(--orange);">Docker · OpenSfM · OpenMVS</span>
+            </div>
+
+            <div class="page-card">
+              <div>
+                <div class="page-card-num">LAYER 4 · DESKTOP UI</div>
+                <h3 class="page-card-title">apps/desktop</h3>
+                <p class="page-card-desc">
+                  Electron desktop shell bundling React 18, Three.js GLTFLoader viewer, OrbitControls, metric point-to-point measurement, and live circular log streaming.
+                </p>
+              </div>
+              <span class="mono" style="font-size: 0.75rem; color: var(--orange);">Electron 32 · React 18 · Three.js</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Global Command Palette Modal (Ctrl+K) -->
+  <div class="command-palette-backdrop" id="search-modal-backdrop">
+    <div class="command-palette-box">
+      <div class="palette-input-wrap">
+        <span style="color: var(--orange); font-size: 1.2rem;">⌕</span>
+        <input class="palette-input" id="search-modal-input" placeholder="Search pages, pipeline stages, research topics..." autocomplete="off">
+        <kbd style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-dim); background: rgba(255,255,255,0.06); padding: 4px 6px; border-radius: 4px;">ESC</kbd>
+      </div>
+      <div class="palette-results" id="search-modal-results"></div>
+      <div class="palette-footer">
+        <span>Navigation: <kbd>↑</kbd> <kbd>↓</kbd> to select, <kbd>↵</kbd> to open</span>
+        <span>posEye Command Palette</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global Footer -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-bottom">
+        <span>AN OPEN-SOURCE SPATIAL RECONSTRUCTION PROJECT · ATHARV POSE</span>
+        <span>WGS 84 / UTM ZONE 43N · NO CLOUD DEPENDENCY</span>
+      </div>
+    </div>
+  </footer>
+
+  <script type="module" src="./src/pages/technology.js"></script>
+</body>
+</html>
