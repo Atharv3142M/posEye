@@ -124,6 +124,8 @@ declare global {
       envSync:      () => { apiBase: string; apiToken?: string; packaged: boolean } | null;
       // File utilities
       readFile:     (filePath: string) => Promise<string | null>;
+      allowPath?:   (filePath: string) => Promise<boolean>;
+      saveAsset?:   (opts: { jobId: string; asset: string; defaultFilename?: string }) => Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }>;
       pathForFile:  (file: File) => string;
       // Shell
       openExternal: (url: string) => Promise<void>;
@@ -253,4 +255,39 @@ export function useHealth(intervalMs = 10_000): HealthStatus {
   }, [intervalMs]);
 
   return status;
+}
+
+/**
+ * Downloads an asset from orchestrator securely using Authorization: Bearer header.
+ * Uses native Electron save dialog with streaming destination if in Electron;
+ * falls back to authenticated fetch + blob download in browser.
+ */
+export async function downloadAsset(jobId: string, asset: string, defaultFilename?: string): Promise<boolean> {
+  const filename = defaultFilename || asset;
+  if (typeof window !== "undefined" && window.dt?.saveAsset) {
+    const res = await window.dt.saveAsset({ jobId, asset, defaultFilename: filename });
+    return Boolean(res && res.ok);
+  }
+
+  // Browser fallback using authenticated fetch + blob
+  try {
+    const token = apiTokenSync();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${apiBaseSync()}/jobs/${encodeURIComponent(jobId)}/assets/${encodeURIComponent(asset)}`, { headers });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+    return true;
+  } catch (err) {
+    console.error("Failed to download asset:", err);
+    return false;
+  }
 }

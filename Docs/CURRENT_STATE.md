@@ -7,26 +7,31 @@
 
 ---
 
-## v0.1.4 Engineering Stabilization, Viewer Repair & CAD Redesign (Verified 2026-11-03)
+## v0.1.4 Engineering Stabilization, Viewer Repair, IPC Security & CAD Redesign (Verified 2026-11-03)
 
-1. **3D Viewer Asset Streaming & Cross-Origin Isolation:**
-   - **Packaged Electron Origin Fix & Strict CORS:** Resolved an issue where packaged Electron windows running under `file://` or `null` origins encountered CORS failures when fetching `model.glb` via Three.js `GLTFLoader`. Configured FastAPI with an explicit allowlist restricted to desktop Electron origins (`null`, `file://`, `127.0.0.1:5173`, `localhost:5173`) while rejecting external web origins.
-   - **Synchronous Context Hydration & IPC Sender Validation:** Added synchronous preload bridge method `envSync()` with strict sender frame validation (`isTrustedSender`), ensuring the API port and session token (`DT_API_TOKEN`) are instantly and safely available on the initial render frame without token exposure to untrusted frames.
-   - **Explicit Content-Type Streaming:** Configured FastAPI to stream `.glb` as `model/gltf-binary`, `.tif` as `image/tiff`, and `.laz` as `application/octet-stream`.
+1. **3D Viewer Asset Streaming & Secure Application Protocol:**
+   - **Custom Application Scheme (`poseye://app`):** Registered `poseye` as a privileged Electron scheme (`standard`, `secure`, `allowServiceWorkers`, `supportFetchAPI`, `corsEnabled`), serving frontend assets from `dist/` with canonical path resolution and SPA fallback. Packaged renderer origin is strictly `poseye://app`, eliminating opaque `null` or raw `file://` contexts.
+   - **Strict CORS Isolation:** Configured FastAPI `CORSMiddleware` with an explicit allowlist restricted strictly to desktop application origins (`poseye://app`) and local development ports (`http://127.0.0.1:5173`, `http://localhost:5173`). Preflight and requests from external web origins, `null`, or unknown origins are rejected with `400 Bad Request` and denied.
+   - **Elimination of Endpoint Wildcards & Query-String Tokens:** Removed endpoint-level wildcard headers from `/jobs/{job_id}/assets/{asset}`. Query-string tokens (`?token=...`) are rejected on HTTP asset routes; tokens must be transmitted securely via `Authorization: Bearer <token>` or `X-Api-Token` headers.
+   - **Three.js GLTFLoader Headers:** `ThreeViewer.tsx` configures `loader.setRequestHeader({ Authorization: `Bearer ${token}` })` so mesh chunks and textures are retrieved with authenticated headers without exposing credentials in URLs.
+   - **Native Streaming Asset Export:** Implemented `asset:save` IPC handler in Electron main to display a native Windows Save As dialog and stream backend assets directly to disk via `Readable.fromWeb()`, avoiding renderer memory exhaustion and query-string exposure.
 
-2. **Navigation-Safe Asset Downloads:**
-   - Replaced raw browser navigation with programmatic Electron downloads via `window.electronAPI.downloadFile()`.
-   - Attached Electron `will-download`, `will-navigate`, and `setWindowOpenHandler` listeners in `apps/desktop/electron/main.cjs` to prevent window content replacement when clicking large asset exports.
+2. **IPC Sender Validation & Filesystem Path Confinement:**
+   - **Sender Verification:** `validateSender()` validates that invocations match the primary `mainWindow.webContents.id`, come strictly from the top-level `mainWindow.webContents.mainFrame` (rejecting child frames/iframes), and verify origin matches `poseye://app` (packaged) or `127.0.0.1:5173` / `localhost:5173` (dev).
+   - **Filesystem Access Confinement:** `read:file` IPC handler enforces `isPathAllowed()`. Arbitrary system file paths are rejected; only files explicitly selected by the user via native open/save dialogs (`allowedFilePaths`) or files within the managed `jobsDir` are permitted. Path traversal escaping the jobs directory is rejected.
+   - **Automated Desktop Tests:** Added `apps/desktop/tests/ipc_security.test.cjs` covering sender validation in packaged and dev modes, iframe rejection, path traversal rejection, and allowed path verification (`npm test` in CI).
 
 3. **NVIDIA SMI Discovery & Granular Hardware Telemetry:**
    - **Multi-Path Probing:** Enhanced `apps/orchestrator/src/orchestrator/system.py` to search standard Windows installation directories (`C:\Windows\System32\nvidia-smi.exe`, `C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe`) in addition to system `PATH`.
    - **Granular Diagnostic Contract:** Exposes granular states for `gpuHardware`, `nvidiaDriver`, `nvidiaSmi`, `dockerGpuAccess`, `engineGpuCapability`, and `gpuProcessingActive`.
    - **Truthful Status Reporting:** Eliminates simulated GPU utilization and fake metrics, reporting exact driver versions, memory, and temperature only when physically queried.
 
-4. **Instant Application Startup (< 300ms) & Asynchronous Engine Provisioning:**
-   - Replaced blocking preflight engine checks in the Electron main process with instant window presentation (< 300ms).
-   - Docker Desktop initialization and container health polling run as an asynchronous background worker, streaming real-time status updates (`app-status`) to the Dashboard without frozen splash screens.
-   - Pinned the photogrammetry processing container to `opendronemap/nodeodm:3.6.2`.
+4. **Instant Startup (< 300ms) & Robust Docker / NodeODM Provisioning:**
+   - Window created immediately upon `app.whenReady()` in < 300ms.
+   - **Auto-Pull Provisioning:** When `opendronemap/nodeodm:3.6.2` is not present locally and offline tar is unavailable, `ensureNodeOdm()` automatically executes `docker pull opendronemap/nodeodm:3.6.2`, streaming progress to the Dashboard via `app-status` without crashing.
+   - **Container Reuse:** Inspects `poseye-nodeodm`; if running and responsive on port 3000 (`/info`), reuses it without recreation. If stopped, attempts `docker start` before recreating.
+   - **Race Protection:** Guards concurrent calls with `nodeOdmProvisionPromise`.
+   - **Verified Readiness:** Verifies `/info` returns valid JSON before declaring the engine ready.
 
 5. **Photogrammetry EXIF Timestamp Ingestion & Metadata Truthfulness:**
    - Injected standard temporal EXIF tags into extracted video frames derived strictly from telemetry SRT timestamps or container `creation_time`: `DateTimeOriginal`, `DateTime`, `DateTimeDigitized`, `GPSDateStamp`, `GPSTimeStamp`, and standard EXIF `GPSVersionID = (2, 3, 0, 0)`.
@@ -34,15 +39,18 @@
    - Resolves the OpenSfM/ODM quality report defect where output reports displayed timestamps falling back to `01/01/1970 00:00:00`.
 
 6. **Dark CAD Monochrome Design System & Multi-Resolution Windows ICO:**
-   - Comprehensive UI restyle across all pages (Dashboard, Projects, New Project, Processing, Viewer, Settings, Logs) adhering to a professional monochrome CAD palette.
+   - Comprehensive UI restyle across all pages adhering to a professional monochrome CAD palette.
    - Replaced rainbow visual badges with high-contrast technical indicators and clean typography.
    - Generated a multi-resolution Windows application icon (`posEye.ico`) embedding 16x16, 24x24, 32x32, 48x48, 64x64, 128x128, and 256x256 pixel layers, eliminating taskbar icon distortion.
 
-7. **Test Suite & Build Verification:**
-   - **Python Tests:** 47/47 passed cleanly in ~11s (`pytest apps/pipeline apps/orchestrator -v`).
+7. **CI Dynamic Versioning & Verification:**
+   - `.github/workflows/ci.yml` dynamically resolves version from `apps/desktop/package.json` (`posEye.Setup.$version.exe`).
+   - Generates and uploads `build-manifest.json` with SHA-256 and size.
+   - **Python Tests:** 48/48 passed cleanly (`pytest apps/pipeline apps/orchestrator -v`).
+   - **Desktop Unit Tests:** 3/3 passed cleanly (`npm test`).
    - **TypeScript Verification:** 0 type errors (`npx tsc --noEmit`).
-   - **Frontend Bundle:** Production build succeeded in 1.84s (`npm run build`).
-   - **Installer Distribution:** Packaged `posEye.Setup.0.1.4.exe` (192,247,632 bytes, SHA-256: `9B0BA01B12B09545DF0F19EFC48C2816F25B3F78472F086D50CED2677F4BF3C5`).
+   - **Frontend Bundle:** Production build succeeded (`npm run build`).
+   - **Installer Distribution:** Packaged `posEye.Setup.0.1.4.exe` (192,249,518 bytes, SHA-256: `8F7F58E9A4858E6043F8A66364482B5F96FF6129FEA816D8B771BB8BBC772839`).
 
 ---
 
@@ -98,19 +106,3 @@
    - Fixed silent unhandled rejection on GLB load errors by attaching `onLoadStart`, `onLoadSuccess`, and `onLoadError` lifecycle callbacks.
    - Geometry centering: model geometry is offset to origin `(0, 0, 0)` using bounding box calculations, preventing floating-point depth buffer jitter and coordinate clipping on georeferenced UTM models.
    - Coordinates HUD converts local hit points to true georeferenced coordinates using the stored model offset.
-   - Model info panel displays a robust state machine (`loading`, `ready`, `error`, `no_model`) with accurate vertex and triangle counts derived directly from `BufferGeometry` attributes.
-
-5. **Interactive Distance Measurement Tool:**
-   - Dedicated measuring mode with crosshair cursor and hover preview marker on 3D surfaces.
-   - Click-to-pick point placement for Point A and Point B with visual spheres and connection lines.
-   - Distance calculation with georeference disclosure: displays meters (`m (approx.)`) if GPS EXIF is present, or `model units (relative scale)` if uncalibrated.
-   - "Clear Measurements" button and `Esc` keyboard shortcut.
-
-6. **Shared Camera Reset:**
-   - Camera reset shared between "Reset Camera (R)" button and `R`/`r` keyboard shortcut via `ThreeViewerHandle` ref.
-   - Accurately fits camera to the loaded model bounding box and configures near/far planes.
-
-7. **Resizable & Collapsible Viewer Sidebar:**
-   - Flexible left panel with draggable resizer divider (`min: 220px`, `max: 550px`, `default: 300px`).
-   - Toolbar toggle button to collapse (`◀ Hide Panel`) and expand (`☰ Show Panel`) the sidebar.
-   - Independent vertical scrolling preventing content clipping.

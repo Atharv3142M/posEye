@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { apiBaseSync, apiTokenSync } from "../api";
+import { apiBaseSync, downloadAsset } from "../api";
 import Button from "../components/Button";
 import MeasurementTools from "../components/MeasurementTools";
 import ThreeViewer, { type MeasureResult, type ModelStats, type ThreeViewerHandle } from "../components/ThreeViewer";
@@ -29,8 +29,7 @@ export default function Viewer() {
 
   const assetUrl = useCallback(
     (asset: string) => {
-      const token = apiTokenSync();
-      return `${apiBaseSync()}/jobs/${id}/assets/${asset}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+      return `${apiBaseSync()}/jobs/${id}/assets/${asset}`;
     },
     [id]
   );
@@ -94,13 +93,8 @@ export default function Viewer() {
   };
 
   const handleExport = (asset: string, defaultFilename: string) => {
-    const url = assetUrl(asset);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = defaultFilename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    if (!id) return;
+    downloadAsset(id, asset, defaultFilename);
   };
 
   const isGeoreferenced = Boolean(job?.isGeoreferenced);

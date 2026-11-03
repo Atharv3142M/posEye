@@ -2,7 +2,7 @@
   "name": "poseye-desktop",
   "version": "0.1.4",
   "private": true,
-  "description": "posEye — Single-Pass Drone Video to Accurate 3D Model Generation System",
+  "description": "posEye \u2014 Single-Pass Drone Video to Accurate 3D Model Generation System",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,8 @@
     "build": "vite build",
     "start": "electron .",
     "pack": "npm run build && electron-builder --win nsis --dir",
-    "dist": "npm run build && electron-builder --win nsis"
+    "dist": "npm run build && electron-builder --win nsis",
+    "test": "node --test tests/ipc_security.test.cjs"
   },
   "dependencies": {
     "react": "^18.3.1",

@@ -94,14 +94,9 @@ app = FastAPI(title="posEye Orchestrator", version="0.1.4", lifespan=lifespan)
 
 # Allowed CORS origins: restricted strictly to desktop Electron origins and local development hosts
 DEFAULT_ALLOWED_ORIGINS = [
-    "null",
-    "file://",
+    "poseye://app",
     "http://127.0.0.1:5173",
     "http://localhost:5173",
-    "http://127.0.0.1:8765",
-    "http://localhost:8765",
-    "app://-",
-    "app://.",
 ]
 _env_origins = os.environ.get("DT_ALLOWED_ORIGINS")
 allowed_origins = list(DEFAULT_ALLOWED_ORIGINS)
@@ -131,7 +126,7 @@ def verify_api_token(request: Request, creds: HTTPAuthorizationCredentials | Non
     if creds:
         token = creds.credentials
     if not token:
-        token = request.headers.get("x-api-token") or request.query_params.get("token")
+        token = request.headers.get("x-api-token")
     if token != API_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized: invalid or missing API token")
 
@@ -363,12 +358,7 @@ def job_asset(job_id: str, asset: str) -> FileResponse:
         ".json": "application/json",
     }
     media_type = media_types.get(path.suffix.lower(), "application/octet-stream")
-    headers = {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "*",
-        "Access-Control-Allow-Methods": "GET, OPTIONS, HEAD",
-    }
-    return FileResponse(path, media_type=media_type, filename=path.name, headers=headers)
+    return FileResponse(path, media_type=media_type, filename=path.name)
 
 
 @app.get("/jobs/{job_id}/logs", dependencies=[Depends(verify_api_token)])
