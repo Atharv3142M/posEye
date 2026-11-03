@@ -7,7 +7,7 @@
 
 ---
 
-## v0.1.4 Engineering Stabilization, Viewer Repair, IPC Security & CAD Redesign (Verified 2026-11-03)
+## v0.1.4 Engineering Stabilization, Viewer Repair, IPC Security & CAD Redesign (CI-verified 2026-11-03; physical runtime pending)
 
 1. **3D Viewer Asset Streaming & Secure Application Protocol:**
    - **Custom Application Scheme (`poseye://app`):** Registered `poseye` as a privileged Electron scheme (`standard`, `secure`, `allowServiceWorkers`, `supportFetchAPI`, `corsEnabled`), serving frontend assets from `dist/` with canonical path resolution and SPA fallback. Packaged renderer origin is strictly `poseye://app`, eliminating opaque `null` or raw `file://` contexts.
@@ -46,11 +46,11 @@
 7. **CI Dynamic Versioning & Verification:**
    - `.github/workflows/ci.yml` dynamically resolves version from `apps/desktop/package.json` (`posEye.Setup.$version.exe`).
    - Generates and uploads `build-manifest.json` with SHA-256 and size.
-   - **Python Tests:** 48/48 passed cleanly (`pytest apps/pipeline apps/orchestrator -v`).
-   - **Desktop Unit Tests:** 3/3 passed cleanly (`npm test`).
+   - **Python Tests:** 49/49 passed cleanly (`pytest apps/pipeline apps/orchestrator -v`).
+   - **Desktop Unit Tests:** 7/7 passed cleanly (`npm test`).
    - **TypeScript Verification:** 0 type errors (`npx tsc --noEmit`).
    - **Frontend Bundle:** Production build succeeded (`npm run build`).
-   - **Installer Distribution:** Canonical CI build `posEye.Setup.0.1.4.exe` (191,484,838 bytes, SHA-256: `749EA9F03D8CF004315879708F59F77B2E2E9BA9250AAC0D6783A4D72FFB357D`; CI artifact zip: 191,498,467 bytes).
+   - **Installer Distribution:** Canonical CI build `posEye.Setup.0.1.4.exe` (191,484,838 bytes, SHA-256: `749EA9F03D8CF004315879708F59F77B2E2E9BA9250AAC0D6783A4D72FFB357D`; CI artifact zip: 191,498,467 bytes, SHA-256: acdc71d2a0f427ec1a02752825fd087b5134604a1e46fe53c3e4a64bf3fbf37c; run 41663729032, artifact ID 13244801129).
 
 ---
 

@@ -5,7 +5,7 @@
   <p><strong>Offline Drone Video Photogrammetry & 3D Reconstruction System for Windows</strong></p>
 
   [![CI Pipeline](https://github.com/Atharv3142M/posEye/actions/workflows/ci.yml/badge.svg)](https://github.com/Atharv3142M/posEye/actions/workflows/ci.yml)
-  [![Latest Release](https://img.shields.io/badge/release-v0.1.4-blue.svg)](https://github.com/Atharv3142M/posEye/releases/tag/v0.1.4)
+  [![Release Candidate](https://img.shields.io/badge/release%20candidate-v0.1.4-blue.svg)](https://github.com/Atharv3142M/posEye/actions/runs/41663729032)
   [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64-lightgrey.svg)](https://github.com/Atharv3142M/posEye)
   [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
   [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
@@ -79,10 +79,10 @@ flowchart TD
 The current release candidate is **posEye v0.1.4**, packaged as a standard Windows 10/11 x64 NSIS installer.
 
 - **Installer Executable:** `posEye.Setup.0.1.4.exe`
-- **File Size:** `191,484,838` bytes (~182.62 MB)
+- **File Size:** `191,484,838` bytes (~182.61 MiB)
 - **SHA-256 Digest:** `749EA9F03D8CF004315879708F59F77B2E2E9BA9250AAC0D6783A4D72FFB357D`
 - **CI Build Artifact:** posEye-Windows-Installer-v0.1.4.zip (191,498,467 bytes, SHA-256: acdc71d2a0f427ec1a02752825fd087b5134604a1e46fe53c3e4a64bf3fbf37c, GitHub Actions CI Run 41663729032)
-- **Distribution Portal:** [GitHub Releases: posEye v0.1.4](https://github.com/Atharv3142M/posEye/releases/tag/v0.1.4)
+- **CI Artifact:** [Download v0.1.4 installer ZIP](https://github.com/Atharv3142M/posEye/actions/runs/41663729032/artifacts/13244801129) (workflow run 41663729032; artifact ID 13244801129)
 - **Release Documentation:** [Docs/RELEASE_NOTES_v0.1.4.md](Docs/RELEASE_NOTES_v0.1.4.md)
 
 > [!NOTE]
@@ -258,11 +258,12 @@ cd ..\..
 The posEye test suite verifies core extraction algorithms, EXIF coordinate conversion, state machine transitions, archive security, and API endpoints:
 
 ```powershell
-# Execute full Python test suite (47 passed tests)
+# Execute full Python test suite (49 passed in CI)
 .\.venv\Scripts\python.exe -m pytest apps\pipeline apps\orchestrator -v
 
 # Perform TypeScript type checking
 cd apps\desktop
+npm test  # 7/7 desktop security and provisioning tests passed in CI
 npx tsc --noEmit
 
 # Execute frontend Vite production build
@@ -341,7 +342,7 @@ posEye/
 1. **Loopback Network Isolation:** Both the Python Orchestrator API (`:8765`) and the NodeODM service (`:3000`) bind strictly to `127.0.0.1`. Remote network access is denied by default.
 2. **Session Authentication:** The orchestrator enforces dynamic, session-scoped cryptographic bearer tokens (`DT_API_TOKEN`) across all REST endpoints and WebSocket connections.
 3. **Archive Security:** Decompression routines enforce strict canonical path boundaries, neutralizing Zip-Slip directory traversal attempts and decompression bombs.
-4. **Cross-Origin & IPC Isolation:** The orchestrator API restricts CORS strictly to local desktop Electron origins (`null`, `file://`, `127.0.0.1:5173`, `localhost:5173`), preventing external web origins from interacting with the loopback orchestrator. Electron IPC handlers enforce strict sender validation (`isTrustedSender`).
+4. **Cross-Origin & IPC Isolation:** Packaged Electron runs under the privileged `poseye://app` origin. FastAPI CORS allows only `poseye://app` plus the explicit development origins `http://127.0.0.1:5173` and `http://localhost:5173`; external, `null`, and unknown origins are denied. IPC calls are restricted to the primary top-level application frame, and filesystem paths are checked for lexical and realpath containment.
 5. **Data Privacy:** posEye collects zero telemetry, crash reports, or user analytics. All media assets, coordinates, and reconstructed models remain exclusively on the user's local disk.
 
 For vulnerability disclosure procedures, refer to [SECURITY.md](SECURITY.md).

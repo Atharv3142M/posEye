@@ -1,10 +1,11 @@
 # posEye v0.1.4 Release Artifact Audit & Verification
 
-**Release Tag:** `v0.1.4`  
+**Release Candidate:** `v0.1.4`  
+**Publication State:** CI candidate only; no `v0.1.4` Git tag or GitHub Release has been published.  
 **Distribution Target:** Windows 10/11 x64 NSIS Installer  
 **Date:** 2026-11-03  
 **Canonical CI Installer Binary:** `posEye.Setup.0.1.4.exe`  
-**File Size:** 191,484,838 bytes (~182.62 MB)  
+**File Size:** 191,484,838 bytes (~182.61 MiB)  
 **SHA-256 Hash:** `749EA9F03D8CF004315879708F59F77B2E2E9BA9250AAC0D6783A4D72FFB357D`  
 **CI ZIP Artifact:** posEye-Windows-Installer-v0.1.4.zip (191,498,467 bytes, SHA-256: acdc71d2a0f427ec1a02752825fd087b5134604a1e46fe53c3e4a64bf3fbf37c, GitHub Actions CI Run 41663729032)  
 
@@ -21,7 +22,7 @@
 | **Static FFmpeg** | `resources\ffmpeg.exe` | Verified | 101 MB static build bundled in extraResources |
 | **Orchestrator API** | `resources\posEye.Orchestrator.exe` | Verified | Standalone Python FastAPI backend (`serviceId: poseye-orchestrator`, `v0.1.4`) |
 | **React UI Bundle** | `resources\app.asar` | Verified | Vite 5.4.21 bundle + Three.js 0.169.0 + Monochrome CAD theme |
-| **NodeODM Engine** | Docker daemon bridge | Verified | Pinned `opendronemap/nodeodm:3.6.2` container |
+| **NodeODM Engine** | Docker daemon bridge | Code-verified; live runtime pending | Exact `3.6.2` contract and container identity checks are covered by tests; CI does not launch a live Docker/NodeODM engine |
 
 ---
 
@@ -53,3 +54,33 @@
 - `.github/workflows/ci.yml` dynamically extracts version from `apps/desktop/package.json` (`posEye.Setup.$version.exe`).
 - Generates `apps/desktop/release/build-manifest.json` recording version, filename, byte size, SHA-256, and build timestamp.
 - Uploads matching installer artifact and manifest under `posEye-Windows-Installer-v$version`.
+
+
+---
+
+## 6. CI Run Evidence & Verification Boundary
+
+**Artifact-producing workflow:** [GitHub Actions run 41663729032](https://github.com/Atharv3142M/posEye/actions/runs/41663729032), Windows runners.
+
+| Check | Result |
+|---|---:|
+| Python pipeline/orchestrator suite | 49 passed, 0 failed (1 warning) |
+| Desktop Node.js security/provisioning suite | 7 passed, 0 failed |
+| TypeScript typecheck | 0 errors |
+| Vite production build | Successful |
+| Electron unpacked packaging | Successful |
+| NSIS installer build and artifact upload | Successful |
+| Installer SHA-256 | Independently recomputed from downloaded EXE; matches CI manifest |
+
+**Canonical CI artifact:** `posEye-Windows-Installer-v0.1.4.zip`, 191,498,467 bytes, SHA-256 `acdc71d2a0f427ec1a02752825fd087b5134604a1e46fe53c3e4a64bf3fbf37c`, artifact ID `13244801129`.
+
+### Not established by this CI run
+
+- Installation and first launch on a clean Windows 10/11 machine without development tools.
+- Live Docker Desktop startup, image pull, container startup, and NodeODM `/info` handshake.
+- End-to-end reconstruction using a real drone video and SRT dataset.
+- Loading the resulting GLB in the packaged Electron runtime.
+- Native Windows export verification and independent inspection of GLB, LAZ and GeoTIFF outputs.
+- NVIDIA GPU passthrough and resource behavior under dense reconstruction workloads.
+
+The installer is not code-signed. Windows SmartScreen may display an Unknown Publisher warning. Treat v0.1.4 as a release candidate until the manual runtime gates above are completed.
