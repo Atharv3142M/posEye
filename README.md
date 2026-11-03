@@ -79,9 +79,9 @@ flowchart TD
 The current release candidate is **posEye v0.1.4**, packaged as a standard Windows 10/11 x64 NSIS installer.
 
 - **Installer Executable:** `posEye.Setup.0.1.4.exe`
-- **File Size:** `191,488,690` bytes (~182.62 MB)
-- **SHA-256 Digest:** `09D92C3FA73E010A145B5D67F0E5D974DEDF81F81436492D13830BFA7F85354B`
-- **CI Build Artifact:** posEye-Windows-Installer-v0.1.4.zip (191,502,200 bytes, SHA-256: fda09b68f34921f90a7264ca67753e370e386126ae61d17c0bdc81c456377338, GitHub Actions CI Run 41654549419)
+- **File Size:** `191,484,838` bytes (~182.62 MB)
+- **SHA-256 Digest:** `749EA9F03D8CF004315879708F59F77B2E2E9BA9250AAC0D6783A4D72FFB357D`
+- **CI Build Artifact:** posEye-Windows-Installer-v0.1.4.zip (191,498,467 bytes, SHA-256: acdc71d2a0f427ec1a02752825fd087b5134604a1e46fe53c3e4a64bf3fbf37c, GitHub Actions CI Run 41663729032)
 - **Distribution Portal:** [GitHub Releases: posEye v0.1.4](https://github.com/Atharv3142M/posEye/releases/tag/v0.1.4)
 - **Release Documentation:** [Docs/RELEASE_NOTES_v0.1.4.md](Docs/RELEASE_NOTES_v0.1.4.md)
 
@@ -93,7 +93,7 @@ The current release candidate is **posEye v0.1.4**, packaged as a standard Windo
 Prior to executing the installer, verify the integrity of the binary using PowerShell:
 
 ```powershell
-$expectedHash = "09D92C3FA73E010A145B5D67F0E5D974DEDF81F81436492D13830BFA7F85354B"
+$expectedHash = "749EA9F03D8CF004315879708F59F77B2E2E9BA9250AAC0D6783A4D72FFB357D"
 $actualHash = (Get-FileHash -Path .\posEye.Setup.0.1.4.exe -Algorithm SHA256).Hash
 if ($actualHash -eq $expectedHash) {
     Write-Host "[OK] Cryptographic verification passed: $actualHash" -ForegroundColor Green
