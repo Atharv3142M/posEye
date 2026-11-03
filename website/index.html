@@ -9,21 +9,22 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./style.css"><script>try{const t=localStorage.getItem("posEye-theme");if(t==="light")document.documentElement.dataset.theme="light"}catch(e){}</script>
+  <link rel="stylesheet" href="./style.css">
 </head>
 <body>
   <div class="loader" aria-hidden="true"><img src="./posEye.png" alt=""><span>INITIALIZING SPATIAL SYSTEM</span><i></i></div>
   <div class="noise" aria-hidden="true"></div>
   <header class="nav">
     <a class="brand" href="#top" aria-label="posEye home"><img src="./posEye.png" alt="posEye logo"><span>pos<span class="orange">Eye</span></span></a>
-    <nav class="navlinks"><a href="#system">SYSTEM</a><a href="#process">PROCESS</a><a href="#showcase">SHOWCASE</a><a href="#roadmap">ROADMAP</a><a href="https://github.com/Atharv3142M/posEye/releases">RELEASES</a></nav>
-    <button class="theme-toggle" id="theme-toggle" aria-label="Switch color theme" title="Switch color theme">◐</button><a class="nav-cta" href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">VIEW REPOSITORY <span>↗</span></a>
+    <nav class="navlinks"><a href="#system">SYSTEM</a><a href="#process">PROCESS</a><a href="#showcase">SHOWCASE</a><a href="#roadmap">ROADMAP</a></nav>
+    <a class="nav-cta" href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">VIEW REPOSITORY <span>↗</span></a>
     <button class="menu" aria-label="Open navigation" aria-expanded="false"><span></span><span></span></button>
   </header>
 
   <main id="top">
     <section class="hero" aria-label="posEye introduction">
       <div class="hero-grid"></div><div class="hero-vignette"></div>
+      <canvas id="world" aria-label="Interactive procedural topographic landscape"></canvas>
       <div class="hero-content">
         <p class="eyebrow"><b></b> OPEN-SOURCE SPATIAL RECONSTRUCTION</p>
         <h1>Reality,<br><em>reconstructed.</em></h1>
@@ -45,12 +46,13 @@
 
     <section class="scroll-story" id="process">
       <div class="story-sticky">
+        <canvas id="story-canvas" aria-hidden="true"></canvas>
         <div class="story-label"><span class="dot"></span> THE RECONSTRUCTION SEQUENCE <span class="mono">/ 04 CHAPTERS</span></div>
         <div class="story-progress"><span></span></div>
         <article class="story-copy active" data-step="0"><span class="chapter">CHAPTER 01 — CAPTURE</span><h2>Start with<br>the flight.</h2><p>A continuous UAV video. GPS and flight metadata provide the spatial context for what the camera sees.</p><div class="tags"><span>VIDEO</span><span>SRT / TELEMETRY</span><span>GPS</span></div></article>
         <article class="story-copy" data-step="1"><span class="chapter">CHAPTER 02 — PREPARE</span><h2>Find the<br>frames that matter.</h2><p>Frames are extracted, filtered for blur and redundancy, and prepared with available geospatial metadata.</p><div class="tags"><span>FFMPEG</span><span>BLUR FILTER</span><span>DHASH</span></div></article>
         <article class="story-copy" data-step="2"><span class="chapter">CHAPTER 03 — RECONSTRUCT</span><h2>Pixels become<br>geometry.</h2><p>The prepared imagery enters a photogrammetry workflow powered by NodeODM / OpenDroneMap.</p><div class="tags"><span>NODEODM</span><span>ODM</span><span>3D</span></div></article>
-        <article class="story-copy" data-step="3"><span class="chapter">CHAPTER 04 — INSPECT</span><h2>A world you<br>can examine.</h2><p>Bring generated assets into the desktop viewer. Inspect the model, measure distances, and export available outputs.</p><div class="tags"><span>GLB</span><span>MEASURE</span><span>EXPORT</span></div></article>
+        <article class="story-copy" data-step="3"><span class="chapter">CHAPTER 04 — INSPECT</span><h2>A world you<br>can examine.</h2><p>Bring generated assets into the Three.js viewer. Inspect the model, measure distances, and export available outputs.</p><div class="tags"><span>GLB</span><span>MEASURE</span><span>EXPORT</span></div></article>
       </div>
       <div class="story-track"><div class="track-step"></div><div class="track-step"></div><div class="track-step"></div><div class="track-step"></div></div>
     </section>
@@ -81,6 +83,6 @@
 
     <section class="closing"><div class="closing-grid"></div><p class="eyebrow"><b></b> OPEN SOURCE · IN PROGRESS</p><h2>Make the world<br><em>inspectable.</em></h2><p>Follow the build. Explore the code. Help shape what comes next.</p><a class="button primary" href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">Enter the repository <span>↗</span></a><div class="closing-orbit"></div></section>
   </main>
-  <footer><a class="brand footbrand" href="#top"><img src="./posEye.png" alt=""><span>pos<span class="orange">Eye</span></span></a><span>AN OPEN-SOURCE SPATIAL PROJECT</span><span>CREATED BY <strong>ATHARV POSE</strong></span><a href="https://github.com/Atharv3142M/posEye">GITHUB ↗</a><a href="https://github.com/Atharv3142M/posEye/issues">CONTACT / SUPPORT ↗</a><span>© <span id="year"></span> POSE</span></footer>
+  <footer><a class="brand footbrand" href="#top"><img src="./posEye.png" alt=""><span>pos<span class="orange">Eye</span></span></a><span>AN OPEN-SOURCE SPATIAL PROJECT</span><span>CREATED BY <strong>ATHARV POSE</strong></span><a href="https://github.com/Atharv3142M/posEye">GITHUB ↗</a><span>© <span id="year"></span> POSE</span></footer>
   <script type="module" src="./src/main.js"></script>
-<script>document.getElementById("theme-toggle")?.addEventListener("click",()=>{const light=document.documentElement.dataset.theme!=="light";document.documentElement.dataset.theme=light?"light":"dark";localStorage.setItem("posEye-theme",light?"light":"dark")});</script></body></html>
+</body></html>
