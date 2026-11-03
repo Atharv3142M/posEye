@@ -10,11 +10,19 @@ export default function Dashboard() {
   const nav = useNavigate();
   const { jobs } = useProjects();
   const [sys, setSys] = useState<SystemStatus | null>(null);
+  const [appStatus, setAppStatus] = useState<{ phase: string; message: string } | null>(null);
 
   useEffect(() => {
     void fetchJson<SystemStatus>("/system/status").then(setSys).catch(() => setSys(null));
     const id = setInterval(() => void fetchJson<SystemStatus>("/system/status").then(setSys).catch(() => {}), 15_000);
     return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (window.dt?.onAppStatus) {
+      const unsub = window.dt.onAppStatus((st) => setAppStatus(st));
+      return unsub;
+    }
   }, []);
 
   const recent = [...jobs].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 8);
@@ -27,6 +35,48 @@ export default function Dashboard() {
           <h1 style={{ marginBottom: 2 }}>posEye</h1>
           <p className="muted" style={{ margin: 0 }}>Drone Video → 3D Model Pipeline · local processing · no cloud</p>
         </div>
+
+        {/* Engine Provisioning / Prerequisite Notice */}
+        {appStatus && appStatus.phase !== "ready" && appStatus.phase !== "api_ready" && (
+          <div
+            style={{
+              marginBottom: 20,
+              padding: "12px 16px",
+              background: "var(--bg-panel)",
+              border: "1px solid var(--border-strong)",
+              borderRadius: "var(--radius)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 16,
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 13, color: "var(--text-primary)" }}>
+                {appStatus.phase === "docker_missing"
+                  ? "Docker Desktop Not Detected"
+                  : appStatus.phase === "docker_starting"
+                  ? "Starting Docker Desktop…"
+                  : appStatus.phase === "nodeodm_starting"
+                  ? "Provisioning NodeODM Engine (3.6.2)…"
+                  : "Engine Provisioning"}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
+                {appStatus.message}
+              </div>
+            </div>
+            {appStatus.phase === "docker_missing" && (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  window.dt?.openExternal?.("https://www.docker.com/products/docker-desktop");
+                }}
+              >
+                Download Docker Desktop ↗
+              </Button>
+            )}
+          </div>
+        )}
 
         {/* Actions */}
         <div className="actions" style={{ marginTop: 0, marginBottom: 24 }}>
@@ -66,7 +116,7 @@ export default function Dashboard() {
                     <td className="muted">{j.frameCount || "—"}</td>
                     <td className="muted">{fmtDate(j.createdAt)}</td>
                     <td className="col-actions">
-                      <span style={{ color: "var(--color-primary)", fontSize: 12 }}>→</span>
+                      <span style={{ color: "var(--text-primary)", fontSize: 12 }}>→</span>
                     </td>
                   </tr>
                 ))}
@@ -87,25 +137,25 @@ export default function Dashboard() {
             <div>
               <div className="stat-row">
                 <span className="stat-label">ffmpeg</span>
-                <span className="stat-value" style={{ color: sys?.ffmpeg?.detected ? "var(--text-success)" : "var(--text-danger)" }}>
-                  {sys?.ffmpeg?.detected ? sys.ffmpeg.version ?? "detected" : "Not found"}
+                <span className="stat-value" style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>
+                  {sys?.ffmpeg?.detected ? sys.ffmpeg.version ?? "detected" : "Not detected"}
                 </span>
               </div>
               <div className="stat-row">
                 <span className="stat-label">Docker</span>
-                <span className="stat-value" style={{ color: sys?.docker.ok ? "var(--text-success)" : "var(--text-danger)" }}>
-                  {sys?.docker.ok ? `Running ${sys.docker.version}` : "Not detected"}
+                <span className="stat-value" style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>
+                  {sys?.docker.ok ? `Running ${sys.docker.version || ""}`.trim() : "Offline"}
                 </span>
               </div>
               <div className="stat-row">
                 <span className="stat-label">NodeODM</span>
-                <span className="stat-value" style={{ color: sys?.nodeodm.ok ? "var(--text-success)" : "var(--text-danger)" }}>
+                <span className="stat-value" style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>
                   {sys?.nodeodm.ok ? "Connected" : "Offline"}
                 </span>
               </div>
               <div className="stat-row">
                 <span className="stat-label">GPU</span>
-                <span className="stat-value" style={{ fontSize: 12 }}>
+                <span className="stat-value" style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>
                   {sys?.gpuAvailable
                     ? sys.nvidiaSmiAvailable && sys.gpuUtilization != null
                       ? `${sys.gpuName ?? "NVIDIA"} · ${Math.round(sys.gpuUtilization)}% · ${sys.gpuMemoryUsed}/${sys.gpuMemoryTotal} MiB`

@@ -14,7 +14,7 @@ def test_health():
     assert data["serviceId"] == "poseye-orchestrator"
     assert data["product"] == "posEye"
     assert data["component"] == "Orchestrator"
-    assert data["orchestratorVersion"] == "0.1.3"
+    assert data["orchestratorVersion"] == "0.1.4"
     assert "docker" in data
     assert "nodeodm" in data
     assert "ffmpeg" in data
@@ -35,6 +35,12 @@ def test_system_status_contract():
     assert "nodeodm" in data
     assert "ffmpeg" in data
     assert "gpuAvailable" in data
+    assert "gpuHardware" in data
+    assert "nvidiaDriver" in data
+    assert "nvidiaSmi" in data
+    assert "dockerGpuAccess" in data
+    assert "engineGpuCapability" in data
+    assert "gpuProcessingActive" in data
     assert data["docker"]["status"] in {"running", "stopped", "not_installed", "error"}
     assert data["nodeodm"]["status"] in {"connected", "unreachable", "unavailable"}
     assert data["ffmpeg"]["status"] in {"detected", "missing"}
@@ -117,3 +123,48 @@ def test_probe_missing():
     client = TestClient(app)
     res = client.post("/probe/video", json={"videoPath": "C:/nope/missing.mp4"})
     assert res.status_code == 400
+
+
+def test_cors_origins_isolation():
+    client = TestClient(app)
+
+    # 1. Packaged Electron origin 'null' should be allowed
+    res_null = client.options(
+        "/health",
+        headers={
+            "Origin": "null",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert res_null.status_code == 200
+    assert res_null.headers.get("access-control-allow-origin") == "null"
+
+    # 2. Local development origin 'http://127.0.0.1:5173' should be allowed
+    res_local = client.options(
+        "/health",
+        headers={
+            "Origin": "http://127.0.0.1:5173",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert res_local.status_code == 200
+    assert res_local.headers.get("access-control-allow-origin") == "http://127.0.0.1:5173"
+
+    # 3. Unrelated browser origin 'https://malicious-site.com' must be REJECTED
+    res_evil = client.options(
+        "/health",
+        headers={
+            "Origin": "https://malicious-site.com",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    # Preflight rejected: status code 400 and no Access-Control-Allow-Origin header
+    assert res_evil.status_code == 400
+    assert res_evil.headers.get("access-control-allow-origin") is None
+
+    # 4. Direct GET from unrelated origin must not receive Access-Control-Allow-Origin
+    res_get_evil = client.get(
+        "/health",
+        headers={"Origin": "https://malicious-site.com"},
+    )
+    assert res_get_evil.headers.get("access-control-allow-origin") is None

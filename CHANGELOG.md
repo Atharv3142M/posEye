@@ -16,6 +16,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.4] - 2026-11-03
+
+### Added
+- **Synchronous Preload Context Hydration with Sender Validation:** Added synchronous `envSync()` preload bridge method with strict sender validation (`isTrustedSender`), eliminating race conditions and ensuring API tokens and port configurations are immediately and safely available on the initial render frame without token exposure.
+- **Strict Cross-Origin Security:** Configured FastAPI `CORSMiddleware` with an explicit origin allowlist restricted to desktop Electron origins (`null`, `file://`, `127.0.0.1:5173`, `localhost:5173`), preventing unrelated browser origins from accessing local loopback endpoints.
+- **Explicit Asset MIME Types:** FastAPI now explicitly serves `model/gltf-binary` for `.glb`, `image/tiff` for `.tif`, and `application/octet-stream` for `.laz` downloads with cross-origin headers.
+- **Multi-Path NVIDIA SMI Probing:** Enhanced GPU hardware discovery in `system.py` probing standard Windows system paths (`C:\Windows\System32\nvidia-smi.exe`, `C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe`) and exposing granular hardware, driver, and container capability flags.
+- **Asynchronous Background Engine Provisioning:** Electron window launches immediately (< 300ms) while Docker Desktop startup and container status polling run in a non-blocking background task streaming `app-status` events.
+- **Photogrammetry EXIF Timestamp Ingestion:** Injected `DateTimeOriginal`, `DateTime`, `DateTimeDigitized`, `GPSDateStamp`, `GPSTimeStamp`, and standard EXIF `GPSVersionID = (2, 3, 0, 0)` into extracted frames derived strictly from telemetry SRT logs or video container `creation_time` metadata without date fabrication.
+- **Dark CAD Monochrome Design System:** Applied a clean, high-contrast engineering visual palette across all views, eliminating visual distractions and aligning with technical GIS/CAD tooling.
+- **Multi-Resolution Windows Application Icon:** Embedded 16x16, 24x24, 32x32, 48x48, 64x64, 128x128, and 256x256 pixel layers into `posEye.ico`.
+
+### Fixed
+- **Packaged Electron 3D Viewer Asset Loading:** Configured explicit CORS origin allowlist on orchestrator endpoints to allow packaged Electron windows operating under `file://` or `null` origins to stream large 3D glTF models without silent fetch failures while blocking external web origins.
+- **Electron WebContents Navigation on Download:** Programmatically intercepted deliverable export clicks via `window.electronAPI.downloadFile()` and attached `will-download`, `will-navigate`, and `setWindowOpenHandler` listeners to prevent window replacement.
+- **OpenDroneMap 1970 Timestamp Anomaly:** Fixed OpenSfM and ODM quality reports defaulting flight timestamps to `01/01/1970 00:00:00` by ensuring all extracted frames possess valid EXIF dates and times derived from trustworthy source metadata.
+- **Startup Frozen Window Delay:** Eliminated the 90–120s modal blocking freeze during Docker auto-start.
+
+---
+
 ## [0.1.3] - 2026-11-01
 
 ### Added

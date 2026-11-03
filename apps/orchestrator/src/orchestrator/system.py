@@ -34,6 +34,20 @@ def _check_docker_gpu_passthrough() -> bool:
     return False
 
 
+def _find_nvidia_smi() -> str | None:
+    found = shutil.which("nvidia-smi")
+    if found and Path(found).is_file():
+        return str(found)
+    candidates = [
+        Path(r"C:\Windows\System32\nvidia-smi.exe"),
+        Path(r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe"),
+    ]
+    for c in candidates:
+        if c.is_file():
+            return str(c)
+    return None
+
+
 def _gpu() -> dict[str, Any]:
     display_adapter_name: str | None = None
     display_adapter_detected = False
@@ -65,77 +79,97 @@ def _gpu() -> dict[str, Any]:
         except Exception:
             pass
 
-    # 2. Check NVIDIA GPU & telemetry via nvidia-smi
+    # 2. Check NVIDIA GPU & telemetry via nvidia-smi (checking PATH and standard install directories)
+    smi_path = _find_nvidia_smi()
     nvidia_detected = False
     nvidia_driver_ok = False
     nvidia_smi_ok = False
+    driver_version: str | None = None
     gpu_name: str | None = None
     gpu_util: float | None = None
     mem_used: float | None = None
     mem_total: float | None = None
     temp: float | None = None
 
-    try:
-        proc = subprocess.run(
-            [
-                "nvidia-smi",
-                "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu",
-                "--format=csv,noheader,nounits",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=2,
-        )
-        if proc.returncode == 0 and proc.stdout.strip():
-            first_line = proc.stdout.strip().splitlines()[0]
-            parts = [p.strip() for p in first_line.split(",")]
-            if len(parts) >= 5:
-                nvidia_detected = True
-                nvidia_driver_ok = True
-                nvidia_smi_ok = True
-                gpu_name = parts[0]
-                try:
-                    gpu_util = float(parts[1])
-                    mem_used = float(parts[2])
-                    mem_total = float(parts[3])
-                    temp = float(parts[4])
-                except ValueError:
-                    pass
-    except Exception:
-        pass
+    if smi_path:
+        try:
+            proc = subprocess.run(
+                [
+                    smi_path,
+                    "--query-gpu=name,driver_version,utilization.gpu,memory.used,memory.total,temperature.gpu",
+                    "--format=csv,noheader,nounits",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+            if proc.returncode == 0 and proc.stdout.strip():
+                first_line = proc.stdout.strip().splitlines()[0]
+                parts = [p.strip() for p in first_line.split(",")]
+                if len(parts) >= 6:
+                    nvidia_detected = True
+                    nvidia_driver_ok = True
+                    nvidia_smi_ok = True
+                    gpu_name = parts[0]
+                    driver_version = parts[1]
+                    try:
+                        gpu_util = float(parts[2])
+                        mem_used = float(parts[3])
+                        mem_total = float(parts[4])
+                        temp = float(parts[5])
+                    except ValueError:
+                        pass
+        except Exception:
+            pass
+
+    # If nvidia-smi was not executable but WMI reported an NVIDIA GPU
+    if not nvidia_detected and display_adapter_name and "nvidia" in display_adapter_name.lower():
+        nvidia_detected = True
+        gpu_name = display_adapter_name
 
     # 3. Check NVIDIA Container Toolkit
     has_container_toolkit = bool(shutil.which("nvidia-container-cli") or shutil.which("nvidia-ctk"))
 
     # 4. Check Docker GPU Passthrough
     docker_gpu_passthrough = _check_docker_gpu_passthrough() if nvidia_detected else False
+    engine_gpu_capable = bool(docker_gpu_passthrough and has_container_toolkit)
+    gpu_processing_active = False
 
     # 5. Determine acceleration state truthfully
-    if docker_gpu_passthrough and has_container_toolkit:
+    if engine_gpu_capable:
         accel = "CUDA GPU container acceleration active"
         message = f"{gpu_name or 'NVIDIA GPU'} (CUDA acceleration active)"
-    elif nvidia_detected:
-        accel = "CPU processing (CUDA GPU detected; requires nvidia-container-toolkit for container passthrough)"
-        message = f"{gpu_name or 'NVIDIA GPU'} (Driver OK, CPU processing)"
+    elif nvidia_detected and nvidia_driver_ok:
+        accel = "CPU processing (NVIDIA GPU detected; container runs on CPU)"
+        message = f"{gpu_name or 'NVIDIA GPU'} (Driver {driver_version or 'OK'} · CPU processing)"
     elif display_adapter_detected:
         accel = "CPU processing (standard NodeODM container)"
-        message = f"{display_adapter_name} (Display Adapter, CPU processing)"
+        message = f"{display_adapter_name} (Display Adapter · CPU processing)"
     else:
         accel = "CPU processing"
         message = "No discrete GPU detected. NodeODM will use CPU processing."
 
+    gpu_hardware_present = bool(nvidia_detected or display_adapter_detected)
+
     return {
-        "gpuAvailable": bool(nvidia_detected or display_adapter_detected),
+        "gpuAvailable": gpu_hardware_present,
+        "gpuHardware": gpu_hardware_present,
         "gpuName": gpu_name or display_adapter_name,
+        "driverVersion": driver_version,
         "displayAdapterDetected": display_adapter_detected,
         "displayAdapterName": display_adapter_name,
         "nvidiaGpuDetected": nvidia_detected,
+        "nvidiaDriver": nvidia_driver_ok,
         "nvidiaDriverAvailable": nvidia_driver_ok,
+        "nvidiaSmi": nvidia_smi_ok,
         "nvidiaSmiAvailable": nvidia_smi_ok,
         "nvidiaContainerToolkitAvailable": has_container_toolkit,
+        "dockerGpuAccess": docker_gpu_passthrough,
         "dockerGpuPassthrough": docker_gpu_passthrough,
-        "containerCudaActive": bool(docker_gpu_passthrough and has_container_toolkit),
-        "cudaAvailable": bool(docker_gpu_passthrough and has_container_toolkit),
+        "engineGpuCapability": engine_gpu_capable,
+        "gpuProcessingActive": gpu_processing_active,
+        "containerCudaActive": engine_gpu_capable,
+        "cudaAvailable": engine_gpu_capable,
         "cudaDriverAvailable": nvidia_driver_ok,
         "gpuUtilization": gpu_util,
         "gpuMemoryUsed": mem_used,

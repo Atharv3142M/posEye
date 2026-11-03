@@ -46,6 +46,9 @@ For each retained frame passing the Laplacian sharpness filter and dHash dedupli
    - **Relative Altitude:** Takeoff-relative flight altitude (e.g. `rel_alt`) is **never** promoted to absolute altitude in EXIF, preventing severe z-axis registration skew in photogrammetry solvers.
    - **Altitude Reference (`GPSAltitudeRef`):** Encoded as a byte flag according to EXIF specifications: `0` represents altitude above sea level; `1` represents altitude below sea level. Negative absolute altitudes are preserved using this reference flag.
 4. **EXIF Injection:** Injected directly into the JPEG binary headers via `piexif` (`GPSLatitude`, `GPSLatitudeRef`, `GPSLongitude`, `GPSLongitudeRef`, `GPSAltitude`, `GPSAltitudeRef`).
+5. **Temporal Metadata Injection (v0.1.4 Correction):**
+   - Standard EXIF temporal tags (`DateTimeOriginal`, `DateTime`, `DateTimeDigitized`, `GPSDateStamp`, `GPSTimeStamp`) and standard `GPSVersionID = (2, 3, 0, 0)` are injected using UTC/local time offsets derived from the source video and telemetry.
+   - Eliminates OpenSfM and OpenDroneMap summary reports falling back to the Unix epoch default (`01/01/1970 00:00:00`), ensuring downstream GIS catalogues maintain correct temporal indices.
 
 ---
 

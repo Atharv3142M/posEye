@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiBaseSync, fetchJson } from "../api";
+import { apiBaseSync, apiTokenSync, fetchJson } from "../api";
 import Button from "../components/Button";
 import Card from "../components/Card";
 import StatusBadge from "../components/StatusBadge";
@@ -29,7 +29,14 @@ export default function ProjectsList() {
   }
 
   function download(id: string, asset: string) {
-    window.open(`${apiBaseSync()}/jobs/${id}/assets/${asset}`, "_blank");
+    const token = apiTokenSync();
+    const url = `${apiBaseSync()}/jobs/${id}/assets/${asset}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = asset;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   }
 
   return (

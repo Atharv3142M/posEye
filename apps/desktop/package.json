@@ -1,6 +1,6 @@
 {
   "name": "poseye-desktop",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "posEye — Single-Pass Drone Video to Accurate 3D Model Generation System",
   "main": "electron/main.cjs",

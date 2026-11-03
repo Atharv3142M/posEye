@@ -460,9 +460,16 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
         setTimeout(doResetCamera, 50);
       },
       undefined,
-      (err) => {
+      (err: any) => {
         if (currentLoadId !== loadIdRef.current) return;
-        const errorMsg = err instanceof Error ? err.message : "Failed to load 3D GLB model.";
+        let errorMsg = "Failed to load 3D GLB model.";
+        if (err instanceof Error) {
+          errorMsg = err.message;
+        } else if (err?.target?.status) {
+          errorMsg = `HTTP ${err.target.status}: ${err.target.statusText || "Unable to retrieve model asset"}`;
+        } else if (typeof err === "string") {
+          errorMsg = err;
+        }
         onLoadError?.(errorMsg);
       }
     );

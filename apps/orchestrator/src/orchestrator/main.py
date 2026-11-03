@@ -61,7 +61,7 @@ async def lifespan(app: FastAPI):
     py_ver = sys.version.split()[0]
     _app_log(
         "INFO",
-        f"posEye orchestrator v0.1.3 started — Python {py_ver} | "
+        f"posEye orchestrator v0.1.4 started — Python {py_ver} | "
         f"fastapi={fa_ver} trimesh={tm_ver} httpx={hx_ver}",
     )
 
@@ -90,18 +90,32 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="posEye Orchestrator", version="0.1.3", lifespan=lifespan)
+app = FastAPI(title="posEye Orchestrator", version="0.1.4", lifespan=lifespan)
 
-# Restrict CORS to allowed local origins (no wildcard '*')
+# Allowed CORS origins: restricted strictly to desktop Electron origins and local development hosts
+DEFAULT_ALLOWED_ORIGINS = [
+    "null",
+    "file://",
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
+    "http://127.0.0.1:8765",
+    "http://localhost:8765",
+    "app://-",
+    "app://.",
+]
+_env_origins = os.environ.get("DT_ALLOWED_ORIGINS")
+allowed_origins = list(DEFAULT_ALLOWED_ORIGINS)
+if _env_origins:
+    for _o in _env_origins.split(","):
+        _o = _o.strip()
+        if _o and _o not in allowed_origins:
+            allowed_origins.append(_o)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3001",
-        "http://127.0.0.1:3001",
-    ],
-    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_origins=allowed_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS", "HEAD"],
     allow_headers=["*"],
 )
 
@@ -176,7 +190,7 @@ def health() -> dict:
         "serviceId": "poseye-orchestrator",
         "product": "posEye",
         "component": "Orchestrator",
-        "orchestratorVersion": "0.1.3",
+        "orchestratorVersion": "0.1.4",
         "ok": True,
         "defaultPreset": detect_preset(),
         "ffmpeg": status.get("ffmpeg"),
@@ -336,7 +350,25 @@ def job_asset(job_id: str, asset: str) -> FileResponse:
         path = mapping.get(asset)
     if path is None or not path.is_file():
         raise HTTPException(404, f"Asset not available: {asset}")
-    return FileResponse(path, filename=path.name)
+
+    media_types = {
+        ".glb": "model/gltf-binary",
+        ".gltf": "model/gltf+json",
+        ".tif": "image/tiff",
+        ".tiff": "image/tiff",
+        ".laz": "application/octet-stream",
+        ".las": "application/octet-stream",
+        ".pdf": "application/pdf",
+        ".zip": "application/zip",
+        ".json": "application/json",
+    }
+    media_type = media_types.get(path.suffix.lower(), "application/octet-stream")
+    headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS, HEAD",
+    }
+    return FileResponse(path, media_type=media_type, filename=path.name, headers=headers)
 
 
 @app.get("/jobs/{job_id}/logs", dependencies=[Depends(verify_api_token)])

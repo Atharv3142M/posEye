@@ -106,3 +106,64 @@ def test_srt_tolerance_and_gap_handling():
     m3 = sample_at(samples, 6.0, max_offset_s=1.5, stats=stats)
     assert m3 is None
     assert stats.rejected_offset >= 1
+
+
+def test_exif_timestamp_and_gps_version(tmp_path: Path):
+    from datetime import datetime, timezone
+    import piexif
+
+    img = np.zeros((32, 32, 3), dtype=np.uint8)
+    path = tmp_path / "ts_test.jpg"
+    cv2.imwrite(str(path), img)
+
+    dt = datetime(2024, 5, 18, 14, 22, 10, tzinfo=timezone.utc)
+    write_gps_exif(path, 28.6139, 77.2090, altitude=150.0, altitude_ref="absolute", timestamp=dt)
+
+    exif = piexif.load(str(path))
+    # EXIF 2.3 GPS Version ID must be (2, 3, 0, 0)
+    assert exif["GPS"][piexif.GPSIFD.GPSVersionID] == (2, 3, 0, 0)
+    # DateTimeOriginal must be formatted YYYY:MM:DD HH:MM:SS
+    assert exif["Exif"][piexif.ExifIFD.DateTimeOriginal] == b"2024:05:18 14:22:10"
+    assert exif["0th"][piexif.ImageIFD.DateTime] == b"2024:05:18 14:22:10"
+    # GPS DateStamp and TimeStamp
+    assert exif["GPS"][piexif.GPSIFD.GPSDateStamp] == b"2024:05:18"
+    assert exif["GPS"][piexif.GPSIFD.GPSTimeStamp] == ((14, 1), (22, 1), (10, 1))
+
+
+def test_trustworthy_srt_datetime_parsing(tmp_path: Path):
+    from datetime import datetime, timezone
+    srt_text = """1
+00:00:01,000 --> 00:00:02,000
+2024-05-18 14:22:10,500
+GPS(28.613900, 77.209000, 150.0)
+
+2
+00:00:02,000 --> 00:00:03,000
+HOME(77.2090, 28.6139) 2024.05.18 14:22:11
+GPS(28.614000, 77.209100, 151.0)
+"""
+    f = tmp_path / "telemetry_with_dates.srt"
+    f.write_text(srt_text)
+
+    samples = parse_srt(f)
+    assert len(samples) == 2
+    assert samples[0].timestamp == datetime(2024, 5, 18, 14, 22, 10, 500000, tzinfo=timezone.utc)
+    assert samples[1].timestamp == datetime(2024, 5, 18, 14, 22, 11, 0, tzinfo=timezone.utc)
+
+
+def test_no_fabricated_dates_when_metadata_missing(tmp_path: Path):
+    import piexif
+    img = np.zeros((32, 32, 3), dtype=np.uint8)
+    path = tmp_path / "no_ts.jpg"
+    cv2.imwrite(str(path), img)
+
+    # When timestamp is None, no DateTimeOriginal or GPSDateStamp should be written
+    write_gps_exif(path, 28.6139, 77.2090, altitude=150.0, altitude_ref="absolute", timestamp=None)
+
+    exif = piexif.load(str(path))
+    # Coordinates are still written accurately
+    assert exif["GPS"][piexif.GPSIFD.GPSVersionID] == (2, 3, 0, 0)
+    # But capture dates must NOT be fabricated
+    assert piexif.ExifIFD.DateTimeOriginal not in exif.get("Exif", {})
+    assert piexif.GPSIFD.GPSDateStamp not in exif.get("GPS", {})
+    assert piexif.GPSIFD.GPSTimeStamp not in exif.get("GPS", {})

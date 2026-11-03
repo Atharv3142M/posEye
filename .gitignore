@@ -55,3 +55,6 @@ Docs/prompt.md
 dist-installer/
 *.spec
 
+/.agents
+/.claude
+skills-lock.json

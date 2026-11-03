@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from fractions import Fraction
 from pathlib import Path
 
@@ -31,6 +32,7 @@ def write_gps_exif(
     longitude: float,
     altitude: float | None = None,
     altitude_ref: str = "absolute",
+    timestamp: datetime | None = None,
 ) -> None:
     path = Path(image_path)
     try:
@@ -38,7 +40,13 @@ def write_gps_exif(
     except Exception:
         exif = {"0th": {}, "Exif": {}, "GPS": {}, "1st": {}, "thumbnail": None}
 
+    if "0th" not in exif or not isinstance(exif["0th"], dict):
+        exif["0th"] = {}
+    if "Exif" not in exif or not isinstance(exif["Exif"], dict):
+        exif["Exif"] = {}
+
     gps: dict = dict(exif.get("GPS") or {})
+    gps[piexif.GPSIFD.GPSVersionID] = (2, 3, 0, 0)
     lat_ref = "N" if latitude >= 0 else "S"
     lon_ref = "E" if longitude >= 0 else "W"
     gps[piexif.GPSIFD.GPSLatitudeRef] = lat_ref.encode("ascii")
@@ -55,6 +63,18 @@ def write_gps_exif(
         # Leave EXIF altitude unset if semantics are relative or unknown
         gps.pop(piexif.GPSIFD.GPSAltitude, None)
         gps.pop(piexif.GPSIFD.GPSAltitudeRef, None)
+
+    if timestamp is not None:
+        dt_str = timestamp.strftime("%Y:%m:%d %H:%M:%S").encode("ascii")
+        exif["0th"][piexif.ImageIFD.DateTime] = dt_str
+        exif["Exif"][piexif.ExifIFD.DateTimeOriginal] = dt_str
+        exif["Exif"][piexif.ExifIFD.DateTimeDigitized] = dt_str
+        gps[piexif.GPSIFD.GPSDateStamp] = timestamp.strftime("%Y:%m:%d").encode("ascii")
+        gps[piexif.GPSIFD.GPSTimeStamp] = (
+            (timestamp.hour, 1),
+            (timestamp.minute, 1),
+            (timestamp.second, 1),
+        )
 
     exif["GPS"] = gps
     piexif.insert(piexif.dump(exif), str(path))

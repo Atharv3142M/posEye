@@ -331,10 +331,23 @@ async function ensureNodeOdm() {
     app.isPackaged ? path.join(path.dirname(process.resourcesPath), "third_party", "nodeodm.tar") : null,
   ].filter(Boolean);
 
+  const PINNED_IMAGE = "opendronemap/nodeodm:3.6.2";
+  const FALLBACK_IMAGE = "opendronemap/nodeodm";
+  let targetImage = PINNED_IMAGE;
+
   let imageInDocker = false;
   try {
-    const imagesOut = await run("docker", ["images", "-q", "opendronemap/nodeodm"]);
-    imageInDocker = Boolean(imagesOut && imagesOut.trim());
+    const pinnedOut = await run("docker", ["images", "-q", PINNED_IMAGE]);
+    if (pinnedOut && pinnedOut.trim()) {
+      imageInDocker = true;
+      targetImage = PINNED_IMAGE;
+    } else {
+      const fallbackOut = await run("docker", ["images", "-q", FALLBACK_IMAGE]);
+      if (fallbackOut && fallbackOut.trim()) {
+        imageInDocker = true;
+        targetImage = FALLBACK_IMAGE;
+      }
+    }
   } catch { /* ignore */ }
 
   if (!imageInDocker) {
@@ -355,14 +368,14 @@ async function ensureNodeOdm() {
     if (!imageInDocker && app.isPackaged) {
       throw new Error(
         "Offline NodeODM image not found.\n\n" +
-        "The packaged application requires the NodeODM image in local Docker, but 'nodeodm.tar' was not found in application resources and 'opendronemap/nodeodm' is not loaded in Docker.\n\n" +
-        "To load it, run:\n  docker pull opendronemap/nodeodm\nor load your offline archive:\n  docker load -i <path-to-nodeodm.tar>"
+        "The packaged application requires the NodeODM image in local Docker, but 'nodeodm.tar' was not found in application resources and 'opendronemap/nodeodm:3.6.2' is not loaded in Docker.\n\n" +
+        "To load it, run:\n  docker pull opendronemap/nodeodm:3.6.2\nor load your offline archive:\n  docker load -i <path-to-nodeodm.tar>"
       );
     }
   }
 
   // Run a new container
-  log("info", "Starting new NodeODM container…");
+  log("info", `Starting new NodeODM container using ${targetImage}…`);
   try {
     // Remove any dead container with same name first
     await run("docker", ["rm", "-f", "poseye-nodeodm"]).catch(() => {});
@@ -371,7 +384,7 @@ async function ensureNodeOdm() {
       "--name", "poseye-nodeodm",
       "--restart", "unless-stopped",
       "-p", "3000:3000",
-      "opendronemap/nodeodm",
+      targetImage,
     ]);
   } catch (err) {
     const msg = String(err.message || err);
@@ -412,7 +425,7 @@ async function startApi() {
       const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(3000) });
       if (res.ok) {
         const data = await res.json();
-        if (data.serviceId === "poseye-orchestrator" && data.orchestratorVersion === "0.1.3") {
+        if (data.serviceId === "poseye-orchestrator" && data.orchestratorVersion === "0.1.4") {
           log("info", `Port ${API_PORT} in use by compatible posEye orchestrator ${data.orchestratorVersion} — connecting`);
           return;
         }
@@ -479,7 +492,7 @@ async function waitForApi() {
       const res = await fetch(`${API_BASE}/health`);
       if (res.ok) {
         const data = await res.json();
-        if (data && data.serviceId === "poseye-orchestrator" && data.orchestratorVersion === "0.1.3") {
+        if (data && data.serviceId === "poseye-orchestrator" && data.orchestratorVersion === "0.1.4") {
           log("info", `posEye orchestrator v${data.orchestratorVersion} is ready and verified`);
           return;
         }
@@ -492,6 +505,15 @@ async function waitForApi() {
   throw new Error(`Orchestrator failed to respond at ${API_BASE}/health after ${STARTUP_TIMEOUT_MS}ms: ${lastError}`);
 }
 
+// ─── Status management ────────────────────────────────────────────────────────
+function updateStatus(phase, message) {
+  startupStatus = { phase, message };
+  log("info", `[Status: ${phase}] ${message}`);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("app-status", startupStatus);
+  }
+}
+
 // ─── Window ───────────────────────────────────────────────────────────────────
 function createWindow() {
   const iconIco = path.join(__dirname, "posEye.ico");
@@ -502,7 +524,7 @@ function createWindow() {
     height: 900,
     minWidth: 1024,
     minHeight: 600,
-    backgroundColor: "#1a1f24",
+    backgroundColor: "#0d1117",
     autoHideMenuBar: true,
     title: "posEye — 3D Drone Reconstruction",
     icon: iconPath,
@@ -513,10 +535,35 @@ function createWindow() {
     },
   });
 
+  // Safe window open and navigation handling
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+        shell.openExternal(url);
+      }
+    } catch {}
+    return { action: "deny" };
+  });
+
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    if (mainWindow && url !== mainWindow.webContents.getURL()) {
+      event.preventDefault();
+      try {
+        const parsed = new URL(url);
+        if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+          shell.openExternal(url);
+        }
+      } catch {}
+    }
+  });
+
+  mainWindow.webContents.session.on("will-download", (event, item) => {
+    log("info", `Download started: ${item.getFilename()} (${item.getTotalBytes()} bytes)`);
+  });
+
   if (!app.isPackaged) {
     mainWindow.loadURL("http://127.0.0.1:5173");
-    // Uncomment to open DevTools automatically in dev:
-    // mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
   }
@@ -527,17 +574,98 @@ function createWindow() {
   });
 }
 
+// ─── Background Service Initialization ────────────────────────────────────────
+async function initializeServices() {
+  const startupStart = Date.now();
+  updateStatus("api", "Starting orchestrator backend…");
+
+  // 1. Python orchestrator API
+  try {
+    await startApi();
+    await waitForApi();
+    log("info", `Orchestrator ready in ${Date.now() - startupStart}ms`);
+    updateStatus("api_ready", "Orchestrator backend ready");
+  } catch (e) {
+    log("error", `Orchestrator startup failed: ${e.message}`);
+    updateStatus("api_error", `Orchestrator failed: ${e.message}`);
+    return;
+  }
+
+  // 2. Hardware virtualization check
+  try {
+    const virtOk = await checkVirtualization();
+    if (!virtOk) {
+      log("warn", "Hardware virtualization may be disabled in BIOS/UEFI");
+    }
+  } catch (e) {
+    log("warn", `Virtualization check failed: ${e.message}`);
+  }
+
+  // 3. Docker check
+  const dockerInstalled = await isDockerInstalled();
+  if (!dockerInstalled) {
+    log("warn", "Docker is not installed on this system");
+    updateStatus("docker_missing", "Docker Desktop is not installed");
+    return;
+  }
+
+  const dockerRunning = await isDockerDaemonRunning();
+  if (!dockerRunning) {
+    updateStatus("docker_starting", "Starting Docker Desktop…");
+    const started = await tryStartDockerDesktop();
+    if (!started) {
+      updateStatus("docker_stopped", "Docker Desktop is installed but not running");
+      return;
+    }
+  }
+
+  // 4. NodeODM container setup
+  updateStatus("nodeodm_starting", "Provisioning NodeODM container (3.6.2)…");
+  try {
+    await ensureNodeOdm();
+    updateStatus("ready", `posEye ready — all services operational (${Date.now() - startupStart}ms total)`);
+  } catch (e) {
+    log("warn", `NodeODM container provisioning notice: ${e.message}`);
+    updateStatus("nodeodm_offline", `NodeODM container not ready: ${e.message}`);
+  }
+}
+
 // ─── App lifecycle ────────────────────────────────────────────────────────────
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
 app.whenReady().then(async () => {
+  if (process.platform === "win32") {
+    app.setAppUserModelId("org.icarus.poseye");
+  }
+
   log("info", `posEye starting — Electron ${process.versions.electron}, Node ${process.versions.node}`);
   log("info", `Platform: ${process.platform} ${process.arch}`);
 
+  // ── Sender validation helper ───────────────────────────────────────────────
+  function isTrustedSender(e) {
+    if (!mainWindow || mainWindow.isDestroyed()) return false;
+    return Boolean(e && e.sender && e.sender.id === mainWindow.webContents.id);
+  }
+
   // ── IPC Handlers ──────────────────────────────────────────────────────────
-  ipcMain.handle("dialog:video", async () => {
+  ipcMain.on("env:sync", (e) => {
+    if (!isTrustedSender(e)) {
+      log("warn", "Rejected unauthorized env:sync invocation");
+      e.returnValue = null;
+      return;
+    }
+    e.returnValue = {
+      apiBase: API_BASE,
+      apiToken: API_TOKEN,
+      packaged: app.isPackaged,
+      version: app.getVersion(),
+    };
+  });
+
+  ipcMain.handle("dialog:video", async (e) => {
+    if (!isTrustedSender(e)) return null;
     const res = await dialog.showOpenDialog(mainWindow, {
       title: "Select drone video",
       filters: [{ name: "Video files", extensions: ["mp4", "mov", "mkv", "avi", "m4v", "mts", "mp2t"] }],
@@ -546,7 +674,8 @@ app.whenReady().then(async () => {
     return res.canceled ? null : res.filePaths[0];
   });
 
-  ipcMain.handle("dialog:srt", async () => {
+  ipcMain.handle("dialog:srt", async (e) => {
+    if (!isTrustedSender(e)) return null;
     const res = await dialog.showOpenDialog(mainWindow, {
       title: "Select telemetry SRT file",
       filters: [{ name: "SRT telemetry", extensions: ["srt"] }],
@@ -555,7 +684,8 @@ app.whenReady().then(async () => {
     return res.canceled ? null : res.filePaths[0];
   });
 
-  ipcMain.handle("dialog:glb", async () => {
+  ipcMain.handle("dialog:glb", async (e) => {
+    if (!isTrustedSender(e)) return null;
     const res = await dialog.showOpenDialog(mainWindow, {
       title: "Open 3D model (GLB)",
       filters: [{ name: "glTF Binary", extensions: ["glb"] }],
@@ -564,7 +694,8 @@ app.whenReady().then(async () => {
     return res.canceled ? null : res.filePaths[0];
   });
 
-  ipcMain.handle("dialog:save", async (_, defaultName, ext) => {
+  ipcMain.handle("dialog:save", async (e, defaultName, ext) => {
+    if (!isTrustedSender(e)) return null;
     const res = await dialog.showSaveDialog(mainWindow, {
       defaultPath: defaultName || "export",
       filters: [{ name: ext?.toUpperCase() || "File", extensions: [ext || "*"] }],
@@ -572,15 +703,18 @@ app.whenReady().then(async () => {
     return res.canceled ? null : res.filePath;
   });
 
-  ipcMain.handle("env", () => ({
-    apiBase: API_BASE,
-    apiToken: API_TOKEN,
-    packaged: app.isPackaged,
-    version: app.getVersion(),
-    repoRoot: repoRoot(),
-  }));
+  ipcMain.handle("env", (e) => {
+    if (!isTrustedSender(e)) return null;
+    return {
+      apiBase: API_BASE,
+      apiToken: API_TOKEN,
+      packaged: app.isPackaged,
+      version: app.getVersion(),
+    };
+  });
 
-  ipcMain.handle("read:file", (_e, filePath) => {
+  ipcMain.handle("read:file", (e, filePath) => {
+    if (!isTrustedSender(e)) return null;
     if (!filePath || typeof filePath !== "string") return null;
     try {
       const resolved = path.resolve(filePath);
@@ -588,13 +722,14 @@ app.whenReady().then(async () => {
       const stat = fs.statSync(resolved);
       if (!stat.isFile()) return null;
       return fs.readFileSync(resolved);
-    } catch (e) {
-      log("error", `read:file failed for ${filePath}: ${e.message}`);
+    } catch (err) {
+      log("error", `read:file failed for ${filePath}: ${err.message}`);
       return null;
     }
   });
 
-  ipcMain.handle("open:external", (_e, url) => {
+  ipcMain.handle("open:external", (e, url) => {
+    if (!isTrustedSender(e)) return;
     if (typeof url !== "string") return;
     try {
       const parsed = new URL(url);
@@ -608,12 +743,19 @@ app.whenReady().then(async () => {
     }
   });
 
-  ipcMain.handle("get:logs", () => appLog.slice(-200));
+  ipcMain.handle("get:logs", (e) => {
+    if (!isTrustedSender(e)) return [];
+    return appLog.slice(-200);
+  });
 
-  ipcMain.handle("get:status", () => startupStatus);
+  ipcMain.handle("get:status", (e) => {
+    if (!isTrustedSender(e)) return null;
+    return startupStatus;
+  });
 
   // Restart the API process
-  ipcMain.handle("restart:api", async () => {
+  ipcMain.handle("restart:api", async (e) => {
+    if (!isTrustedSender(e)) return { ok: false };
     if (apiProc && !apiProc.killed) {
       apiProc.kill();
       await sleep(1000);
@@ -623,63 +765,13 @@ app.whenReady().then(async () => {
     return { ok: true };
   });
 
-  // ── Startup sequence ───────────────────────────────────────────────────────
-  let startupErrors = [];
-
-  // 1. Virtualization check (non-blocking warning)
-  startupStatus = { phase: "checking", message: "Checking system…" };
-  try {
-    const virtOk = await checkVirtualization();
-    if (!virtOk) {
-      log("warn", "Hardware virtualization may be disabled in BIOS/UEFI");
-      startupErrors.push(
-        "⚠ Hardware virtualization appears disabled in BIOS/UEFI.\n\n" +
-        "Docker requires Intel VT-x or AMD-V to be enabled.\n" +
-        "Enable it in your BIOS settings and reboot, then relaunch posEye."
-      );
-    }
-  } catch (e) {
-    log("warn", `Virtualization check failed: ${e.message}`);
-  }
-
-  // 2. NodeODM (Docker-based reconstruction engine)
-  startupStatus = { phase: "nodeodm", message: "Starting NodeODM…" };
-  try {
-    await ensureNodeOdm();
-  } catch (e) {
-    log("error", `NodeODM startup failed: ${e.message}`);
-    startupErrors.push(`NodeODM: ${e.message}`);
-    // Non-fatal — app can still work without NodeODM if user brings their own
-  }
-
-  // 3. Python orchestrator API
-  startupStatus = { phase: "api", message: "Starting orchestrator…" };
-  try {
-    await startApi();
-    await waitForApi();
-  } catch (e) {
-    log("error", `Orchestrator startup failed: ${e.message}`);
-    startupErrors.push(
-      `Orchestrator API failed to start:\n${e.message}\n\n` +
-      "Check that Python 3.11+ is installed and setup.ps1 has been run."
-    );
-  }
-
-  // Show startup errors (if any) as a single dialog
-  if (startupErrors.length > 0) {
-    const msg = startupErrors.join("\n\n──────────────────────\n\n");
-    await dialog.showMessageBox({
-      type: "warning",
-      title: "posEye — Startup Warnings",
-      message: "posEye started with warnings:",
-      detail: msg,
-      buttons: ["Continue Anyway"],
-    });
-  }
-
-  startupStatus = { phase: "ready", message: "Ready" };
-  log("info", "Startup complete — creating window");
+  // Create UI window immediately without waiting for heavy background tasks
   createWindow();
+
+  // Kick off background service setup without blocking window display
+  initializeServices().catch((err) => {
+    log("error", `Background services initialization error: ${err.message}`);
+  });
 });
 
 // ── Shutdown ─────────────────────────────────────────────────────────────────

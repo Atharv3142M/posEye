@@ -22,7 +22,7 @@ posEye incorporates, bundles, or interfaces with several open-source and third-p
 ## 2. Integrated Photogrammetry Core
 
 ### OpenDroneMap (ODM) / NodeODM
-- **Component:** Docker container image `opendronemap/nodeodm:latest`
+- **Component:** Docker container image `opendronemap/nodeodm:3.6.2` (pinned)
 - **License:** GNU General Public License v3.0 (GPLv3)
 - **Copyright:** (c) 2014-2026 OpenDroneMap contributors
 - **Notice:** posEye communicates with NodeODM over standard local HTTP REST and WebSocket APIs (`http://localhost:3000`). No proprietary modifications are linked into the NodeODM core. Source code is available at https://github.com/OpenDroneMap/NodeODM and https://github.com/OpenDroneMap/ODM.

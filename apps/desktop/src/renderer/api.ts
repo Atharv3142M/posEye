@@ -120,7 +120,8 @@ declare global {
       pickGlb:      () => Promise<string | null>;
       saveFile:     (defaultName: string, ext: string) => Promise<string | null>;
       // Environment
-      env:          () => Promise<{ apiBase: string; packaged: boolean }>;
+      env:          () => Promise<{ apiBase: string; apiToken?: string; packaged: boolean }>;
+      envSync:      () => { apiBase: string; apiToken?: string; packaged: boolean } | null;
       // File utilities
       readFile:     (filePath: string) => Promise<string | null>;
       pathForFile:  (file: File) => string;
@@ -132,6 +133,7 @@ declare global {
       restartApi:   () => Promise<{ ok: boolean }>;
       // Events (returns unsubscribe fn)
       onAppLog:     (callback: (entry: { ts: string; level: string; message: string }) => void) => () => void;
+      onAppStatus?: (callback: (status: { phase: string; message: string }) => void) => () => void;
     };
   }
 }
@@ -144,25 +146,35 @@ export class ApiError extends Error {
   }
 }
 
-let cachedBase = "http://127.0.0.1:8765";
-let cachedToken = "";
+const initialEnv = typeof window !== "undefined" && window.dt?.envSync ? window.dt.envSync() : null;
+let cachedBase = initialEnv?.apiBase || "http://127.0.0.1:8765";
+let cachedToken = initialEnv?.apiToken || "";
 
 export async function apiBase(): Promise<string> {
   if (window.dt?.env) {
     const env = await window.dt.env();
     cachedBase = env.apiBase;
-    if ((env as any).apiToken) {
-      cachedToken = (env as any).apiToken;
+    if (env.apiToken) {
+      cachedToken = env.apiToken;
     }
   }
   return cachedBase;
 }
 
 export function apiBaseSync(): string {
+  if (!cachedToken && typeof window !== "undefined" && window.dt?.envSync) {
+    const s = window.dt.envSync();
+    if (s?.apiBase) cachedBase = s.apiBase;
+    if (s?.apiToken) cachedToken = s.apiToken;
+  }
   return cachedBase;
 }
 
 export function apiTokenSync(): string {
+  if (!cachedToken && typeof window !== "undefined" && window.dt?.envSync) {
+    const s = window.dt.envSync();
+    if (s?.apiToken) cachedToken = s.apiToken;
+  }
   return cachedToken;
 }
 

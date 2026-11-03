@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import subprocess
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from pipeline.errors import FfmpegUnavailable, VideoUnreadable
@@ -17,6 +18,7 @@ class VideoInfo:
     height: int | None
     fps: float | None
     size_bytes: int
+    creation_time: datetime | None = None
 
 
 def ffmpeg_version(ffmpeg: str | None = None) -> str:
@@ -51,6 +53,19 @@ def probe_video(path: str | Path) -> VideoInfo:
     fp = re.search(r"(\d+(?:\.\d+)?)\s*fps", text)
     if fp:
         fps = float(fp.group(1))
+
+    creation_time = None
+    ct_m = re.search(
+        r"\bcreation_time\s*:\s*([0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?Z?)",
+        text,
+    )
+    if ct_m:
+        try:
+            iso_str = ct_m.group(1).replace("Z", "+00:00")
+            creation_time = datetime.fromisoformat(iso_str)
+        except Exception:
+            creation_time = None
+
     if duration is None and width is None:
         raise VideoUnreadable(text.strip()[:400] or f"Unreadable video: {video}")
-    return VideoInfo(video, duration, width, height, fps, video.stat().st_size)
+    return VideoInfo(video, duration, width, height, fps, video.stat().st_size, creation_time)

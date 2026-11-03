@@ -37,28 +37,28 @@ export default function MeasurementTools({
           onClick={() => onTool(tool === "distance" ? "orbit" : "distance")}
           style={{ flex: 1, minWidth: 100 }}
         >
-          {tool === "distance" ? "📏 Measuring" : "📏 Distance"}
+          {tool === "distance" ? "Measuring Active" : "Measure Distance"}
         </Button>
         <Button
           variant="secondary"
           onClick={() => onTool("screenshot")}
           style={{ flex: 1, minWidth: 100 }}
         >
-          📷 Capture
+          Capture View
         </Button>
       </div>
 
       {tool === "distance" && (
         <div style={{
-          background: "rgba(24, 188, 156, 0.12)",
-          border: "1px solid rgba(24, 188, 156, 0.3)",
+          background: "var(--bg-panel-header)",
+          border: "1px solid var(--border-strong)",
           borderRadius: "var(--radius)",
           padding: "8px 10px",
           fontSize: 11,
           color: "var(--text-primary)",
         }}>
           <strong>Point-to-Point Measurement:</strong>
-          <div style={{ marginTop: 4, color: "var(--text-muted)" }}>
+          <div style={{ marginTop: 4, color: "var(--text-secondary)" }}>
             Click Point A on the 3D surface, then click Point B to calculate distance.
           </div>
           {hasActiveMeasure && onClearMeasure && (
@@ -131,11 +131,11 @@ export default function MeasurementTools({
           <span className="stat-label">Model status</span>
           <span className="stat-value" style={{ textTransform: "capitalize" }}>
             {modelStatus === "ready" ? (
-              <span style={{ color: "#27ae60", fontWeight: 600 }}>Loaded</span>
+              <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>Loaded</span>
             ) : modelStatus === "loading" ? (
-              <span style={{ color: "#3498db" }}>Loading…</span>
+              <span style={{ color: "var(--text-secondary)" }}>Loading…</span>
             ) : modelStatus === "error" ? (
-              <span style={{ color: "#e74c3c" }}>Load error</span>
+              <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>Load Error</span>
             ) : (
               <span className="muted">No model file</span>
             )}

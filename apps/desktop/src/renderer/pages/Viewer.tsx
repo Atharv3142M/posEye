@@ -93,6 +93,16 @@ export default function Viewer() {
     window.addEventListener("mouseup", onMouseUp);
   };
 
+  const handleExport = (asset: string, defaultFilename: string) => {
+    const url = assetUrl(asset);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = defaultFilename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
   const isGeoreferenced = Boolean(job?.isGeoreferenced);
   const hasGpsTelemetry = Boolean(job && job.geotagged > 0);
 
@@ -118,33 +128,33 @@ export default function Viewer() {
 
         {id && job?.hasModel && (
           <>
-            <a className="btn btn-secondary" href={assetUrl("model.glb")} download>
+            <Button variant="secondary" onClick={() => handleExport("model.glb", `${job?.name || "model"}.glb`)}>
               Export GLB
-            </a>
+            </Button>
             {job.assets?.laz && (
-              <a className="btn btn-secondary" href={assetUrl("model.laz")} download>
+              <Button variant="secondary" onClick={() => handleExport("model.laz", `${job?.name || "model"}.laz`)}>
                 Export LAZ
-              </a>
+              </Button>
             )}
             {job.assets?.orthophoto && (
-              <a className="btn btn-secondary" href={assetUrl("orthophoto.tif")} download>
+              <Button variant="secondary" onClick={() => handleExport("orthophoto.tif", `${job?.name || "model"}_orthophoto.tif`)}>
                 Export GeoTIFF
-              </a>
+              </Button>
             )}
             {job.assets?.dsm && (
-              <a className="btn btn-secondary" href={assetUrl("dsm.tif")} download>
+              <Button variant="secondary" onClick={() => handleExport("dsm.tif", `${job?.name || "model"}_dsm.tif`)}>
                 Export DSM
-              </a>
+              </Button>
             )}
             {job.assets?.dtm && (
-              <a className="btn btn-secondary" href={assetUrl("dtm.tif")} download>
+              <Button variant="secondary" onClick={() => handleExport("dtm.tif", `${job?.name || "model"}_dtm.tif`)}>
                 Export DTM
-              </a>
+              </Button>
             )}
             {job.assets?.report && (
-              <a className="btn btn-secondary" href={assetUrl("report.pdf")} download>
+              <Button variant="secondary" onClick={() => handleExport("report.pdf", `${job?.name || "model"}_report.pdf`)}>
                 Export Report
-              </a>
+              </Button>
             )}
           </>
         )}
@@ -192,18 +202,8 @@ export default function Viewer() {
                 style={{
                   marginTop: 16,
                   padding: "10px 12px",
-                  background: isGeoreferenced
-                    ? "rgba(39, 174, 96, 0.12)"
-                    : hasGpsTelemetry
-                    ? "rgba(52, 152, 219, 0.12)"
-                    : "rgba(243, 156, 18, 0.12)",
-                  border: `1px solid ${
-                    isGeoreferenced
-                      ? "rgba(39, 174, 96, 0.3)"
-                      : hasGpsTelemetry
-                      ? "rgba(52, 152, 219, 0.3)"
-                      : "rgba(243, 156, 18, 0.3)"
-                  }`,
+                  background: "var(--bg-panel-header)",
+                  border: "1px solid var(--border-strong)",
                   borderRadius: "var(--radius)",
                   fontSize: 11,
                   lineHeight: 1.4,
@@ -212,21 +212,21 @@ export default function Viewer() {
               >
                 {isGeoreferenced ? (
                   <>
-                    <strong style={{ color: "#27ae60" }}>✓ Metric Scale (Consumer GNSS)</strong>
+                    <strong style={{ color: "var(--text-primary)" }}>[METRIC SCALE] Consumer GNSS</strong>
                     <div style={{ marginTop: 4, color: "var(--text-secondary)" }}>
                       Reconstructed with {job?.geotagged} geotagged frames. Subject to standalone drone GNSS variance (±2–5m horizontal). Suitable for visual planning and approximate dimensions. Not ground-truthed with GCPs.
                     </div>
                   </>
                 ) : hasGpsTelemetry ? (
                   <>
-                    <strong style={{ color: "#3498db" }}>ℹ GPS Telemetry Present (Relative Model)</strong>
+                    <strong style={{ color: "var(--text-primary)" }}>[RELATIVE GEOMETRY] Uncalibrated Scale</strong>
                     <div style={{ marginTop: 4, color: "var(--text-secondary)" }}>
                       {job?.geotagged} frames carry GPS EXIF, but bundle adjustment produced a relative coordinate model. Measurements are uncalibrated.
                     </div>
                   </>
                 ) : (
                   <>
-                    <strong style={{ color: "#e67e22" }}>⚠ Dimensionless / Relative Coordinates</strong>
+                    <strong style={{ color: "var(--text-primary)" }}>[ARBITRARY UNITS] Dimensionless Mesh</strong>
                     <div style={{ marginTop: 4, color: "var(--text-secondary)" }}>
                       No GPS telemetry detected in flight SRT or image metadata. Coordinates and distance measurements are in arbitrary dimensionless units.
                     </div>

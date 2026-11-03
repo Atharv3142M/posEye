@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,7 @@ class TelemetrySample:
     relative_altitude: float | None = None  # Relative/AGL altitude (meters)
     altitude_ref: str = "unknown"  # "absolute", "relative", "unknown"
     source: str = "srt"
+    timestamp: datetime | None = None
 
 
 @dataclass
@@ -55,6 +57,9 @@ _GPS_PAREN = re.compile(
 )
 _CSV_LLA = re.compile(
     r"^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)"
+)
+_SRT_DATETIME = re.compile(
+    r"\b([0-9]{4})[-/.]([0-9]{2})[-/.]([0-9]{2})[T ]([0-9]{2}):([0-9]{2}):([0-9]{2})(?:[,.]([0-9]{1,6}))?"
 )
 
 
@@ -124,7 +129,25 @@ def parse_srt(path: str | Path) -> list[TelemetrySample]:
         if alt is None and rel_alt is not None:
             alt_ref = "relative"
 
-        raw_samples.append(TelemetrySample(t0, t1, lat, lon, alt, rel_alt, alt_ref, "srt"))
+        sample_dt = None
+        dt_m = _SRT_DATETIME.search(block)
+        if dt_m:
+            try:
+                y = int(dt_m.group(1))
+                m = int(dt_m.group(2))
+                d = int(dt_m.group(3))
+                hh = int(dt_m.group(4))
+                mm = int(dt_m.group(5))
+                ss = int(dt_m.group(6))
+                micro = 0
+                if dt_m.group(7):
+                    frac = dt_m.group(7).ljust(6, "0")[:6]
+                    micro = int(frac)
+                sample_dt = datetime(y, m, d, hh, mm, ss, micro, tzinfo=timezone.utc)
+            except Exception:
+                sample_dt = None
+
+        raw_samples.append(TelemetrySample(t0, t1, lat, lon, alt, rel_alt, alt_ref, "srt", sample_dt))
 
     # Sort chronologically
     raw_samples.sort(key=lambda s: s.t_start)
@@ -197,6 +220,13 @@ def sample_at(
                 if s_prev.relative_altitude is not None and s_next.relative_altitude is not None:
                     interp_rel = s_prev.relative_altitude + frac * (s_next.relative_altitude - s_prev.relative_altitude)
 
+                interp_ts = None
+                if s_prev.timestamp is not None and s_next.timestamp is not None:
+                    delta_sec = (s_next.timestamp - s_prev.timestamp).total_seconds()
+                    interp_ts = s_prev.timestamp + timedelta(seconds=delta_sec * frac)
+                elif s_prev.timestamp is not None:
+                    interp_ts = s_prev.timestamp + timedelta(seconds=(t - s_prev.t_end))
+
                 if stats:
                     stats.matched_interpolated += 1
                     stats.valid_gps_matches += 1
@@ -209,6 +239,7 @@ def sample_at(
                     relative_altitude=interp_rel,
                     altitude_ref=s_prev.altitude_ref,
                     source="interpolated",
+                    timestamp=interp_ts,
                 )
             break
 
@@ -220,7 +251,20 @@ def sample_at(
             if stats:
                 stats.valid_gps_matches += 1
                 stats.max_offset_observed = max(stats.max_offset_observed, offset)
-            return best
+            sample_ts = None
+            if best.timestamp is not None:
+                sample_ts = best.timestamp + timedelta(seconds=(t - best.t_start))
+            return TelemetrySample(
+                t_start=best.t_start,
+                t_end=best.t_end,
+                latitude=best.latitude,
+                longitude=best.longitude,
+                altitude=best.altitude,
+                relative_altitude=best.relative_altitude,
+                altitude_ref=best.altitude_ref,
+                source=best.source,
+                timestamp=sample_ts,
+            )
         else:
             if stats:
                 stats.invalid_coordinates += 1

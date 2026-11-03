@@ -1,91 +1,111 @@
-/* posEye global CSS — WebODM-inspired professional photogrammetry UI */
+/* posEye Global CSS — High-Precision Photogrammetry Monochrome Design System */
 
 :root {
-  --color-primary: #2c8a6e;
-  --color-primary-hover: #237a5e;
-  --color-primary-light: #e8f5f1;
-  --color-accent: #18bc9c;
-  --sidebar-width: 220px;
-  --sidebar-bg: #2d3436;
-  --sidebar-text: #dfe6e9;
-  --sidebar-active: #2c8a6e;
-  --topbar-height: 48px;
-  --topbar-bg: #1e272e;
-  --bg-app: #f4f6f8;
-  --bg-panel: #ffffff;
-  --bg-panel-header: #f8f9fa;
-  --border: #dee2e6;
-  --border-light: #e9ecef;
-  --text-primary: #2d3436;
-  --text-secondary: #636e72;
-  --text-muted: #95a5a6;
-  --text-danger: #c0392b;
-  --text-success: #27ae60;
-  --text-warning: #f39c12;
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.1);
-  --shadow-md: 0 2px 8px rgba(0,0,0,0.12);
-  --radius: 4px;
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: "Consolas", "Courier New", monospace;
+  /* Neutral Monochrome Foundations */
+  --bg-app: #0d1117;
+  --bg-panel: #161b22;
+  --bg-panel-header: #21262d;
+  --bg-tertiary: #30363d;
+  
+  --border: #30363d;
+  --border-light: #21262d;
+  --border-strong: #484f58;
 
-  /* legacy compat */
+  --text-primary: #f0f6fc;
+  --text-secondary: #8b949e;
+  --text-muted: #6e7681;
+  --text-inverse: #0d1117;
+
+  --color-primary: #f0f6fc;
+  --color-primary-hover: #ffffff;
+  --color-primary-light: rgba(240, 246, 252, 0.08);
+  --color-accent: #f0f6fc;
+
+  --sidebar-width: 230px;
+  --sidebar-bg: #0d1117;
+  --sidebar-text: #8b949e;
+  --sidebar-active: #f0f6fc;
+  --topbar-height: 48px;
+  --topbar-bg: #161b22;
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --radius: 4px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+
+  /* Legacy & utility compat */
   --bg-primary: var(--bg-panel);
   --bg-secondary: var(--bg-panel-header);
-  --bg-tertiary: #ececf0;
-  --text-inverse: #ffffff;
   --border-medium: var(--border);
   --button-primary: var(--color-primary);
   --button-primary-hover: var(--color-primary-hover);
-  --button-secondary: #e9ecef;
+  --button-secondary: var(--bg-panel-header);
   --button-secondary-text: var(--text-primary);
-  --button-secondary-hover: #dee2e6;
-  --success: var(--text-success);
-  --warning: var(--text-warning);
-  --error: var(--text-danger);
-  --info: #2563eb;
+  --button-secondary-hover: var(--bg-tertiary);
+  --success: var(--text-primary);
+  --warning: var(--text-secondary);
+  --error: var(--text-primary);
+  --info: var(--text-secondary);
   --header-h: var(--topbar-height);
-  --font-size: 14px;
+  --font-size: 13px;
 }
 
-/* ── Dark Theme (WebODM-inspired sleek geospatial dark mode) ─ */
-[data-theme="dark"] {
-  --bg-app: #12181b;
-  --bg-panel: #1a2226;
-  --bg-panel-header: #212c32;
-  --border: #2d3b43;
-  --border-light: #243037;
-  --text-primary: #ecf0f1;
-  --text-secondary: #95a5a6;
-  --text-muted: #7f8c8d;
-  --color-primary-light: rgba(44, 138, 110, 0.22);
-  --bg-tertiary: #1e272e;
-  --button-secondary: #212c32;
-  --button-secondary-text: #ecf0f1;
-  --button-secondary-hover: #2d3b43;
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.35);
-  --shadow-md: 0 2px 8px rgba(0,0,0,0.5);
+[data-theme="light"] {
+  --bg-app: #f6f8fa;
+  --bg-panel: #ffffff;
+  --bg-panel-header: #f6f8fa;
+  --bg-tertiary: #eaeef2;
+  
+  --border: #d0d7de;
+  --border-light: #eaeef2;
+  --border-strong: #afb8c1;
+
+  --text-primary: #1f2328;
+  --text-secondary: #656d76;
+  --text-muted: #8c959f;
+  --text-inverse: #ffffff;
+
+  --color-primary: #1f2328;
+  --color-primary-hover: #000000;
+  --color-primary-light: rgba(31, 35, 40, 0.08);
+  --color-accent: #1f2328;
+
+  --sidebar-bg: #f6f8fa;
+  --sidebar-text: #656d76;
+  --sidebar-active: #1f2328;
+  --topbar-bg: #ffffff;
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.12);
+
+  --button-primary: #1f2328;
+  --button-primary-hover: #000000;
+  --button-secondary: #f6f8fa;
+  --button-secondary-text: #1f2328;
+  --button-secondary-hover: #eaeef2;
 }
 
-[data-theme="dark"] input[type="text"],
-[data-theme="dark"] input[type="number"],
-[data-theme="dark"] input[type="search"],
-[data-theme="dark"] textarea,
-[data-theme="dark"] select {
-  background: #141b1e;
-  border-color: var(--border);
+input[type="text"],
+input[type="number"],
+input[type="search"],
+textarea,
+select {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
   color: var(--text-primary);
 }
 
-[data-theme="dark"] .table-view th {
+.table-view th {
   background: var(--bg-panel-header);
   color: var(--text-secondary);
 }
 
-[data-theme="dark"] .table-view tr:hover td {
-  background: rgba(44, 138, 110, 0.15);
+.table-view tr:hover td {
+  background: var(--bg-panel-header);
 }
 
-[data-theme="dark"] .drop-zone {
+.drop-zone {
   background: var(--bg-panel-header);
   border-color: var(--border);
 }

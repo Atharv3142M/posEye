@@ -9,6 +9,13 @@ contextBridge.exposeInMainWorld("dt", {
 
   // Environment / config
   env:          () => ipcRenderer.invoke("env"),
+  envSync:      () => {
+    try {
+      return ipcRenderer.sendSync("env:sync");
+    } catch {
+      return null;
+    }
+  },
 
   // File utilities
   readFile:     (filePath) => ipcRenderer.invoke("read:file", filePath),
@@ -27,7 +34,11 @@ contextBridge.exposeInMainWorld("dt", {
   onAppLog:     (callback) => {
     const handler = (_event, entry) => callback(entry);
     ipcRenderer.on("app-log", handler);
-    // Return unsubscribe function
     return () => ipcRenderer.removeListener("app-log", handler);
+  },
+  onAppStatus:  (callback) => {
+    const handler = (_event, status) => callback(status);
+    ipcRenderer.on("app-status", handler);
+    return () => ipcRenderer.removeListener("app-status", handler);
   },
 });
