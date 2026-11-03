@@ -458,11 +458,36 @@ function resolveAppAssetPath(reqUrl, distDir) {
   return { error: "Not Found", status: 404 };
 }
 
-function verifyNodeOdmInfo(info) {
-  if (!info || typeof info !== "object") return false;
+const PINNED_NODEODM_VERSION = "3.6.2";
+const PINNED_IMAGE = `opendronemap/nodeodm:${PINNED_NODEODM_VERSION}`;
+
+function verifyNodeOdmInfo(info, expectedVersion = PINNED_NODEODM_VERSION) {
+  if (!info || typeof info !== "object" || Array.isArray(info)) return false;
   if (typeof info.version !== "string") return false;
   const v = info.version.trim();
-  return Boolean(v);
+  return v === expectedVersion;
+}
+
+function evaluateContainerCompatibility(container, { pinnedImage = PINNED_IMAGE, pinnedImageId = null } = {}) {
+  if (!container || typeof container !== "object") {
+    return { canReuse: false, reason: "missing" };
+  }
+  // 1. Exact image tag match
+  if (container.configImage === pinnedImage) {
+    return { canReuse: true, reason: "pinned_image_match" };
+  }
+  // 2. Exact image ID match (alternative tag or digest pointing to same image)
+  if (pinnedImageId && typeof pinnedImageId === "string" && pinnedImageId.trim()) {
+    const cleanId = pinnedImageId.trim();
+    if (container.imageId && typeof container.imageId === "string" && container.imageId.includes(cleanId)) {
+      return { canReuse: true, reason: "pinned_id_match" };
+    }
+  }
+  return {
+    canReuse: false,
+    reason: "incompatible_image",
+    image: container.configImage || "unknown",
+  };
 }
 
 function validateSender(e, { targetWebContentsId, targetMainFrame, isPackaged } = {}) {
@@ -571,8 +596,7 @@ async function ensureNodeOdm() {
 }
 
 async function _ensureNodeOdmInternal() {
-  log("info", "Checking NodeODM container…");
-  const PINNED_IMAGE = "opendronemap/nodeodm:3.6.2";
+  log("info", `Checking NodeODM container (pinned: ${PINNED_IMAGE})…`);
 
   // 1. Check if NodeODM is already responding on port 3000
   try {
@@ -600,20 +624,19 @@ async function _ensureNodeOdmInternal() {
     }
   } catch {}
 
-  let isCompatibleContainer = false;
-  if (existingContainer) {
-    if (existingContainer.configImage === PINNED_IMAGE) {
-      isCompatibleContainer = true;
-    } else {
-      try {
-        const pinnedId = await run("docker", ["images", "-q", PINNED_IMAGE]).catch(() => "");
-        if (pinnedId && pinnedId.trim() && existingContainer.imageId && existingContainer.imageId.includes(pinnedId.trim())) {
-          isCompatibleContainer = true;
-        }
-      } catch {}
-    }
+  let pinnedImageId = null;
+  try {
+    const out = await run("docker", ["images", "-q", PINNED_IMAGE]).catch(() => "");
+    pinnedImageId = out ? out.trim() : null;
+  } catch {}
 
-    if (!isCompatibleContainer) {
+  const compatibility = evaluateContainerCompatibility(existingContainer, {
+    pinnedImage: PINNED_IMAGE,
+    pinnedImageId,
+  });
+
+  if (existingContainer) {
+    if (!compatibility.canReuse) {
       log("warn", `Existing container 'poseye-nodeodm' uses image '${existingContainer.configImage}', not '${PINNED_IMAGE}'.`);
       if (existingContainer.status === "running") {
         const errMsg = (
@@ -716,7 +739,7 @@ async function _ensureNodeOdmInternal() {
   updateStatus("nodeodm_starting", `Starting NodeODM container using ${PINNED_IMAGE}…`);
 
   // Do not delete user-managed containers; only clean dead poseye-nodeodm if compatible
-  if (existingContainer && isCompatibleContainer && existingContainer.status !== "running") {
+  if (existingContainer && compatibility.canReuse && existingContainer.status !== "running") {
     await run("docker", ["rm", "-f", "poseye-nodeodm"]).catch(() => {});
   }
 
@@ -1238,11 +1261,14 @@ app.on("activate", () => {
 }
 
 module.exports = {
+  PINNED_NODEODM_VERSION,
+  PINNED_IMAGE,
   validateSender,
   isPathAllowed,
   registerAllowedPath,
   resolveAppAssetPath,
   verifyNodeOdmInfo,
+  evaluateContainerCompatibility,
   allowedFilePaths,
   pullDockerImage,
   ensureNodeOdm,
