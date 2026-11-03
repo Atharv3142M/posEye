@@ -79,8 +79,8 @@ flowchart TD
 The current release candidate is **posEye v0.1.4**, packaged as a standard Windows 10/11 x64 NSIS installer.
 
 - **Installer Executable:** `posEye.Setup.0.1.4.exe`
-- **File Size:** `192,247,632` bytes (~183.34 MB)
-- **SHA-256 Digest:** `9B0BA01B12B09545DF0F19EFC48C2816F25B3F78472F086D50CED2677F4BF3C5`
+- **File Size:** `192,249,518` bytes (~183.34 MB)
+- **SHA-256 Digest:** `8F7F58E9A4858E6043F8A66364482B5F96FF6129FEA816D8B771BB8BBC772839`
 - **Distribution Portal:** [GitHub Releases: posEye v0.1.4](https://github.com/Atharv3142M/posEye/releases/tag/v0.1.4)
 - **Release Documentation:** [Docs/RELEASE_NOTES_v0.1.4.md](Docs/RELEASE_NOTES_v0.1.4.md)
 
@@ -89,7 +89,7 @@ The current release candidate is **posEye v0.1.4**, packaged as a standard Windo
 Prior to executing the installer, verify the integrity of the binary using PowerShell:
 
 ```powershell
-$expectedHash = "9B0BA01B12B09545DF0F19EFC48C2816F25B3F78472F086D50CED2677F4BF3C5"
+$expectedHash = "8F7F58E9A4858E6043F8A66364482B5F96FF6129FEA816D8B771BB8BBC772839"
 $actualHash = (Get-FileHash -Path .\posEye.Setup.0.1.4.exe -Algorithm SHA256).Hash
 if ($actualHash -eq $expectedHash) {
     Write-Host "[OK] Cryptographic verification passed: $actualHash" -ForegroundColor Green
@@ -146,13 +146,15 @@ if ($actualHash -eq $expectedHash) {
 
 ### Step 2: Provision NodeODM Engine
 
-Pull the validated OpenDroneMap processing image:
+posEye automatically checks for and pulls the validated OpenDroneMap processing image (`opendronemap/nodeodm:3.6.2`) on first launch if internet access is present.
+
+Alternatively, pre-pull the image manually:
 
 ```powershell
 docker pull opendronemap/nodeodm:3.6.2
 ```
 
-*(Note: The download is ~1.5 GB compressed. Once downloaded, processing runs completely offline.)*
+*(Note: The image is ~1.5 GB compressed. Once cached locally or loaded from an offline archive with `docker load -i <path-to-nodeodm.tar>`, posEye executes all photogrammetry reconstructions completely offline.)*
 
 ### Step 3: Run the posEye Setup Wizard
 

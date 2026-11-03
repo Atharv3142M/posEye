@@ -125,21 +125,23 @@ def test_probe_missing():
     assert res.status_code == 400
 
 
-def test_cors_origins_isolation():
+def test_cors_origins_isolation(tmp_path: Path):
+    from orchestrator.main import API_TOKEN
+
     client = TestClient(app)
 
-    # 1. Packaged Electron origin 'null' should be allowed
-    res_null = client.options(
+    # 1. Packaged Electron origin 'poseye://app' MUST be allowed
+    res_packaged = client.options(
         "/health",
         headers={
-            "Origin": "null",
+            "Origin": "poseye://app",
             "Access-Control-Request-Method": "GET",
         },
     )
-    assert res_null.status_code == 200
-    assert res_null.headers.get("access-control-allow-origin") == "null"
+    assert res_packaged.status_code == 200
+    assert res_packaged.headers.get("access-control-allow-origin") == "poseye://app"
 
-    # 2. Local development origin 'http://127.0.0.1:5173' should be allowed
+    # 2. Local development origin 'http://127.0.0.1:5173' MUST be allowed
     res_local = client.options(
         "/health",
         headers={
@@ -150,7 +152,18 @@ def test_cors_origins_isolation():
     assert res_local.status_code == 200
     assert res_local.headers.get("access-control-allow-origin") == "http://127.0.0.1:5173"
 
-    # 3. Unrelated browser origin 'https://malicious-site.com' must be REJECTED
+    # 3. Arbitrary opaque 'null' origin MUST be REJECTED
+    res_null = client.options(
+        "/health",
+        headers={
+            "Origin": "null",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert res_null.status_code == 400
+    assert res_null.headers.get("access-control-allow-origin") is None
+
+    # 4. Unrelated external HTTPS origin MUST be REJECTED
     res_evil = client.options(
         "/health",
         headers={
@@ -158,13 +171,110 @@ def test_cors_origins_isolation():
             "Access-Control-Request-Method": "GET",
         },
     )
-    # Preflight rejected: status code 400 and no Access-Control-Allow-Origin header
     assert res_evil.status_code == 400
     assert res_evil.headers.get("access-control-allow-origin") is None
 
-    # 4. Direct GET from unrelated origin must not receive Access-Control-Allow-Origin
-    res_get_evil = client.get(
-        "/health",
-        headers={"Origin": "https://malicious-site.com"},
+    # 5. Direct GET without Origin header receives no Access-Control headers
+    res_direct = client.get("/health")
+    assert res_direct.status_code == 200
+    assert res_direct.headers.get("access-control-allow-origin") is None
+
+
+def test_asset_route_security_and_cors(tmp_path: Path):
+    from orchestrator.main import API_TOKEN
+
+    client = TestClient(app)
+
+    # Set up a real job in store with real assets
+    job = store.create(tmp_path / "flight.mp4")
+    (job.work_dir / "model.glb").write_bytes(b"glTF_binary_mock_data")
+    odm_dir = job.work_dir / "odm"
+    odm_dir.mkdir(parents=True, exist_ok=True)
+    (odm_dir / "orthophoto.tif").write_bytes(b"TIFF_mock_data")
+    (odm_dir / "cloud.laz").write_bytes(b"LAZ_mock_data")
+
+    auth_headers = {"Authorization": f"Bearer {API_TOKEN}"} if API_TOKEN else {}
+
+    # A. Unauthorized asset requests MUST be rejected (401)
+    if API_TOKEN:
+        res_unauth = client.get(f"/jobs/{job.id}/assets/model.glb")
+        assert res_unauth.status_code == 401
+
+        res_bad_token = client.get(
+            f"/jobs/{job.id}/assets/model.glb",
+            headers={"Authorization": "Bearer bad-token-xyz"},
+        )
+        assert res_bad_token.status_code == 401
+
+        # Query parameter tokens MUST NOT be accepted
+        res_query_token = client.get(f"/jobs/{job.id}/assets/model.glb?token={API_TOKEN}")
+        assert res_query_token.status_code == 401
+
+    # B. Allowed Packaged Origin (poseye://app) on actual asset route
+    res_opt_asset = client.options(
+        f"/jobs/{job.id}/assets/model.glb",
+        headers={
+            "Origin": "poseye://app",
+            "Access-Control-Request-Method": "GET",
+        },
     )
-    assert res_get_evil.headers.get("access-control-allow-origin") is None
+    assert res_opt_asset.status_code == 200
+    assert res_opt_asset.headers.get("access-control-allow-origin") == "poseye://app"
+
+    res_get_asset = client.get(
+        f"/jobs/{job.id}/assets/model.glb",
+        headers={"Origin": "poseye://app", **auth_headers},
+    )
+    assert res_get_asset.status_code == 200
+    assert res_get_asset.headers.get("access-control-allow-origin") == "poseye://app"
+    assert res_get_asset.headers.get("content-type") == "model/gltf-binary"
+    assert res_get_asset.content == b"glTF_binary_mock_data"
+
+    # C. Allowed Dev Origin (http://127.0.0.1:5173) on actual asset route
+    res_dev_asset = client.get(
+        f"/jobs/{job.id}/assets/model.glb",
+        headers={"Origin": "http://127.0.0.1:5173", **auth_headers},
+    )
+    assert res_dev_asset.status_code == 200
+    assert res_dev_asset.headers.get("access-control-allow-origin") == "http://127.0.0.1:5173"
+
+    # D. Unrelated Origin (https://malicious.com) on actual asset route MUST NOT get CORS header
+    res_evil_asset = client.get(
+        f"/jobs/{job.id}/assets/model.glb",
+        headers={"Origin": "https://malicious.com", **auth_headers},
+    )
+    assert res_evil_asset.headers.get("access-control-allow-origin") is None
+
+    # E. Opaque Origin (null) on actual asset route MUST NOT get CORS header
+    res_null_asset = client.get(
+        f"/jobs/{job.id}/assets/model.glb",
+        headers={"Origin": "null", **auth_headers},
+    )
+    assert res_null_asset.headers.get("access-control-allow-origin") is None
+
+    # F. Direct GET without Origin header (e.g. from Python / backend script)
+    res_direct_asset = client.get(
+        f"/jobs/{job.id}/assets/model.glb",
+        headers=auth_headers,
+    )
+    assert res_direct_asset.status_code == 200
+    assert res_direct_asset.headers.get("access-control-allow-origin") is None
+
+    # G. Asset types: Orthophoto (.tif) and Point Cloud (.laz)
+    res_ortho = client.get(
+        f"/jobs/{job.id}/assets/orthophoto.tif",
+        headers={"Origin": "poseye://app", **auth_headers},
+    )
+    assert res_ortho.status_code == 200
+    assert res_ortho.headers.get("access-control-allow-origin") == "poseye://app"
+    assert res_ortho.headers.get("content-type") == "image/tiff"
+    assert res_ortho.content == b"TIFF_mock_data"
+
+    res_laz = client.get(
+        f"/jobs/{job.id}/assets/model.laz",
+        headers={"Origin": "poseye://app", **auth_headers},
+    )
+    assert res_laz.status_code == 200
+    assert res_laz.headers.get("access-control-allow-origin") == "poseye://app"
+    assert res_laz.headers.get("content-type") == "application/octet-stream"
+    assert res_laz.content == b"LAZ_mock_data"

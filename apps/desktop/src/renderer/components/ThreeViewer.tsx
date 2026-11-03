@@ -24,6 +24,7 @@ import {
 } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { apiTokenSync } from "../api";
 
 export type MeasureResult = {
   distance: number;
@@ -391,6 +392,12 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     onLoadStart?.();
 
     const loader = new GLTFLoader();
+    const token = apiTokenSync();
+    if (token) {
+      loader.setRequestHeader({
+        Authorization: `Bearer ${token}`,
+      });
+    }
     loader.load(
       modelUrl,
       (gltf) => {

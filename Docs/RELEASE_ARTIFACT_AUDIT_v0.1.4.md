@@ -4,8 +4,8 @@
 **Distribution Target:** Windows 10/11 x64 NSIS Installer  
 **Date:** 2026-11-03  
 **Installer Binary:** `posEye.Setup.0.1.4.exe`  
-**File Size:** 192,247,632 bytes (~183.34 MB)  
-**SHA-256 Hash:** `9b0ba01b12b09545df0f19efc48c2816f25b3f78472f086d50ced2677f4bf3c5`
+**File Size:** 192,249,518 bytes (~183.34 MB)  
+**SHA-256 Hash:** `8F7F58E9A4858E6043F8A66364482B5F96FF6129FEA816D8B771BB8BBC772839`
 
 ---
 
@@ -25,23 +25,28 @@
 ## 2. Security & Implementation Hardening Audit
 
 ### 1. 3D Viewer Asset Loading & Cross-Origin Isolation
-- **CORS Hardening:** FastAPI `CORSMiddleware` configured with an explicit allowlist restricted strictly to desktop Electron origins (`null`, `file://`) and local development ports (`http://127.0.0.1:5173`, `http://localhost:5173`). Preflight requests from external web origins (e.g., `https://malicious-site.com`) are rejected with `400 Bad Request` and no `Access-Control-Allow-Origin` header.
-- **MIME Specification:** Explicit `media_type="model/gltf-binary"` for `.glb`, `image/tiff` for `.tif`, and `application/octet-stream` for `.laz`.
-- **Export Safety:** Asset downloads invoke anchor downloads intercepted by Electron session handlers, preventing webContents navigation away from the active 3D canvas.
+- **Application Protocol Isolation:** Registered a custom secure Electron scheme (`poseye://app`) with standard, secure, supportFetchAPI, and corsEnabled privileges. Packaged renderer origin is strictly `poseye://app`, eliminating opaque `null` or raw `file://` contexts.
+- **CORS Hardening:** FastAPI `CORSMiddleware` configured with an explicit allowlist restricted strictly to desktop application origins (`poseye://app`) and local development ports (`http://127.0.0.1:5173`, `http://localhost:5173`). Preflight and requests from external web origins (e.g., `https://malicious-site.com`), `null`, or arbitrary schemes are rejected with `400 Bad Request` and denied.
+- **Elimination of Endpoint Wildcards & Query-String Tokens:** Removed endpoint-level wildcard headers from `/jobs/{job_id}/assets/{asset}`. Query-string tokens (`?token=...`) are rejected on HTTP asset routes; tokens must be transmitted securely via `Authorization: Bearer <token>` or `X-Api-Token` headers.
+- **Three.js GLTFLoader Headers:** `ThreeViewer.tsx` configures `loader.setRequestHeader({ Authorization: `Bearer ${token}` })` so mesh chunks and textures are retrieved with authenticated headers without exposing credentials in URLs.
+- **Native Streaming Asset Export:** Implemented `asset:save` IPC handler in Electron main to display a native Windows Save As dialog and stream backend assets directly to disk via `Readable.fromWeb()`, avoiding renderer memory exhaustion and query-string exposure.
 
-### 2. IPC Sender Validation & Context Isolation
-- **Sender Verification:** All IPC channels (`env:sync`, `env`, `dialog:*`, `read:file`, `restart:api`) enforce `isTrustedSender(event)` validating that invocations originate exclusively from the primary `mainWindow.webContents` frame.
-- **Token Protection:** Removed superfluous filesystem path disclosure (`repoRoot`), returning only necessary configuration (`apiBase`, `apiToken`, `packaged`, `version`).
+### 2. IPC Sender Validation & Path Confinement
+- **Sender Verification:** `validateSender()` validates that invocations match the primary `mainWindow.webContents.id`, come strictly from the top-level `mainWindow.webContents.mainFrame` (rejecting child frames/iframes), and verify origin matches `poseye://app` (packaged) or `127.0.0.1:5173` / `localhost:5173` (dev).
+- **Filesystem Access Confinement:** `read:file` IPC handler enforces `isPathAllowed()`. Arbitrary system file paths are rejected; only files explicitly selected by the user via native open/save dialogs (`allowedFilePaths`) or files within the managed `jobsDir` are permitted. Path traversal escaping the jobs directory is rejected.
+- **Automated Desktop Tests:** Added `apps/desktop/tests/ipc_security.test.cjs` covering sender validation in packaged and dev modes, iframe rejection, path traversal rejection, and allowed path verification (`npm test` in CI).
 
 ### 3. Trustworthy Metadata & EXIF Ingestion
 - **No Fabricated Dates:** EXIF timestamps (`DateTimeOriginal`, `GPSDateStamp`, `GPSTimeStamp`) are populated strictly from real telemetry timestamps parsed from SRT blocks or video container `creation_time` metadata. If no trustworthy temporal source is present, timestamps remain unset rather than fabricating arbitrary current dates.
 - **Altitude Semantics:** Takeoff-relative altitude is never promoted to absolute altitude in EXIF; `GPSAltitudeRef` flags `0` (above sea level) and `1` (below sea level) accurately.
 
-### 4. NVIDIA GPU Detection
-- **Detection Paths:** Verified search order across system `PATH`, `C:\Windows\System32\nvidia-smi.exe`, and `C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe`.
-- **Granular Health Metrics:** Contract returns `gpuHardware`, `nvidiaDriver`, `nvidiaSmi`, `dockerGpuAccess`, `engineGpuCapability`, and `gpuProcessingActive` without fake utilization.
+### 4. Robust Docker & NodeODM Lifecycle Management
+- **Auto-Pull Provisioning:** When `opendronemap/nodeodm:3.6.2` is not present locally and offline tar is unavailable, `ensureNodeOdm()` automatically executes `docker pull opendronemap/nodeodm:3.6.2`, streaming progress to the Dashboard via `app-status` without crashing.
+- **Container Reuse:** Inspects `poseye-nodeodm`; if running and responsive on port 3000 (`/info`), reuses it without recreation. If stopped, attempts `docker start` before recreating.
+- **Race Protection:** Guards concurrent calls with `nodeOdmProvisionPromise`.
+- **Verified Readiness:** Verifies `/info` returns valid JSON before declaring the engine ready.
 
-### 5. Immediate Startup & Docker Daemon Auto-Start
-- Window created immediately upon `app.whenReady()` in < 300ms.
-- Docker daemon and NodeODM container lifecycle managed in background without modal dialog blocking.
-- Real-time `app-status` IPC notifications stream engine status to the Dashboard.
+### 5. CI Dynamic Versioning & Build Manifest
+- `.github/workflows/ci.yml` dynamically extracts version from `apps/desktop/package.json` (`posEye.Setup.$version.exe`).
+- Generates `apps/desktop/release/build-manifest.json` recording version, filename, byte size, SHA-256, and build timestamp.
+- Uploads matching installer artifact and manifest under `posEye-Windows-Installer-v$version`.

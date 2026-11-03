@@ -4,7 +4,26 @@
  */
 "use strict";
 
-const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
+const electron = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, shell, protocol, net: electronNet } =
+  typeof electron === "object" && electron !== null ? electron : {};
+const { pathToFileURL } = require("node:url");
+
+// Register custom secure application scheme BEFORE app.whenReady()
+if (protocol?.registerSchemesAsPrivileged) {
+  protocol.registerSchemesAsPrivileged([
+    {
+      scheme: "poseye",
+      privileges: {
+        standard: true,
+        secure: true,
+        allowServiceWorkers: true,
+        supportFetchAPI: true,
+        corsEnabled: true,
+      },
+    },
+  ]);
+}
 const path = require("node:path");
 const { spawn, execFile } = require("node:child_process");
 const fs = require("node:fs");
@@ -25,6 +44,8 @@ let mainWindow = null;
 let apiProc = null;
 let startupStatus = { phase: "starting", message: "Initializing…" };
 const appLog = [];   // circular log for IPC exposure
+const allowedFilePaths = new Set();
+let nodeOdmProvisionPromise = null;
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 function log(level, message) {
@@ -280,6 +301,53 @@ async function ensureDocker() {
   log("info", "Docker daemon is running");
 }
 
+// ─── Path & IPC Security Helpers ──────────────────────────────────────────
+function registerAllowedPath(p) {
+  if (p && typeof p === "string") {
+    allowedFilePaths.add(path.resolve(p));
+  }
+}
+
+function isPathAllowed(targetPath, { allowedPaths = allowedFilePaths, jobsDir = null } = {}) {
+  if (!targetPath || typeof targetPath !== "string") return false;
+  try {
+    const resolved = path.resolve(targetPath);
+    if (allowedPaths && allowedPaths.has(resolved)) {
+      return true;
+    }
+    if (jobsDir) {
+      const resolvedJobsDir = path.resolve(jobsDir);
+      if (resolved === resolvedJobsDir || resolved.startsWith(resolvedJobsDir + path.sep)) {
+        return true;
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function validateSender(e, { targetWebContentsId, targetMainFrame, isPackaged } = {}) {
+  if (!e || !e.sender) return false;
+  if (targetWebContentsId !== undefined && e.sender.id !== targetWebContentsId) return false;
+  if (targetMainFrame && e.senderFrame && e.senderFrame !== targetMainFrame) return false;
+
+  const frameUrl = e.senderFrame?.url || e.sender?.getURL?.() || "";
+  if (!frameUrl) return false;
+
+  try {
+    const parsed = new URL(frameUrl);
+    if (isPackaged) {
+      return parsed.protocol === "poseye:" && parsed.hostname === "app";
+    }
+    const isDev = parsed.origin === "http://127.0.0.1:5173" || parsed.origin === "http://localhost:5173";
+    const isApp = parsed.protocol === "poseye:" && parsed.hostname === "app";
+    return isDev || isApp;
+  } catch {
+    return false;
+  }
+}
+
 // ─── NodeODM management ───────────────────────────────────────────────────────
 async function waitForUrl(url, ms = 60000, label = "service") {
   const start = Date.now();
@@ -296,46 +364,104 @@ async function waitForUrl(url, ms = 60000, label = "service") {
   throw new Error(`${label} did not become ready within ${Math.round(ms / 1000)}s (${url}). Last error: ${lastError}`);
 }
 
+function pullDockerImage(imageTag, onProgress) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("docker", ["pull", imageTag], { windowsHide: true });
+    let lastOut = "";
+    let errOut = "";
+
+    child.stdout?.on("data", (chunk) => {
+      const text = chunk.toString();
+      const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+      for (const trimmed of lines) {
+        lastOut = trimmed;
+        if (onProgress) onProgress(trimmed);
+      }
+    });
+
+    child.stderr?.on("data", (chunk) => {
+      const text = chunk.toString();
+      errOut += text;
+      const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+      for (const trimmed of lines) {
+        if (onProgress) onProgress(trimmed);
+      }
+    });
+
+    child.on("error", (err) => reject(new Error(`docker pull failed: ${err.message}`)));
+
+    child.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(errOut.trim() || lastOut || `docker pull exited with code ${code}`));
+    });
+  });
+}
+
 async function ensureNodeOdm() {
+  if (nodeOdmProvisionPromise) {
+    return nodeOdmProvisionPromise;
+  }
+  nodeOdmProvisionPromise = (async () => {
+    try {
+      return await _ensureNodeOdmInternal();
+    } finally {
+      nodeOdmProvisionPromise = null;
+    }
+  })();
+  return nodeOdmProvisionPromise;
+}
+
+async function _ensureNodeOdmInternal() {
   log("info", "Checking NodeODM container…");
   const containerNames = ["poseye-nodeodm", "digitaltwin-nodeodm"];
 
-  // Check if NodeODM is already responding (e.g., started by docker-compose or externally)
+  // 1. Check if NodeODM is already responding
   try {
     const res = await fetch(`${NODEODM_URL}/info`, { signal: AbortSignal.timeout(3000) });
     if (res.ok) {
-      log("info", `NodeODM already available at ${NODEODM_URL}`);
+      const info = await res.json().catch(() => null);
+      log("info", `NodeODM already available at ${NODEODM_URL} (version: ${info?.version || "unknown"})`);
       return;
     }
   } catch { /* not running yet */ }
 
   await ensureDocker();
 
-  // Try starting an existing stopped container
+  // 2. Try reusing an existing running or stopped container
   for (const name of containerNames) {
     try {
-      log("info", `Attempting to start container: ${name}`);
-      await run("docker", ["start", name]);
-      await waitForUrl(`${NODEODM_URL}/info`, 60000, `NodeODM (${name})`);
-      log("info", `NodeODM started from existing container: ${name}`);
-      return;
+      const inspectOut = await run("docker", ["inspect", "--format", "{{.State.Status}}", name]).catch(() => "");
+      const status = inspectOut.trim();
+      if (status) {
+        log("info", `Found existing container: ${name} (status: ${status})`);
+        if (status === "running") {
+          try {
+            await waitForUrl(`${NODEODM_URL}/info`, 15000, `NodeODM (${name})`);
+            log("info", `NodeODM active in existing container: ${name}`);
+            return;
+          } catch (waitErr) {
+            log("warn", `Running container ${name} not responding on ${NODEODM_URL}: ${waitErr.message}`);
+          }
+        } else {
+          log("info", `Attempting to start stopped container: ${name}`);
+          updateStatus("nodeodm_starting", `Starting existing ${name} container…`);
+          await run("docker", ["start", name]);
+          await waitForUrl(`${NODEODM_URL}/info`, 45000, `NodeODM (${name})`);
+          log("info", `NodeODM started from existing container: ${name}`);
+          return;
+        }
+      }
     } catch (e) {
-      log("info", `Container ${name} not startable: ${e.message}`);
+      log("info", `Container ${name} inspection/startup skipped: ${e.message}`);
     }
   }
 
-  // Try loading from bundled tar if image is not already present in Docker
-  const tarPaths = [
-    path.join(repoRoot(), "third_party", "nodeodm.tar"),
-    app.isPackaged ? path.join(process.resourcesPath, "nodeodm.tar") : null,
-    app.isPackaged ? path.join(path.dirname(process.resourcesPath), "third_party", "nodeodm.tar") : null,
-  ].filter(Boolean);
-
+  // 3. Locate or acquire Docker image
   const PINNED_IMAGE = "opendronemap/nodeodm:3.6.2";
   const FALLBACK_IMAGE = "opendronemap/nodeodm";
   let targetImage = PINNED_IMAGE;
-
   let imageInDocker = false;
+
   try {
     const pinnedOut = await run("docker", ["images", "-q", PINNED_IMAGE]);
     if (pinnedOut && pinnedOut.trim()) {
@@ -350,34 +476,62 @@ async function ensureNodeOdm() {
     }
   } catch { /* ignore */ }
 
+  // 4. If image not in Docker, check local offline archives first
   if (!imageInDocker) {
+    const tarPaths = [
+      path.join(repoRoot(), "third_party", "nodeodm.tar"),
+      app.isPackaged ? path.join(process.resourcesPath, "nodeodm.tar") : null,
+      app.isPackaged ? path.join(path.dirname(process.resourcesPath), "third_party", "nodeodm.tar") : null,
+    ].filter(Boolean);
+
     for (const tar of tarPaths) {
       if (fs.existsSync(tar)) {
-        log("info", `Loading NodeODM image from ${tar} (this may take 1-2 minutes)…`);
+        log("info", `Loading NodeODM image from offline archive ${tar} (this may take 1-2 minutes)…`);
+        updateStatus("nodeodm_loading", "Loading NodeODM image from offline archive (this may take 1-2 minutes)…");
         try {
           await runWithTimeout("docker", ["load", "-i", tar], 300000);
           log("info", "NodeODM image loaded from tar");
           imageInDocker = true;
+          targetImage = PINNED_IMAGE;
           break;
         } catch (e) {
           log("warn", `Failed to load NodeODM tar: ${e.message}`);
         }
       }
     }
+  }
 
-    if (!imageInDocker && app.isPackaged) {
-      throw new Error(
-        "Offline NodeODM image not found.\n\n" +
-        "The packaged application requires the NodeODM image in local Docker, but 'nodeodm.tar' was not found in application resources and 'opendronemap/nodeodm:3.6.2' is not loaded in Docker.\n\n" +
-        "To load it, run:\n  docker pull opendronemap/nodeodm:3.6.2\nor load your offline archive:\n  docker load -i <path-to-nodeodm.tar>"
+  // 5. If image still not in Docker, attempt automatic pull (online mode)
+  if (!imageInDocker) {
+    log("info", `NodeODM image not found locally. Initiating docker pull for ${PINNED_IMAGE}…`);
+    updateStatus("nodeodm_pulling", `Downloading NodeODM image (${PINNED_IMAGE})…`);
+    try {
+      await pullDockerImage(PINNED_IMAGE, (progress) => {
+        updateStatus("nodeodm_pulling", `Pulling NodeODM: ${progress}`);
+      });
+      imageInDocker = true;
+      targetImage = PINNED_IMAGE;
+      log("info", `Successfully pulled ${PINNED_IMAGE}`);
+    } catch (pullErr) {
+      const offlineMsg = (
+        `Offline NodeODM image not found and automatic pull failed: ${pullErr.message}
+
+` +
+        `To load it, ensure network connectivity and run:
+  docker pull ${PINNED_IMAGE}
+` +
+        `or load your offline archive:
+  docker load -i <path-to-nodeodm.tar>`
       );
+      log("error", offlineMsg);
+      throw new Error(offlineMsg);
     }
   }
 
-  // Run a new container
+  // 6. Run a new container
   log("info", `Starting new NodeODM container using ${targetImage}…`);
+  updateStatus("nodeodm_starting", `Starting NodeODM container using ${targetImage}…`);
   try {
-    // Remove any dead container with same name first
     await run("docker", ["rm", "-f", "poseye-nodeodm"]).catch(() => {});
     await run("docker", [
       "run", "-d",
@@ -389,7 +543,6 @@ async function ensureNodeOdm() {
   } catch (err) {
     const msg = String(err.message || err);
     if (/port is already allocated|bind|address already in use/i.test(msg)) {
-      // Port 3000 in use but NodeODM might still be there from earlier check
       log("warn", `Port 3000 already in use — checking if NodeODM is responding…`);
       try {
         await waitForUrl(`${NODEODM_URL}/info`, 10000, "NodeODM on existing port");
@@ -402,19 +555,15 @@ async function ensureNodeOdm() {
         );
       }
     }
-    if (/unable to find image|no such image/i.test(msg)) {
-      throw new Error(
-        "NodeODM Docker image not found.\n\n" +
-        "Run this command to download it:\n  docker pull opendronemap/nodeodm\n\n" +
-        "Or run the posEye installer which bundles the image."
-      );
-    }
     throw new Error(`Could not start NodeODM container: ${msg}`);
   }
 
-  log("info", "Waiting for NodeODM to become ready…");
+  log("info", "Waiting for NodeODM container to become ready…");
+  updateStatus("nodeodm_waiting", "Waiting for NodeODM container /info to respond…");
   await waitForUrl(`${NODEODM_URL}/info`, NODEODM_TIMEOUT_MS, "NodeODM");
-  log("info", "NodeODM is ready");
+  const infoRes = await fetch(`${NODEODM_URL}/info`);
+  const infoData = await infoRes.json().catch(() => ({}));
+  log("info", `NodeODM is ready (version: ${infoData.version || "unknown"})`);
 }
 
 // ─── Python API ───────────────────────────────────────────────────────────────
@@ -547,15 +696,17 @@ function createWindow() {
   });
 
   mainWindow.webContents.on("will-navigate", (event, url) => {
-    if (mainWindow && url !== mainWindow.webContents.getURL()) {
-      event.preventDefault();
-      try {
-        const parsed = new URL(url);
+    try {
+      const parsed = new URL(url);
+      const isAllowedApp = parsed.protocol === "poseye:" && parsed.hostname === "app";
+      const isAllowedDev = !app.isPackaged && (parsed.origin === "http://127.0.0.1:5173" || parsed.origin === "http://localhost:5173");
+      if (!isAllowedApp && !isAllowedDev) {
+        event.preventDefault();
         if (parsed.protocol === "http:" || parsed.protocol === "https:") {
           shell.openExternal(url);
         }
-      } catch {}
-    }
+      }
+    } catch {}
   });
 
   mainWindow.webContents.session.on("will-download", (event, item) => {
@@ -565,7 +716,7 @@ function createWindow() {
   if (!app.isPackaged) {
     mainWindow.loadURL("http://127.0.0.1:5173");
   } else {
-    mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
+    mainWindow.loadURL("poseye://app/index.html");
   }
 
   mainWindow.on("closed", () => { mainWindow = null; });
@@ -635,6 +786,7 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+if (app?.whenReady) {
 app.whenReady().then(async () => {
   if (process.platform === "win32") {
     app.setAppUserModelId("org.icarus.poseye");
@@ -643,10 +795,45 @@ app.whenReady().then(async () => {
   log("info", `posEye starting — Electron ${process.versions.electron}, Node ${process.versions.node}`);
   log("info", `Platform: ${process.platform} ${process.arch}`);
 
+  // ── Application Protocol Handler ─────────────────────────────────────────
+  protocol.handle("poseye", (request) => {
+    try {
+      const parsedUrl = new URL(request.url);
+      let reqPath = decodeURIComponent(parsedUrl.pathname);
+      if (reqPath.startsWith("/")) reqPath = reqPath.slice(1);
+      if (!reqPath || reqPath === "") reqPath = "index.html";
+
+      const distDir = path.resolve(__dirname, "..", "dist");
+      const filePath = path.normalize(path.join(distDir, reqPath));
+
+      if (!filePath.startsWith(distDir)) {
+        log("warn", `Blocked unauthorized protocol access outside distDir: ${filePath}`);
+        return new Response("Forbidden", { status: 403 });
+      }
+
+      if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+        return electronNet.fetch(pathToFileURL(filePath).toString());
+      }
+
+      const indexPath = path.join(distDir, "index.html");
+      if (fs.existsSync(indexPath)) {
+        return electronNet.fetch(pathToFileURL(indexPath).toString());
+      }
+      return new Response("Not Found", { status: 404 });
+    } catch (err) {
+      log("error", `Protocol handler error: ${err.message}`);
+      return new Response("Internal Server Error", { status: 500 });
+    }
+  });
+
   // ── Sender validation helper ───────────────────────────────────────────────
   function isTrustedSender(e) {
     if (!mainWindow || mainWindow.isDestroyed()) return false;
-    return Boolean(e && e.sender && e.sender.id === mainWindow.webContents.id);
+    return validateSender(e, {
+      targetWebContentsId: mainWindow.webContents.id,
+      targetMainFrame: mainWindow.webContents.mainFrame,
+      isPackaged: app.isPackaged,
+    });
   }
 
   // ── IPC Handlers ──────────────────────────────────────────────────────────
@@ -671,7 +858,11 @@ app.whenReady().then(async () => {
       filters: [{ name: "Video files", extensions: ["mp4", "mov", "mkv", "avi", "m4v", "mts", "mp2t"] }],
       properties: ["openFile"],
     });
-    return res.canceled ? null : res.filePaths[0];
+    if (!res.canceled && res.filePaths[0]) {
+      registerAllowedPath(res.filePaths[0]);
+      return res.filePaths[0];
+    }
+    return null;
   });
 
   ipcMain.handle("dialog:srt", async (e) => {
@@ -681,7 +872,11 @@ app.whenReady().then(async () => {
       filters: [{ name: "SRT telemetry", extensions: ["srt"] }],
       properties: ["openFile"],
     });
-    return res.canceled ? null : res.filePaths[0];
+    if (!res.canceled && res.filePaths[0]) {
+      registerAllowedPath(res.filePaths[0]);
+      return res.filePaths[0];
+    }
+    return null;
   });
 
   ipcMain.handle("dialog:glb", async (e) => {
@@ -691,7 +886,11 @@ app.whenReady().then(async () => {
       filters: [{ name: "glTF Binary", extensions: ["glb"] }],
       properties: ["openFile"],
     });
-    return res.canceled ? null : res.filePaths[0];
+    if (!res.canceled && res.filePaths[0]) {
+      registerAllowedPath(res.filePaths[0]);
+      return res.filePaths[0];
+    }
+    return null;
   });
 
   ipcMain.handle("dialog:save", async (e, defaultName, ext) => {
@@ -700,7 +899,26 @@ app.whenReady().then(async () => {
       defaultPath: defaultName || "export",
       filters: [{ name: ext?.toUpperCase() || "File", extensions: [ext || "*"] }],
     });
-    return res.canceled ? null : res.filePath;
+    if (!res.canceled && res.filePath) {
+      registerAllowedPath(res.filePath);
+      return res.filePath;
+    }
+    return null;
+  });
+
+  ipcMain.handle("allow:path", (e, filePath) => {
+    if (!isTrustedSender(e)) return false;
+    if (!filePath || typeof filePath !== "string") return false;
+    try {
+      const resolved = path.resolve(filePath);
+      if (fs.existsSync(resolved)) {
+        registerAllowedPath(resolved);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
   });
 
   ipcMain.handle("env", (e) => {
@@ -716,6 +934,11 @@ app.whenReady().then(async () => {
   ipcMain.handle("read:file", (e, filePath) => {
     if (!isTrustedSender(e)) return null;
     if (!filePath || typeof filePath !== "string") return null;
+    const jobsDir = path.join(app.getPath("userData"), "jobs");
+    if (!isPathAllowed(filePath, { allowedPaths: allowedFilePaths, jobsDir })) {
+      log("warn", `Blocked unauthorized read:file access: ${filePath}`);
+      return null;
+    }
     try {
       const resolved = path.resolve(filePath);
       if (!fs.existsSync(resolved)) return null;
@@ -725,6 +948,60 @@ app.whenReady().then(async () => {
     } catch (err) {
       log("error", `read:file failed for ${filePath}: ${err.message}`);
       return null;
+    }
+  });
+
+  ipcMain.handle("asset:save", async (e, { jobId, asset, defaultFilename } = {}) => {
+    if (!isTrustedSender(e)) return { ok: false, error: "Unauthorized" };
+    if (!jobId || !asset) return { ok: false, error: "Missing parameters" };
+
+    const safeAsset = path.basename(asset);
+    const saveName = defaultFilename || safeAsset;
+    const ext = path.extname(safeAsset).replace(/^\./, "");
+
+    const res = await dialog.showSaveDialog(mainWindow, {
+      title: `Save ${safeAsset}`,
+      defaultPath: saveName,
+      filters: ext ? [{ name: ext.toUpperCase(), extensions: [ext] }] : [{ name: "All Files", extensions: ["*"] }],
+    });
+
+    if (res.canceled || !res.filePath) {
+      return { ok: false, canceled: true };
+    }
+
+    const destinationPath = res.filePath;
+    registerAllowedPath(destinationPath);
+
+    try {
+      const assetUrl = `${API_BASE}/jobs/${encodeURIComponent(jobId)}/assets/${encodeURIComponent(safeAsset)}`;
+      const response = await fetch(assetUrl, {
+        headers: {
+          Authorization: `Bearer ${API_TOKEN}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Orchestrator returned HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const fileStream = fs.createWriteStream(destinationPath);
+      const { Readable } = require("node:stream");
+      const stream = Readable.fromWeb(response.body);
+      await new Promise((resolve, reject) => {
+        stream.pipe(fileStream);
+        fileStream.on("finish", resolve);
+        fileStream.on("error", reject);
+        stream.on("error", reject);
+      });
+
+      log("info", `Asset saved successfully to: ${destinationPath}`);
+      return { ok: true, path: destinationPath };
+    } catch (err) {
+      log("error", `Failed to save asset ${safeAsset}: ${err.message}`);
+      try {
+        if (fs.existsSync(destinationPath)) fs.unlinkSync(destinationPath);
+      } catch {}
+      return { ok: false, error: err.message };
     }
   });
 
@@ -791,3 +1068,13 @@ app.on("window-all-closed", () => {
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
+}
+
+module.exports = {
+  validateSender,
+  isPathAllowed,
+  registerAllowedPath,
+  allowedFilePaths,
+  pullDockerImage,
+  ensureNodeOdm,
+};
