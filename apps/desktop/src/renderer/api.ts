@@ -124,7 +124,6 @@ declare global {
       envSync:      () => { apiBase: string; apiToken?: string; packaged: boolean } | null;
       // File utilities
       readFile:     (filePath: string) => Promise<string | null>;
-      allowPath?:   (filePath: string) => Promise<boolean>;
       saveAsset?:   (opts: { jobId: string; asset: string; defaultFilename?: string }) => Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }>;
       pathForFile:  (file: File) => string;
       // Shell

@@ -19,7 +19,6 @@ contextBridge.exposeInMainWorld("dt", {
 
   // File utilities
   readFile:     (filePath) => ipcRenderer.invoke("read:file", filePath),
-  allowPath:    (filePath) => ipcRenderer.invoke("allow:path", filePath),
   saveAsset:    (opts) => ipcRenderer.invoke("asset:save", opts),
   pathForFile:  (file) => webUtils.getPathForFile(file),
 

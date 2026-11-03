@@ -1,6 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("node:path");
+const fs = require("node:fs");
+const os = require("node:os");
 const { validateSender, isPathAllowed, registerAllowedPath, allowedFilePaths } = require("../electron/main.cjs");
 
 test("validateSender - Packaged Mode", () => {
@@ -141,66 +143,98 @@ test("validateSender - Development Mode", () => {
   }
 });
 
-test("isPathAllowed - Path Confinement & Traversal Protection", () => {
-  const jobsDir = path.resolve("C:/fake/appdata/poseye/jobs");
+test("isPathAllowed - Path Confinement, Traversal Protection & Symlink Escape Prevention", () => {
+  const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), "poseye-ipc-test-"));
+  const jobsDir = path.join(tmpBase, "jobs");
+  fs.mkdirSync(jobsDir, { recursive: true });
+
+  const outsideSecret = path.join(tmpBase, "system_secret.key");
+  fs.writeFileSync(outsideSecret, "TOP_SECRET_CREDENTIALS");
+
   const testAllowedPaths = new Set();
 
-  // Initially empty allowed paths
-  assert.equal(
-    isPathAllowed("C:/Windows/System32/drivers/etc/hosts", { allowedPaths: testAllowedPaths, jobsDir }),
-    false,
-    "Should reject arbitrary system path"
-  );
+  try {
+    // 1. Arbitrary system files without explicit registration are rejected
+    assert.equal(
+      isPathAllowed("C:/Windows/System32/drivers/etc/hosts", { allowedPaths: testAllowedPaths, jobsDir }),
+      false,
+      "Should reject arbitrary system path"
+    );
+    assert.equal(
+      isPathAllowed(outsideSecret, { allowedPaths: testAllowedPaths, jobsDir }),
+      false,
+      "Should reject unauthorized file outside jobsDir"
+    );
 
-  // Explicit user-picked file registration
-  const userPickedVideo = path.resolve("D:/drone_flights/flight_01.mp4");
-  testAllowedPaths.add(userPickedVideo);
+    // 2. Explicitly allowed path (registered via native OS dialog) is accepted
+    testAllowedPaths.add(path.resolve(outsideSecret));
+    assert.equal(
+      isPathAllowed(outsideSecret, { allowedPaths: testAllowedPaths, jobsDir }),
+      true,
+      "Should allow explicitly authorized file"
+    );
+    testAllowedPaths.clear();
 
-  assert.equal(
-    isPathAllowed(userPickedVideo, { allowedPaths: testAllowedPaths, jobsDir }),
-    true,
-    "Should allow explicitly picked file"
-  );
+    // 3. Legitimate file inside jobsDir is accepted
+    const jobFolder = path.join(jobsDir, "job-101");
+    fs.mkdirSync(jobFolder, { recursive: true });
+    const jobModel = path.join(jobFolder, "model.glb");
+    fs.writeFileSync(jobModel, "GLB_BINARY_DATA");
 
-  // Case normalization and resolution check
-  assert.equal(
-    isPathAllowed("D:/drone_flights/flight_01.mp4", { allowedPaths: testAllowedPaths, jobsDir }),
-    true,
-    "Should match normalized path"
-  );
+    assert.equal(
+      isPathAllowed(jobModel, { allowedPaths: testAllowedPaths, jobsDir }),
+      true,
+      "Should allow legitimate file inside jobsDir"
+    );
 
-  // Files inside jobs directory
-  const jobAsset = path.join(jobsDir, "job-101", "model.glb");
-  assert.equal(
-    isPathAllowed(jobAsset, { allowedPaths: testAllowedPaths, jobsDir }),
-    true,
-    "Should allow file inside jobsDir"
-  );
+    // 4. Directory traversal attempting to escape jobsDir is rejected
+    const traversalAttempt1 = path.join(jobsDir, "..", "system_secret.key");
+    assert.equal(
+      isPathAllowed(traversalAttempt1, { allowedPaths: testAllowedPaths, jobsDir }),
+      false,
+      "Should reject traversal escaping jobsDir"
+    );
 
-  const jobOrthophoto = path.join(jobsDir, "job-202", "orthophoto.tif");
-  assert.equal(
-    isPathAllowed(jobOrthophoto, { allowedPaths: testAllowedPaths, jobsDir }),
-    true,
-    "Should allow orthophoto inside jobsDir"
-  );
+    const traversalAttempt2 = path.join(jobFolder, "..", "..", "system_secret.key");
+    assert.equal(
+      isPathAllowed(traversalAttempt2, { allowedPaths: testAllowedPaths, jobsDir }),
+      false,
+      "Should reject nested traversal escaping jobsDir"
+    );
 
-  // Path traversal attempts escaping jobsDir
-  const traversalAttempt1 = path.join(jobsDir, "..", "..", "secrets.txt");
-  assert.equal(
-    isPathAllowed(traversalAttempt1, { allowedPaths: testAllowedPaths, jobsDir }),
-    false,
-    "Should reject traversal escaping jobsDir"
-  );
+    // 5. Sibling directory sharing jobsDir prefix is rejected (e.g. jobs-backup)
+    const siblingDir = path.join(tmpBase, "jobs-backup");
+    fs.mkdirSync(siblingDir, { recursive: true });
+    const siblingFile = path.join(siblingDir, "leaked.glb");
+    fs.writeFileSync(siblingFile, "DATA");
 
-  const traversalAttempt2 = path.join(jobsDir, "job-101", "..", "..", "..", "Windows", "System32", "cmd.exe");
-  assert.equal(
-    isPathAllowed(traversalAttempt2, { allowedPaths: testAllowedPaths, jobsDir }),
-    false,
-    "Should reject nested traversal escaping jobsDir"
-  );
+    assert.equal(
+      isPathAllowed(siblingFile, { allowedPaths: testAllowedPaths, jobsDir }),
+      false,
+      "Should reject sibling directory sharing jobsDir name prefix"
+    );
 
-  // Reject invalid inputs
-  assert.equal(isPathAllowed(null, { allowedPaths: testAllowedPaths, jobsDir }), false);
-  assert.equal(isPathAllowed("", { allowedPaths: testAllowedPaths, jobsDir }), false);
-  assert.equal(isPathAllowed(undefined, { allowedPaths: testAllowedPaths, jobsDir }), false);
+    // 6. Symlink escaping jobsDir is rejected
+    const symlinkPath = path.join(jobFolder, "symlink_secret.key");
+    try {
+      fs.symlinkSync(outsideSecret, symlinkPath, "file");
+      assert.equal(
+        isPathAllowed(symlinkPath, { allowedPaths: testAllowedPaths, jobsDir }),
+        false,
+        "Should reject symlink escaping jobsDir"
+      );
+    } catch (symlinkErr) {
+      // On Windows non-elevated developer mode may disallow symlink creation; skip if OS restricts
+      if (symlinkErr.code !== "EPERM") throw symlinkErr;
+    }
+
+    // 7. Invalid inputs
+    assert.equal(isPathAllowed(null, { allowedPaths: testAllowedPaths, jobsDir }), false);
+    assert.equal(isPathAllowed("", { allowedPaths: testAllowedPaths, jobsDir }), false);
+    assert.equal(isPathAllowed(undefined, { allowedPaths: testAllowedPaths, jobsDir }), false);
+  } finally {
+    try {
+      fs.rmSync(tmpBase, { recursive: true, force: true });
+    } catch {}
+  }
 });

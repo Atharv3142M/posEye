@@ -304,7 +304,13 @@ async function ensureDocker() {
 // ─── Path & IPC Security Helpers ──────────────────────────────────────────
 function registerAllowedPath(p) {
   if (p && typeof p === "string") {
-    allowedFilePaths.add(path.resolve(p));
+    try {
+      const resolved = path.resolve(p);
+      allowedFilePaths.add(resolved);
+      if (fs.existsSync(resolved)) {
+        allowedFilePaths.add(fs.realpathSync(resolved));
+      }
+    } catch {}
   }
 }
 
@@ -312,19 +318,176 @@ function isPathAllowed(targetPath, { allowedPaths = allowedFilePaths, jobsDir = 
   if (!targetPath || typeof targetPath !== "string") return false;
   try {
     const resolved = path.resolve(targetPath);
-    if (allowedPaths && allowedPaths.has(resolved)) {
-      return true;
+    let realTarget = resolved;
+    if (fs.existsSync(resolved)) {
+      realTarget = fs.realpathSync(resolved);
     }
-    if (jobsDir) {
-      const resolvedJobsDir = path.resolve(jobsDir);
-      if (resolved === resolvedJobsDir || resolved.startsWith(resolvedJobsDir + path.sep)) {
+
+    // 1. Check against explicitly registered paths (set only by native dialogs or orchestrator downloads)
+    if (allowedPaths) {
+      if (allowedPaths.has(resolved) || allowedPaths.has(realTarget)) {
         return true;
       }
     }
+
+    // 2. Check containment within jobsDir
+    if (jobsDir) {
+      const resolvedJobsDir = path.resolve(jobsDir);
+      let realJobsDir = resolvedJobsDir;
+      if (fs.existsSync(resolvedJobsDir)) {
+        realJobsDir = fs.realpathSync(resolvedJobsDir);
+      }
+
+      // Check lexical relative containment
+      const relToResolved = path.relative(resolvedJobsDir, resolved);
+      const isLexicallyContained =
+        !relToResolved.startsWith("..") &&
+        !path.isAbsolute(relToResolved) &&
+        relToResolved !== "";
+
+      // Check realpath relative containment to prevent symlink escapes
+      const relToReal = path.relative(realJobsDir, realTarget);
+      const isRealContained =
+        !relToReal.startsWith("..") &&
+        !path.isAbsolute(relToReal) &&
+        relToReal !== "";
+
+      if (isLexicallyContained && isRealContained) {
+        return true;
+      }
+    }
+
     return false;
   } catch {
     return false;
   }
+}
+
+function resolveAppAssetPath(reqUrl, distDir) {
+  if (!reqUrl || typeof reqUrl !== 'string') {
+    return { error: 'Invalid URL', status: 400 };
+  }
+
+  // Reject path traversal, backslashes, or encoded dots in raw URL string
+  // (WHATWG URL parsing collapses leading /../ to /, masking traversal)
+  const lowerUrl = reqUrl.toLowerCase();
+  if (
+    lowerUrl.includes('/..') ||
+    lowerUrl.includes('../') ||
+    lowerUrl.includes('\\') ||
+    lowerUrl.includes('%2e%2e') ||
+    lowerUrl.includes('%252e')
+  ) {
+    return { error: 'Forbidden: path traversal detected', status: 403 };
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(reqUrl);
+  } catch {
+    return { error: "Invalid URL", status: 400 };
+  }
+
+  // 1. Hostname must be exactly "app" and protocol "poseye:"
+  if (parsed.protocol !== "poseye:" || parsed.hostname !== "app") {
+    return { error: "Forbidden: invalid protocol or host", status: 403 };
+  }
+
+  const rawPathname = parsed.pathname || "";
+  let decodedPath;
+  try {
+    decodedPath = decodeURIComponent(rawPathname);
+  } catch {
+    return { error: "Bad Request: invalid URL encoding", status: 400 };
+  }
+
+  // 2. Reject Windows backslash traversal in raw or decoded path
+  if (rawPathname.includes("\\") || decodedPath.includes("\\")) {
+    return { error: "Forbidden: backslash path separator", status: 403 };
+  }
+
+  // 3. Clean leading slashes
+  let cleanPath = decodedPath.replace(/^\/+/, "");
+  if (!cleanPath) cleanPath = "index.html";
+
+  // 4. Reject traversal tokens, drive letters, colons
+  const segments = cleanPath.split("/");
+  for (const seg of segments) {
+    if (seg === ".." || seg === "." || seg.includes(":") || seg.includes("\\")) {
+      return { error: "Forbidden: path traversal segment", status: 403 };
+    }
+  }
+
+  const resolvedDist = path.resolve(distDir);
+  const targetFile = path.resolve(resolvedDist, cleanPath);
+
+  // 5. Containment check via path.relative() to reject sibling prefixes (e.g. dist2, dist-other)
+  const rel = path.relative(resolvedDist, targetFile);
+  if (rel.startsWith("..") || path.isAbsolute(rel) || rel === "") {
+    return { error: "Forbidden: outside asset root", status: 403 };
+  }
+
+  // 6. Realpath check if target exists to prevent symlink escapes
+  if (fs.existsSync(targetFile)) {
+    let realDist;
+    let realTarget;
+    try {
+      realDist = fs.existsSync(resolvedDist) ? fs.realpathSync(resolvedDist) : resolvedDist;
+      realTarget = fs.realpathSync(targetFile);
+    } catch {
+      return { error: "Forbidden: cannot resolve real path", status: 403 };
+    }
+
+    const realRel = path.relative(realDist, realTarget);
+    if (realRel.startsWith("..") || path.isAbsolute(realRel) || realRel === "") {
+      return { error: "Forbidden: symlink outside asset root", status: 403 };
+    }
+
+    const stat = fs.statSync(realTarget);
+    if (stat.isFile()) {
+      return { filePath: realTarget, isSpaFallback: false };
+    }
+  }
+
+  // 7. Normal SPA fallback for client-side routing (e.g. /projects, /viewer/123)
+  const indexPath = path.join(resolvedDist, "index.html");
+  if (fs.existsSync(indexPath)) {
+    return { filePath: indexPath, isSpaFallback: true };
+  }
+
+  return { error: "Not Found", status: 404 };
+}
+
+const PINNED_NODEODM_VERSION = "3.6.2";
+const PINNED_IMAGE = `opendronemap/nodeodm:${PINNED_NODEODM_VERSION}`;
+
+function verifyNodeOdmInfo(info, expectedVersion = PINNED_NODEODM_VERSION) {
+  if (!info || typeof info !== "object" || Array.isArray(info)) return false;
+  if (typeof info.version !== "string") return false;
+  const v = info.version.trim();
+  return v === expectedVersion;
+}
+
+function evaluateContainerCompatibility(container, { pinnedImage = PINNED_IMAGE, pinnedImageId = null } = {}) {
+  if (!container || typeof container !== "object") {
+    return { canReuse: false, reason: "missing" };
+  }
+  // 1. Exact image tag match
+  if (container.configImage === pinnedImage) {
+    return { canReuse: true, reason: "pinned_image_match" };
+  }
+  // 2. Exact image ID match (alternative tag or digest pointing to same image)
+  if (pinnedImageId && typeof pinnedImageId === "string" && pinnedImageId.trim()) {
+    const cleanId = pinnedImageId.trim();
+    if (container.imageId && typeof container.imageId === "string" && container.imageId.includes(cleanId)) {
+      return { canReuse: true, reason: "pinned_id_match" };
+    }
+  }
+  return {
+    canReuse: false,
+    reason: "incompatible_image",
+    image: container.configImage || "unknown",
+  };
 }
 
 function validateSender(e, { targetWebContentsId, targetMainFrame, isPackaged } = {}) {
@@ -364,11 +527,24 @@ async function waitForUrl(url, ms = 60000, label = "service") {
   throw new Error(`${label} did not become ready within ${Math.round(ms / 1000)}s (${url}). Last error: ${lastError}`);
 }
 
-function pullDockerImage(imageTag, onProgress) {
+function pullDockerImage(imageTag, onProgress, { timeoutMs = 600000 } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn("docker", ["pull", imageTag], { windowsHide: true });
     let lastOut = "";
     let errOut = "";
+    let isSettled = false;
+
+    const timer = setTimeout(() => {
+      if (isSettled) return;
+      isSettled = true;
+      try {
+        child.kill("SIGTERM");
+        setTimeout(() => {
+          try { child.kill("SIGKILL"); } catch {}
+        }, 3000);
+      } catch {}
+      reject(new Error(`docker pull ${imageTag} timed out after ${Math.round(timeoutMs / 1000)}s`));
+    }, timeoutMs);
 
     child.stdout?.on("data", (chunk) => {
       const text = chunk.toString();
@@ -388,9 +564,17 @@ function pullDockerImage(imageTag, onProgress) {
       }
     });
 
-    child.on("error", (err) => reject(new Error(`docker pull failed: ${err.message}`)));
+    child.on("error", (err) => {
+      if (isSettled) return;
+      isSettled = true;
+      clearTimeout(timer);
+      reject(new Error(`docker pull failed: ${err.message}`));
+    });
 
     child.on("close", (code) => {
+      if (isSettled) return;
+      isSettled = true;
+      clearTimeout(timer);
       if (code === 0) resolve();
       else reject(new Error(errOut.trim() || lastOut || `docker pull exited with code ${code}`));
     });
@@ -412,69 +596,98 @@ async function ensureNodeOdm() {
 }
 
 async function _ensureNodeOdmInternal() {
-  log("info", "Checking NodeODM container…");
-  const containerNames = ["poseye-nodeodm", "digitaltwin-nodeodm"];
+  log("info", `Checking NodeODM container (pinned: ${PINNED_IMAGE})…`);
 
-  // 1. Check if NodeODM is already responding
+  // 1. Check if NodeODM is already responding on port 3000
   try {
     const res = await fetch(`${NODEODM_URL}/info`, { signal: AbortSignal.timeout(3000) });
     if (res.ok) {
       const info = await res.json().catch(() => null);
-      log("info", `NodeODM already available at ${NODEODM_URL} (version: ${info?.version || "unknown"})`);
-      return;
+      if (verifyNodeOdmInfo(info)) {
+        log("info", `NodeODM already available and verified at ${NODEODM_URL} (version: ${info.version})`);
+        return true;
+      }
+      log("warn", `NodeODM responded on ${NODEODM_URL} but returned invalid info: ${JSON.stringify(info)}`);
     }
   } catch { /* not running yet */ }
 
   await ensureDocker();
 
-  // 2. Try reusing an existing running or stopped container
-  for (const name of containerNames) {
-    try {
-      const inspectOut = await run("docker", ["inspect", "--format", "{{.State.Status}}", name]).catch(() => "");
-      const status = inspectOut.trim();
-      if (status) {
-        log("info", `Found existing container: ${name} (status: ${status})`);
-        if (status === "running") {
-          try {
-            await waitForUrl(`${NODEODM_URL}/info`, 15000, `NodeODM (${name})`);
-            log("info", `NodeODM active in existing container: ${name}`);
-            return;
-          } catch (waitErr) {
-            log("warn", `Running container ${name} not responding on ${NODEODM_URL}: ${waitErr.message}`);
+  // 2. Check existing container 'poseye-nodeodm'
+  let existingContainer = null;
+  try {
+    const inspectFormat = "{{.State.Status}}|{{.Config.Image}}|{{.Image}}";
+    const inspectOut = await run("docker", ["inspect", "--format", inspectFormat, "poseye-nodeodm"]).catch(() => "");
+    if (inspectOut && inspectOut.trim()) {
+      const [cStatus, cConfigImage, cImageId] = inspectOut.trim().split("|");
+      existingContainer = { name: "poseye-nodeodm", status: cStatus, configImage: cConfigImage, imageId: cImageId };
+    }
+  } catch {}
+
+  let pinnedImageId = null;
+  try {
+    const out = await run("docker", ["images", "-q", PINNED_IMAGE]).catch(() => "");
+    pinnedImageId = out ? out.trim() : null;
+  } catch {}
+
+  const compatibility = evaluateContainerCompatibility(existingContainer, {
+    pinnedImage: PINNED_IMAGE,
+    pinnedImageId,
+  });
+
+  if (existingContainer) {
+    if (!compatibility.canReuse) {
+      log("warn", `Existing container 'poseye-nodeodm' uses image '${existingContainer.configImage}', not '${PINNED_IMAGE}'.`);
+      if (existingContainer.status === "running") {
+        const errMsg = (
+          `An existing container 'poseye-nodeodm' is running incompatible image '${existingContainer.configImage}'. ` +
+          `posEye strictly requires pinned image '${PINNED_IMAGE}'. ` +
+          `Please stop or remove this container manually to allow posEye to run the supported version.`
+        );
+        updateStatus("nodeodm_error", errMsg);
+        throw new Error(errMsg);
+      }
+    } else {
+      // Compatible container found
+      if (existingContainer.status === "running") {
+        try {
+          await waitForUrl(`${NODEODM_URL}/info`, 15000, "NodeODM (poseye-nodeodm)");
+          const infoRes = await fetch(`${NODEODM_URL}/info`);
+          const info = await infoRes.json().catch(() => null);
+          if (verifyNodeOdmInfo(info)) {
+            log("info", `Verified healthy running container poseye-nodeodm (version: ${info.version})`);
+            return true;
           }
-        } else {
-          log("info", `Attempting to start stopped container: ${name}`);
-          updateStatus("nodeodm_starting", `Starting existing ${name} container…`);
-          await run("docker", ["start", name]);
-          await waitForUrl(`${NODEODM_URL}/info`, 45000, `NodeODM (${name})`);
-          log("info", `NodeODM started from existing container: ${name}`);
-          return;
+        } catch (waitErr) {
+          log("warn", `Running container poseye-nodeodm not responding on ${NODEODM_URL}: ${waitErr.message}`);
+        }
+      } else {
+        log("info", `Starting stopped pinned container: poseye-nodeodm…`);
+        updateStatus("nodeodm_starting", "Starting existing NodeODM container…");
+        try {
+          await run("docker", ["start", "poseye-nodeodm"]);
+          await waitForUrl(`${NODEODM_URL}/info`, 45000, "NodeODM (poseye-nodeodm)");
+          const infoRes = await fetch(`${NODEODM_URL}/info`);
+          const info = await infoRes.json().catch(() => null);
+          if (verifyNodeOdmInfo(info)) {
+            log("info", `NodeODM started from existing container (version: ${info.version})`);
+            return true;
+          }
+        } catch (startErr) {
+          log("warn", `Could not start existing container: ${startErr.message}`);
         }
       }
-    } catch (e) {
-      log("info", `Container ${name} inspection/startup skipped: ${e.message}`);
     }
   }
 
-  // 3. Locate or acquire Docker image
-  const PINNED_IMAGE = "opendronemap/nodeodm:3.6.2";
-  const FALLBACK_IMAGE = "opendronemap/nodeodm";
-  let targetImage = PINNED_IMAGE;
+  // 3. Locate Docker image (strictly PINNED_IMAGE, no untagged fallback)
   let imageInDocker = false;
-
   try {
     const pinnedOut = await run("docker", ["images", "-q", PINNED_IMAGE]);
     if (pinnedOut && pinnedOut.trim()) {
       imageInDocker = true;
-      targetImage = PINNED_IMAGE;
-    } else {
-      const fallbackOut = await run("docker", ["images", "-q", FALLBACK_IMAGE]);
-      if (fallbackOut && fallbackOut.trim()) {
-        imageInDocker = true;
-        targetImage = FALLBACK_IMAGE;
-      }
     }
-  } catch { /* ignore */ }
+  } catch {}
 
   // 4. If image not in Docker, check local offline archives first
   if (!imageInDocker) {
@@ -492,7 +705,6 @@ async function _ensureNodeOdmInternal() {
           await runWithTimeout("docker", ["load", "-i", tar], 300000);
           log("info", "NodeODM image loaded from tar");
           imageInDocker = true;
-          targetImage = PINNED_IMAGE;
           break;
         } catch (e) {
           log("warn", `Failed to load NodeODM tar: ${e.message}`);
@@ -508,52 +720,54 @@ async function _ensureNodeOdmInternal() {
     try {
       await pullDockerImage(PINNED_IMAGE, (progress) => {
         updateStatus("nodeodm_pulling", `Pulling NodeODM: ${progress}`);
-      });
+      }, { timeoutMs: 600000 });
       imageInDocker = true;
-      targetImage = PINNED_IMAGE;
       log("info", `Successfully pulled ${PINNED_IMAGE}`);
     } catch (pullErr) {
       const offlineMsg = (
-        `Offline NodeODM image not found and automatic pull failed: ${pullErr.message}
-
-` +
-        `To load it, ensure network connectivity and run:
-  docker pull ${PINNED_IMAGE}
-` +
-        `or load your offline archive:
-  docker load -i <path-to-nodeodm.tar>`
+        `Offline NodeODM image not found and automatic pull failed: ${pullErr.message}. ` +
+        `Ensure network connectivity and run: docker pull ${PINNED_IMAGE}, or load an offline archive with: docker load -i <path-to-nodeodm.tar>`
       );
+      updateStatus("nodeodm_offline", offlineMsg);
       log("error", offlineMsg);
       throw new Error(offlineMsg);
     }
   }
 
-  // 6. Run a new container
-  log("info", `Starting new NodeODM container using ${targetImage}…`);
-  updateStatus("nodeodm_starting", `Starting NodeODM container using ${targetImage}…`);
-  try {
+  // 6. Run a new container if none exists
+  log("info", `Starting new NodeODM container using ${PINNED_IMAGE}…`);
+  updateStatus("nodeodm_starting", `Starting NodeODM container using ${PINNED_IMAGE}…`);
+
+  // Do not delete user-managed containers; only clean dead poseye-nodeodm if compatible
+  if (existingContainer && compatibility.canReuse && existingContainer.status !== "running") {
     await run("docker", ["rm", "-f", "poseye-nodeodm"]).catch(() => {});
+  }
+
+  try {
     await run("docker", [
       "run", "-d",
       "--name", "poseye-nodeodm",
       "--restart", "unless-stopped",
       "-p", "3000:3000",
-      targetImage,
+      PINNED_IMAGE,
     ]);
   } catch (err) {
     const msg = String(err.message || err);
     if (/port is already allocated|bind|address already in use/i.test(msg)) {
-      log("warn", `Port 3000 already in use — checking if NodeODM is responding…`);
+      log("warn", "Port 3000 already in use — checking if NodeODM is responding…");
       try {
         await waitForUrl(`${NODEODM_URL}/info`, 10000, "NodeODM on existing port");
-        log("info", "NodeODM is already running on port 3000");
-        return;
-      } catch {
-        throw new Error(
-          "Port 3000 is already in use by another process.\n\n" +
-          "Either stop that process, or set NODEODM_URL environment variable to point to your NodeODM instance."
-        );
-      }
+        const infoRes = await fetch(`${NODEODM_URL}/info`);
+        const info = await infoRes.json().catch(() => null);
+        if (verifyNodeOdmInfo(info)) {
+          log("info", `NodeODM is already running on port 3000 (version: ${info.version})`);
+          return true;
+        }
+      } catch {}
+      throw new Error(
+        "Port 3000 is occupied by an incompatible process or container.\n\n" +
+        "Please free port 3000 or configure NODEODM_URL to point to your NodeODM instance."
+      );
     }
     throw new Error(`Could not start NodeODM container: ${msg}`);
   }
@@ -563,7 +777,11 @@ async function _ensureNodeOdmInternal() {
   await waitForUrl(`${NODEODM_URL}/info`, NODEODM_TIMEOUT_MS, "NodeODM");
   const infoRes = await fetch(`${NODEODM_URL}/info`);
   const infoData = await infoRes.json().catch(() => ({}));
+  if (!verifyNodeOdmInfo(infoData)) {
+    throw new Error(`NodeODM container ready but returned invalid or incompatible version: ${JSON.stringify(infoData)}`);
+  }
   log("info", `NodeODM is ready (version: ${infoData.version || "unknown"})`);
+  return true;
 }
 
 // ─── Python API ───────────────────────────────────────────────────────────────
@@ -798,28 +1016,13 @@ app.whenReady().then(async () => {
   // ── Application Protocol Handler ─────────────────────────────────────────
   protocol.handle("poseye", (request) => {
     try {
-      const parsedUrl = new URL(request.url);
-      let reqPath = decodeURIComponent(parsedUrl.pathname);
-      if (reqPath.startsWith("/")) reqPath = reqPath.slice(1);
-      if (!reqPath || reqPath === "") reqPath = "index.html";
-
       const distDir = path.resolve(__dirname, "..", "dist");
-      const filePath = path.normalize(path.join(distDir, reqPath));
-
-      if (!filePath.startsWith(distDir)) {
-        log("warn", `Blocked unauthorized protocol access outside distDir: ${filePath}`);
-        return new Response("Forbidden", { status: 403 });
+      const result = resolveAppAssetPath(request.url, distDir);
+      if (result.error) {
+        log("warn", `Protocol access blocked: ${request.url} -> ${result.error}`);
+        return new Response(result.error, { status: result.status || 403 });
       }
-
-      if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-        return electronNet.fetch(pathToFileURL(filePath).toString());
-      }
-
-      const indexPath = path.join(distDir, "index.html");
-      if (fs.existsSync(indexPath)) {
-        return electronNet.fetch(pathToFileURL(indexPath).toString());
-      }
-      return new Response("Not Found", { status: 404 });
+      return electronNet.fetch(pathToFileURL(result.filePath).toString());
     } catch (err) {
       log("error", `Protocol handler error: ${err.message}`);
       return new Response("Internal Server Error", { status: 500 });
@@ -906,20 +1109,7 @@ app.whenReady().then(async () => {
     return null;
   });
 
-  ipcMain.handle("allow:path", (e, filePath) => {
-    if (!isTrustedSender(e)) return false;
-    if (!filePath || typeof filePath !== "string") return false;
-    try {
-      const resolved = path.resolve(filePath);
-      if (fs.existsSync(resolved)) {
-        registerAllowedPath(resolved);
-        return true;
-      }
-      return false;
-    } catch {
-      return false;
-    }
-  });
+
 
   ipcMain.handle("env", (e) => {
     if (!isTrustedSender(e)) return null;
@@ -1071,9 +1261,14 @@ app.on("activate", () => {
 }
 
 module.exports = {
+  PINNED_NODEODM_VERSION,
+  PINNED_IMAGE,
   validateSender,
   isPathAllowed,
   registerAllowedPath,
+  resolveAppAssetPath,
+  verifyNodeOdmInfo,
+  evaluateContainerCompatibility,
   allowedFilePaths,
   pullDockerImage,
   ensureNodeOdm,

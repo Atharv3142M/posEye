@@ -180,8 +180,52 @@ def test_cors_origins_isolation(tmp_path: Path):
     assert res_direct.headers.get("access-control-allow-origin") is None
 
 
-def test_asset_route_security_and_cors(tmp_path: Path):
-    from orchestrator.main import API_TOKEN
+def test_authentication_enforcement(monkeypatch, tmp_path: Path):
+    token = "test-token-sec-98765"
+    monkeypatch.setattr("orchestrator.main.API_TOKEN", token)
+
+    client = TestClient(app)
+
+    # 1. Standard API endpoint: /system/status
+    res = client.get("/system/status")
+    assert res.status_code == 401
+    assert "Unauthorized" in res.json().get("detail", "")
+
+    res_bad = client.get("/system/status", headers={"Authorization": "Bearer wrong-token"})
+    assert res_bad.status_code == 401
+
+    res_query = client.get(f"/system/status?token={token}")
+    assert res_query.status_code == 401
+
+    res_ok_bearer = client.get("/system/status", headers={"Authorization": f"Bearer {token}"})
+    assert res_ok_bearer.status_code == 200
+
+    res_ok_x_api = client.get("/system/status", headers={"X-Api-Token": token})
+    assert res_ok_x_api.status_code == 200
+
+    # 2. Asset endpoint: /jobs/{id}/assets/{asset}
+    job = store.create(tmp_path / "flight.mp4")
+    (job.work_dir / "model.glb").write_bytes(b"mock_glb")
+
+    res_asset_unauth = client.get(f"/jobs/{job.id}/assets/model.glb")
+    assert res_asset_unauth.status_code == 401
+
+    res_asset_bad = client.get(f"/jobs/{job.id}/assets/model.glb", headers={"Authorization": "Bearer wrong-token"})
+    assert res_asset_bad.status_code == 401
+
+    res_asset_query = client.get(f"/jobs/{job.id}/assets/model.glb?token={token}")
+    assert res_asset_query.status_code == 401
+
+    res_asset_ok_bearer = client.get(f"/jobs/{job.id}/assets/model.glb", headers={"Authorization": f"Bearer {token}"})
+    assert res_asset_ok_bearer.status_code == 200
+
+    res_asset_ok_x_api = client.get(f"/jobs/{job.id}/assets/model.glb", headers={"X-Api-Token": token})
+    assert res_asset_ok_x_api.status_code == 200
+
+
+def test_asset_route_security_and_cors(tmp_path: Path, monkeypatch):
+    token = "test-cors-token-abc"
+    monkeypatch.setattr("orchestrator.main.API_TOKEN", token)
 
     client = TestClient(app)
 
@@ -193,22 +237,21 @@ def test_asset_route_security_and_cors(tmp_path: Path):
     (odm_dir / "orthophoto.tif").write_bytes(b"TIFF_mock_data")
     (odm_dir / "cloud.laz").write_bytes(b"LAZ_mock_data")
 
-    auth_headers = {"Authorization": f"Bearer {API_TOKEN}"} if API_TOKEN else {}
+    auth_headers = {"Authorization": f"Bearer {token}"}
 
     # A. Unauthorized asset requests MUST be rejected (401)
-    if API_TOKEN:
-        res_unauth = client.get(f"/jobs/{job.id}/assets/model.glb")
-        assert res_unauth.status_code == 401
+    res_unauth = client.get(f"/jobs/{job.id}/assets/model.glb")
+    assert res_unauth.status_code == 401
 
-        res_bad_token = client.get(
-            f"/jobs/{job.id}/assets/model.glb",
-            headers={"Authorization": "Bearer bad-token-xyz"},
-        )
-        assert res_bad_token.status_code == 401
+    res_bad_token = client.get(
+        f"/jobs/{job.id}/assets/model.glb",
+        headers={"Authorization": "Bearer bad-token-xyz"},
+    )
+    assert res_bad_token.status_code == 401
 
-        # Query parameter tokens MUST NOT be accepted
-        res_query_token = client.get(f"/jobs/{job.id}/assets/model.glb?token={API_TOKEN}")
-        assert res_query_token.status_code == 401
+    # Query parameter tokens MUST NOT be accepted
+    res_query_token = client.get(f"/jobs/{job.id}/assets/model.glb?token={token}")
+    assert res_query_token.status_code == 401
 
     # B. Allowed Packaged Origin (poseye://app) on actual asset route
     res_opt_asset = client.options(

@@ -50,7 +50,7 @@
    - **Desktop Unit Tests:** 3/3 passed cleanly (`npm test`).
    - **TypeScript Verification:** 0 type errors (`npx tsc --noEmit`).
    - **Frontend Bundle:** Production build succeeded (`npm run build`).
-   - **Installer Distribution:** Packaged `posEye.Setup.0.1.4.exe` (192,249,518 bytes, SHA-256: `8F7F58E9A4858E6043F8A66364482B5F96FF6129FEA816D8B771BB8BBC772839`).
+   - **Installer Distribution:** Canonical CI build `posEye.Setup.0.1.4.exe` (191,488,690 bytes, SHA-256: `09D92C3FA73E010A145B5D67F0E5D974DEDF81F81436492D13830BFA7F85354B`; CI artifact zip: 191,502,200 bytes).
 
 ---
 

@@ -36,5 +36,5 @@
 ## Verification & Test Results
 - **Automated Python Test Suite:** 47/47 unit and integration tests passing (`apps/pipeline` and `apps/orchestrator`).
 - **Frontend Build:** Clean Vite production bundle with TypeScript validation.
-- **Packaging:** Windows NSIS installer generated successfully at `apps/desktop/release/posEye.Setup.0.1.4.exe` (192,247,632 bytes, SHA-256: `9b0ba01b12b09545df0f19efc48c2816f25b3f78472f086d50ced2677f4bf3c5`).
+- **Packaging:** Windows NSIS installer generated successfully at `apps/desktop/release/posEye.Setup.0.1.4.exe` (Canonical CI artifact: 191,488,690 bytes, SHA-256: `09D92C3FA73E010A145B5D67F0E5D974DEDF81F81436492D13830BFA7F85354B`; CI ZIP package: 191,502,200 bytes).
 
