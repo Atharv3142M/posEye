@@ -132,6 +132,8 @@ declare global {
       getLogs:      () => Promise<Array<{ ts: string; level: string; message: string }>>;
       getStatus:    () => Promise<{ phase: string; message: string }>;
       restartApi:   () => Promise<{ ok: boolean }>;
+      getPrefs?:    () => Promise<{ gpu: boolean }>;
+      setPrefs?:    (partial: { gpu?: boolean }) => Promise<{ gpu: boolean }>;
       // Events (returns unsubscribe fn)
       onAppLog:     (callback: (entry: { ts: string; level: string; message: string }) => void) => () => void;
       onAppStatus?: (callback: (status: { phase: string; message: string }) => void) => () => void;

@@ -21,8 +21,13 @@ from orchestrator.jobs import JobStore
 from orchestrator.presets import detect_preset
 from orchestrator.system import system_status
 
+ORCHESTRATOR_VERSION = "0.1.5"
+
 JOBS_ROOT = Path(os.environ.get("DT_JOBS_DIR", Path.cwd() / ".jobs"))
 store = JobStore(JOBS_ROOT)
+
+_STATUS_CACHE: dict | None = None
+_STATUS_LOCK = threading.Lock()
 
 # Per-launch API token for local API security (empty string disables auth in dev/tests if env not set)
 API_TOKEN = os.environ.get("DT_API_TOKEN", "")
@@ -61,36 +66,14 @@ async def lifespan(app: FastAPI):
     py_ver = sys.version.split()[0]
     _app_log(
         "INFO",
-        f"posEye orchestrator v0.1.4 started — Python {py_ver} | "
+        f"posEye orchestrator v{ORCHESTRATOR_VERSION} started — Python {py_ver} | "
         f"fastapi={fa_ver} trimesh={tm_ver} httpx={hx_ver}",
     )
-
-    try:
-        status = system_status()
-        ffmpeg = status.get("ffmpeg", {})
-        if ffmpeg.get("ok"):
-            _app_log("INFO", f"[posEye] ffmpeg: detected at {ffmpeg.get('path')}")
-        else:
-            _app_log("WARNING", f"[posEye] ffmpeg: NOT detected — {ffmpeg.get('error', 'not found')}")
-
-        docker = status.get("docker", {})
-        if docker.get("ok"):
-            _app_log("INFO", f"[posEye] Docker: Running {docker.get('version', '')}")
-        else:
-            _app_log("WARNING", "[posEye] Docker: not available or not running")
-
-        nodeodm = status.get("nodeodm", {})
-        if nodeodm.get("ok"):
-            _app_log("INFO", f"[posEye] NodeODM: Connected at {nodeodm.get('url')}")
-        else:
-            _app_log("WARNING", f"[posEye] NodeODM: not reachable at {nodeodm.get('url')} — is Docker running?")
-    except Exception as exc:
-        _app_log("ERROR", f"[posEye] system_status() check failed: {exc}")
-
+    threading.Thread(target=_refresh_status_cache, name="poseye-status", daemon=True).start()
     yield
 
 
-app = FastAPI(title="posEye Orchestrator", version="0.1.4", lifespan=lifespan)
+app = FastAPI(title="posEye Orchestrator", version=ORCHESTRATOR_VERSION, lifespan=lifespan)
 
 # Allowed CORS origins: restricted strictly to desktop Electron origins and local development hosts
 DEFAULT_ALLOWED_ORIGINS = [
@@ -176,16 +159,67 @@ async def unhandled(_: Request, exc: Exception) -> JSONResponse:
 # ---------------------------------------------------------------------------
 # Health endpoint (service identity & version contract)
 # ---------------------------------------------------------------------------
+def _checking_status() -> dict:
+    pending = {"ok": False, "status": "checking", "message": "Checking…", "version": "", "recovery": ""}
+    return {
+        "docker": dict(pending),
+        "nodeodm": {**pending, "url": ""},
+        "ffmpeg": {**pending, "detected": False, "path": None},
+        "gpuAvailable": False,
+        "gpuName": None,
+        "nvidiaSmiAvailable": False,
+        "cudaAvailable": False,
+        "nodeodmAcceleration": "checking",
+        "message": "Checking hardware…",
+    }
+
+
+def _refresh_status_cache() -> None:
+    global _STATUS_CACHE
+    try:
+        data = system_status()
+    except Exception as exc:
+        _app_log("ERROR", f"[posEye] system_status() check failed: {exc}")
+        data = _checking_status()
+        data["docker"]["status"] = "error"
+        data["docker"]["message"] = str(exc)
+    else:
+        ffmpeg = data.get("ffmpeg", {})
+        if ffmpeg.get("ok"):
+            _app_log("INFO", f"[posEye] ffmpeg: detected at {ffmpeg.get('path')}")
+        else:
+            _app_log("WARNING", f"[posEye] ffmpeg: NOT detected — {ffmpeg.get('error', 'not found')}")
+        docker = data.get("docker", {})
+        if docker.get("ok"):
+            _app_log("INFO", f"[posEye] Docker: Running {docker.get('version', '')}")
+        else:
+            _app_log("WARNING", "[posEye] Docker: not available or not running")
+        nodeodm = data.get("nodeodm", {})
+        if nodeodm.get("ok"):
+            _app_log("INFO", f"[posEye] NodeODM: Connected at {nodeodm.get('url')}")
+        else:
+            _app_log("WARNING", f"[posEye] NodeODM: not reachable at {nodeodm.get('url')} — is Docker running?")
+    with _STATUS_LOCK:
+        _STATUS_CACHE = data
+
+
+def _status_snapshot() -> dict:
+    with _STATUS_LOCK:
+        if _STATUS_CACHE is not None:
+            return _STATUS_CACHE
+    return _checking_status()
+
+
 @app.get("/health")
 def health() -> dict:
-    status = system_status()
+    status = _status_snapshot()
     terminal = {"ready", "error", "cancelled", "interrupted"}
     active_jobs = sum(1 for j in store.jobs.values() if j.stage not in terminal)
     return {
         "serviceId": "poseye-orchestrator",
         "product": "posEye",
         "component": "Orchestrator",
-        "orchestratorVersion": "0.1.4",
+        "orchestratorVersion": ORCHESTRATOR_VERSION,
         "ok": True,
         "defaultPreset": detect_preset(),
         "ffmpeg": status.get("ffmpeg"),
@@ -205,9 +239,22 @@ def health() -> dict:
     }
 
 
+def _store_status(data: dict) -> None:
+    global _STATUS_CACHE
+    with _STATUS_LOCK:
+        _STATUS_CACHE = data
+
+
 @app.get("/system/status", dependencies=[Depends(verify_api_token)])
 def get_system() -> dict:
-    return system_status()
+    with _STATUS_LOCK:
+        cached = _STATUS_CACHE
+    if cached is not None and cached.get("docker", {}).get("status") != "checking":
+        threading.Thread(target=_refresh_status_cache, name="poseye-status", daemon=True).start()
+        return cached
+    data = system_status()
+    _store_status(data)
+    return data
 
 
 class ProbeBody(BaseModel):
@@ -341,6 +388,14 @@ def job_asset(job_id: str, asset: str) -> FileResponse:
     elif asset == "report.pdf":
         hits = list(odm.rglob("*report*.pdf"))
         path = hits[0] if hits else None
+    elif asset == "cloud.json":
+        from orchestrator.preview import cloud_preview
+
+        path = cloud_preview(job.work_dir, odm)
+    elif asset == "orthophoto.jpg":
+        from orchestrator.preview import orthophoto_preview
+
+        path = orthophoto_preview(job.work_dir, odm)
     else:
         path = mapping.get(asset)
     if path is None or not path.is_file():
@@ -354,6 +409,8 @@ def job_asset(job_id: str, asset: str) -> FileResponse:
         ".laz": "application/octet-stream",
         ".las": "application/octet-stream",
         ".pdf": "application/pdf",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
         ".zip": "application/zip",
         ".json": "application/json",
     }

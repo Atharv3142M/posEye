@@ -112,6 +112,7 @@ export default function Logs() {
                   <span className="log-stage">{e.stage}</span>
                   <span style={{ color: "var(--text-muted)", marginRight: 6 }}>{Math.round(e.percent)}%</span>
                   <span>{e.message}</span>
+                  <button type="button" className="log-copy" onClick={() => void navigator.clipboard.writeText(`${e.stage} ${e.message}`)}>Copy</button>
                 </div>
               ))}
             </div>
@@ -132,6 +133,7 @@ export default function Logs() {
                     {e.level}
                   </span>
                   <span>{e.message}</span>
+                  <button type="button" className="log-copy" onClick={() => void navigator.clipboard.writeText(e.message)}>Copy</button>
                 </div>
               ))}
             </div>

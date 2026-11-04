@@ -14,7 +14,7 @@ def test_health():
     assert data["serviceId"] == "poseye-orchestrator"
     assert data["product"] == "posEye"
     assert data["component"] == "Orchestrator"
-    assert data["orchestratorVersion"] == "0.1.4"
+    assert data["orchestratorVersion"] == "0.1.5"
     assert "docker" in data
     assert "nodeodm" in data
     assert "ffmpeg" in data

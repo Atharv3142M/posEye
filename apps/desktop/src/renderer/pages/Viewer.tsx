@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { apiBaseSync, downloadAsset } from "../api";
+import { toast } from "../components/Toast";
 import Button from "../components/Button";
 import MeasurementTools from "../components/MeasurementTools";
 import ThreeViewer, { type MeasureResult, type ModelStats, type ThreeViewerHandle } from "../components/ThreeViewer";
@@ -12,15 +13,15 @@ export default function Viewer() {
   const { job, refresh } = useProject(id);
   const [tool, setTool] = useState<"orbit" | "distance" | "screenshot">("orbit");
   const [layers, setLayers] = useState({ mesh: true, ortho: false, cloud: false, dem: false });
+  const [wireframe, setWireframe] = useState(false);
   const [coords, setCoords] = useState("—");
   const [measure, setMeasure] = useState<MeasureResult>(null);
   const [stats, setStats] = useState<ModelStats | null>(null);
+  const [loadProgress, setLoadProgress] = useState<number | null>(null);
 
-  // Model loading state machine
   const [modelStatus, setModelStatus] = useState<"idle" | "loading" | "ready" | "error" | "no_model">("idle");
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Resizable sidebar state
   const [sidebarWidth, setSidebarWidth] = useState(300);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const isDraggingRef = useRef(false);
@@ -28,9 +29,7 @@ export default function Viewer() {
   const viewerRef = useRef<ThreeViewerHandle>(null);
 
   const assetUrl = useCallback(
-    (asset: string) => {
-      return `${apiBaseSync()}/jobs/${id}/assets/${asset}`;
-    },
+    (asset: string) => `${apiBaseSync()}/jobs/${id}/assets/${asset}`,
     [id]
   );
 
@@ -39,7 +38,6 @@ export default function Viewer() {
     return assetUrl("model.glb");
   }, [id, job?.hasModel, assetUrl]);
 
-  // Sync initial model status
   useEffect(() => {
     if (job && !job.hasModel) {
       setModelStatus("no_model");
@@ -49,16 +47,23 @@ export default function Viewer() {
   const onCoords = useCallback((t: string) => setCoords(t), []);
   const onMeasure = useCallback((r: MeasureResult) => setMeasure(r), []);
 
-  const resetCamera = () => {
-    viewerRef.current?.resetCamera();
-  };
-
+  const resetCamera = () => viewerRef.current?.resetCamera();
   const clearMeasurements = () => {
     viewerRef.current?.clearMeasurements();
     setMeasure(null);
   };
 
   function screenshot() {
+    // Try ThreeViewer's direct canvas capture first (preserveDrawingBuffer=true)
+    const dataUrl = viewerRef.current?.takeScreenshot?.();
+    if (dataUrl) {
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = `${job?.name || "model"}-view.png`;
+      a.click();
+      return;
+    }
+    // Fallback: grab canvas from DOM
     const canvas = document.querySelector("canvas");
     if (!(canvas instanceof HTMLCanvasElement)) return;
     const a = document.createElement("a");
@@ -67,7 +72,6 @@ export default function Viewer() {
     a.click();
   }
 
-  // Sidebar drag resizing handlers
   const onMouseDownResizer = (e: React.MouseEvent) => {
     e.preventDefault();
     isDraggingRef.current = true;
@@ -94,7 +98,9 @@ export default function Viewer() {
 
   const handleExport = (asset: string, defaultFilename: string) => {
     if (!id) return;
-    downloadAsset(id, asset, defaultFilename);
+    void downloadAsset(id, asset, defaultFilename).then((ok) => {
+      toast(ok ? `Saved ${defaultFilename}` : "Export canceled", ok ? "ok" : "err");
+    }).catch((err) => toast(err instanceof Error ? err.message : "Export failed", "err"));
   };
 
   const isGeoreferenced = Boolean(job?.isGeoreferenced);
@@ -118,41 +124,52 @@ export default function Viewer() {
         <strong style={{ fontSize: 13, color: "var(--text-primary)" }}>{job?.name || id}</strong>
         <div style={{ flex: 1 }} />
 
-        <Button onClick={resetCamera}>Reset Camera (R)</Button>
+        {/* Viewer tool controls */}
+        <Button
+          variant={wireframe ? "primary" : "ghost"}
+          style={{ padding: "4px 8px", fontSize: 12 }}
+          onClick={() => setWireframe(!wireframe)}
+          title="Toggle wireframe (W)"
+        >
+          ⬡ Wire
+        </Button>
+        <div className="toolbar-sep" />
+
+        <Button onClick={resetCamera} title="Reset camera (R)">Reset View (R)</Button>
 
         {id && job?.hasModel && (
           <>
             <Button variant="secondary" onClick={() => handleExport("model.glb", `${job?.name || "model"}.glb`)}>
-              Export GLB
+              ↓ GLB
             </Button>
             {job.assets?.laz && (
               <Button variant="secondary" onClick={() => handleExport("model.laz", `${job?.name || "model"}.laz`)}>
-                Export LAZ
+                ↓ LAZ
               </Button>
             )}
             {job.assets?.orthophoto && (
               <Button variant="secondary" onClick={() => handleExport("orthophoto.tif", `${job?.name || "model"}_orthophoto.tif`)}>
-                Export GeoTIFF
+                ↓ GeoTIFF
               </Button>
             )}
             {job.assets?.dsm && (
               <Button variant="secondary" onClick={() => handleExport("dsm.tif", `${job?.name || "model"}_dsm.tif`)}>
-                Export DSM
+                ↓ DSM
               </Button>
             )}
             {job.assets?.dtm && (
               <Button variant="secondary" onClick={() => handleExport("dtm.tif", `${job?.name || "model"}_dtm.tif`)}>
-                Export DTM
+                ↓ DTM
               </Button>
             )}
             {job.assets?.report && (
               <Button variant="secondary" onClick={() => handleExport("report.pdf", `${job?.name || "model"}_report.pdf`)}>
-                Export Report
+                ↓ Report
               </Button>
             )}
           </>
         )}
-        <Button onClick={screenshot}>Screenshot</Button>
+        <Button onClick={screenshot} title="Save screenshot">📷 Screenshot</Button>
       </div>
 
       {/* Main 3D Viewport Layout */}
@@ -162,10 +179,7 @@ export default function Viewer() {
           <>
             <div
               className="viewer-sidebar"
-              style={{
-                width: sidebarWidth,
-                padding: 16,
-              }}
+              style={{ width: sidebarWidth, padding: 16 }}
             >
               <MeasurementTools
                 tool={tool}
@@ -191,10 +205,56 @@ export default function Viewer() {
                 assets={job?.assets}
               />
 
+              {/* Bounding box dimensions */}
+              {stats?.bbox && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: "10px 12px",
+                    background: "var(--bg-panel-header)",
+                    border: "1px solid var(--border-light)",
+                    borderRadius: "var(--radius)",
+                    fontSize: 11,
+                  }}
+                >
+                  <div style={{ fontWeight: 600, color: "var(--text-secondary)", marginBottom: 6, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                    Bounding Box
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "2px 8px", fontFamily: "var(--font-mono)", fontSize: 11 }}>
+                    <span style={{ color: "var(--text-muted)" }}>W:</span>
+                    <span>{stats.bbox.size.x.toFixed(2)} {isGeoreferenced ? "m" : "u"}</span>
+                    <span style={{ color: "var(--text-muted)" }}>D:</span>
+                    <span>{stats.bbox.size.z.toFixed(2)} {isGeoreferenced ? "m" : "u"}</span>
+                    <span style={{ color: "var(--text-muted)" }}>H:</span>
+                    <span>{stats.bbox.size.y.toFixed(2)} {isGeoreferenced ? "m" : "u"}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Keyboard shortcuts hint */}
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: "8px 12px",
+                  background: "var(--bg-panel-header)",
+                  border: "1px solid var(--border-light)",
+                  borderRadius: "var(--radius)",
+                  fontSize: 10,
+                  color: "var(--text-muted)",
+                  lineHeight: 1.6,
+                }}
+              >
+                <div style={{ fontWeight: 600, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>Shortcuts</div>
+                <div><kbd style={{ background: "var(--bg-tertiary)", padding: "0 3px", borderRadius: 2, fontSize: 10 }}>R</kbd> Reset camera</div>
+                <div><kbd style={{ background: "var(--bg-tertiary)", padding: "0 3px", borderRadius: 2, fontSize: 10 }}>Esc</kbd> Clear measurement</div>
+                <div><kbd style={{ background: "var(--bg-tertiary)", padding: "0 3px", borderRadius: 2, fontSize: 10 }}>Scroll</kbd> Zoom</div>
+                <div><kbd style={{ background: "var(--bg-tertiary)", padding: "0 3px", borderRadius: 2, fontSize: 10 }}>Right-drag</kbd> Pan</div>
+              </div>
+
               {/* Georeference Notice Card */}
               <div
                 style={{
-                  marginTop: 16,
+                  marginTop: 12,
                   padding: "10px 12px",
                   background: "var(--bg-panel-header)",
                   border: "1px solid var(--border-strong)",
@@ -208,21 +268,21 @@ export default function Viewer() {
                   <>
                     <strong style={{ color: "var(--text-primary)" }}>[METRIC SCALE] Consumer GNSS</strong>
                     <div style={{ marginTop: 4, color: "var(--text-secondary)" }}>
-                      Reconstructed with {job?.geotagged} geotagged frames. Subject to standalone drone GNSS variance (±2–5m horizontal). Suitable for visual planning and approximate dimensions. Not ground-truthed with GCPs.
+                      Reconstructed with {job?.geotagged} geotagged frames. Subject to standalone drone GNSS variance (±2–5m horizontal).
                     </div>
                   </>
                 ) : hasGpsTelemetry ? (
                   <>
                     <strong style={{ color: "var(--text-primary)" }}>[RELATIVE GEOMETRY] Uncalibrated Scale</strong>
                     <div style={{ marginTop: 4, color: "var(--text-secondary)" }}>
-                      {job?.geotagged} frames carry GPS EXIF, but bundle adjustment produced a relative coordinate model. Measurements are uncalibrated.
+                      {job?.geotagged} frames carry GPS EXIF, but bundle adjustment produced a relative coordinate model.
                     </div>
                   </>
                 ) : (
                   <>
                     <strong style={{ color: "var(--text-primary)" }}>[ARBITRARY UNITS] Dimensionless Mesh</strong>
                     <div style={{ marginTop: 4, color: "var(--text-secondary)" }}>
-                      No GPS telemetry detected in flight SRT or image metadata. Coordinates and distance measurements are in arbitrary dimensionless units.
+                      No GPS telemetry detected. Measurements are in arbitrary dimensionless units.
                     </div>
                   </>
                 )}
@@ -245,45 +305,67 @@ export default function Viewer() {
             modelUrl={modelUrl}
             meshVisible={layers.mesh}
             measuring={tool === "distance"}
+            wireframe={wireframe}
+            showCloud={layers.cloud}
+            cloudUrl={layers.cloud && job?.assets?.laz ? assetUrl("cloud.json") : null}
+            showOrtho={layers.ortho}
+            orthoUrl={layers.ortho && job?.assets?.orthophoto ? assetUrl("orthophoto.jpg") : null}
+            modelReady={modelStatus === "ready"}
             onCoords={onCoords}
             onMeasure={onMeasure}
             onStats={setStats}
             onLoadStart={() => {
               setModelStatus("loading");
               setLoadError(null);
+              setLoadProgress(0);
             }}
+            onLoadProgress={(pct) => setLoadProgress(pct)}
             onLoadSuccess={() => {
               setModelStatus("ready");
               setLoadError(null);
+              setLoadProgress(null);
             }}
             onLoadError={(err) => {
               setModelStatus("error");
               setLoadError(err);
+              setLoadProgress(null);
             }}
           />
 
-          {/* Model Loading / Error Overlay */}
+          {/* Model Loading Overlay */}
           {modelStatus === "loading" && (
             <div style={{
               position: "absolute",
               top: 20,
               left: 20,
-              background: "rgba(30, 39, 46, 0.9)",
+              background: "rgba(30, 39, 46, 0.92)",
               border: "1px solid var(--border-light)",
-              padding: "8px 16px",
+              padding: "10px 16px",
               borderRadius: "var(--radius)",
               color: "#fff",
               fontSize: 12,
               display: "flex",
               alignItems: "center",
-              gap: 8,
+              gap: 10,
               boxShadow: "var(--shadow-md)",
+              minWidth: 200,
             }}>
-              <span className="status-dot checking" />
-              Loading 3D mesh model…
+              <span className="status-dot checking" style={{ animation: "pulse 1s infinite" }} />
+              <div style={{ flex: 1 }}>
+                <div>Loading 3D mesh…</div>
+                {loadProgress !== null && loadProgress > 0 && (
+                  <div style={{ marginTop: 6, height: 3, background: "rgba(255,255,255,0.15)", borderRadius: 2 }}>
+                    <div style={{ height: "100%", width: `${loadProgress}%`, background: "#18bc9c", borderRadius: 2, transition: "width 0.3s" }} />
+                  </div>
+                )}
+              </div>
+              {loadProgress !== null && loadProgress > 0 && (
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>{loadProgress}%</span>
+              )}
             </div>
           )}
 
+          {/* Error Overlay */}
           {modelStatus === "error" && (
             <div style={{
               position: "absolute",
@@ -354,7 +436,7 @@ export default function Viewer() {
             {coords}
           </div>
 
-          {/* Measurement Distance HUD */}
+          {/* Measurement HUD */}
           {measure && (
             <div
               style={{
@@ -375,7 +457,7 @@ export default function Viewer() {
               }}
             >
               <span>
-                Distance: {measure.distance.toFixed(2)} {isGeoreferenced ? "m (approx.)" : "model units"}
+                Total: {measure.distance.toFixed(2)} {isGeoreferenced ? "m (approx.)" : "model units"}
               </span>
               <button
                 type="button"
@@ -389,10 +471,31 @@ export default function Viewer() {
                   fontSize: 11,
                   fontWeight: 600,
                 }}
-                title="Clear current measurement"
+                title="Clear measurements (Esc)"
               >
                 ✕ Clear
               </button>
+            </div>
+          )}
+
+          {/* Wireframe badge */}
+          {wireframe && (
+            <div
+              style={{
+                position: "absolute",
+                bottom: 10,
+                right: 10,
+                background: "rgba(240, 246, 252, 0.15)",
+                border: "1px solid rgba(240, 246, 252, 0.3)",
+                color: "#fff",
+                padding: "3px 8px",
+                borderRadius: 3,
+                fontSize: 10,
+                fontFamily: "var(--font-mono)",
+                pointerEvents: "none",
+              }}
+            >
+              WIREFRAME
             </div>
           )}
         </div>

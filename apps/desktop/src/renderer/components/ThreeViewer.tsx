@@ -14,10 +14,16 @@ import {
   MeshBasicMaterial,
   MeshStandardMaterial,
   PerspectiveCamera,
+  PlaneGeometry,
+  Points,
+  PointsMaterial,
+  Float32BufferAttribute,
   Raycaster,
   RingGeometry,
   Scene,
   SphereGeometry,
+  Texture,
+  TextureLoader,
   Vector2,
   Vector3,
   WebGLRenderer,
@@ -47,16 +53,24 @@ export type ModelStats = {
 export interface ThreeViewerHandle {
   resetCamera: () => void;
   clearMeasurements: () => void;
+  takeScreenshot: () => string | null;
 }
 
 interface ThreeViewerProps {
   modelUrl: string | null;
   meshVisible: boolean;
   measuring: boolean;
+  wireframe?: boolean;
+  showCloud?: boolean;
+  cloudUrl?: string | null;
+  showOrtho?: boolean;
+  orthoUrl?: string | null;
+  modelReady?: boolean;
   onCoords: (text: string) => void;
   onMeasure: (result: MeasureResult) => void;
   onStats?: (stats: ModelStats) => void;
   onLoadStart?: () => void;
+  onLoadProgress?: (pct: number) => void;
   onLoadSuccess?: () => void;
   onLoadError?: (error: string) => void;
 }
@@ -66,10 +80,17 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     modelUrl,
     meshVisible,
     measuring,
+    wireframe = false,
+    showCloud = false,
+    cloudUrl = null,
+    showOrtho = false,
+    orthoUrl = null,
+    modelReady = false,
     onCoords,
     onMeasure,
     onStats,
     onLoadStart,
+    onLoadProgress,
     onLoadSuccess,
     onLoadError,
   },
@@ -82,6 +103,9 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
   const modelOffsetRef = useRef<Vector3>(new Vector3(0, 0, 0));
   const cameraRef = useRef<PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
+  const rendererRef = useRef<WebGLRenderer | null>(null);
+  const cloudGroupRef = useRef<Group | null>(null);
+  const orthoGroupRef = useRef<Group | null>(null);
 
   const measuringRef = useRef(measuring);
   measuringRef.current = measuring;
@@ -89,20 +113,18 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
   const meshVisibleRef = useRef(meshVisible);
   meshVisibleRef.current = meshVisible;
 
+  // Multi-segment measurement: accumulate picks
   const picksRef = useRef<Vector3[]>([]);
+  const totalDistRef = useRef(0);
   const loadIdRef = useRef<number>(0);
 
-  // Helper to dispose of geometries, materials, and textures to prevent memory leaks
   const disposeObjectTree = (obj: any) => {
     if (!obj) return;
     obj.traverse((child: any) => {
       if (child.geometry) child.geometry.dispose();
       if (child.material) {
         if (Array.isArray(child.material)) {
-          child.material.forEach((m: any) => {
-            m.map?.dispose();
-            m.dispose();
-          });
+          child.material.forEach((m: any) => { m.map?.dispose(); m.dispose(); });
         } else {
           child.material.map?.dispose();
           child.material.dispose();
@@ -111,7 +133,6 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     });
   };
 
-  // Expose imperative methods to parent
   const doResetCamera = () => {
     const root = rootRef.current;
     const camera = cameraRef.current;
@@ -140,15 +161,28 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
 
   const doClearMeasurements = () => {
     if (measuresRef.current) {
+      disposeObjectTree(measuresRef.current);
       measuresRef.current.clear();
     }
     picksRef.current = [];
+    totalDistRef.current = 0;
     onMeasure(null);
+  };
+
+  const doTakeScreenshot = (): string | null => {
+    const renderer = rendererRef.current;
+    if (!renderer) return null;
+    try {
+      return renderer.domElement.toDataURL("image/png");
+    } catch {
+      return null;
+    }
   };
 
   useImperativeHandle(ref, () => ({
     resetCamera: doResetCamera,
     clearMeasurements: doClearMeasurements,
+    takeScreenshot: doTakeScreenshot,
   }));
 
   // Setup Three.js Scene & Render loop
@@ -164,6 +198,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
       preserveDrawingBuffer: true,
     });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    rendererRef.current = renderer;
 
     const scene = new Scene();
     scene.background = new Color("#1e272e");
@@ -196,9 +231,13 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     // Groups
     const root = new Group();
     const measures = new Group();
+    const cloudGroup = new Group();
+    const orthoGroup = new Group();
     rootRef.current = root;
     measuresRef.current = measures;
-    scene.add(root, measures);
+    cloudGroupRef.current = cloudGroup;
+    orthoGroupRef.current = orthoGroup;
+    scene.add(root, measures, cloudGroup, orthoGroup);
 
     // Hover marker for measuring
     const hoverMarker = new Mesh(
@@ -234,7 +273,6 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
       return out;
     };
 
-    // Pointer move handler
     const onPointerMove = (ev: PointerEvent) => {
       const rect = canvas.getBoundingClientRect();
       pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
@@ -259,10 +297,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
       if (measuringRef.current && hoverMarkerRef.current) {
         hoverMarkerRef.current.position.copy(p);
         if (hit.face) {
-          hoverMarkerRef.current.quaternion.setFromUnitVectors(
-            new Vector3(0, 0, 1),
-            hit.face.normal
-          );
+          hoverMarkerRef.current.quaternion.setFromUnitVectors(new Vector3(0, 0, 1), hit.face.normal);
         }
         hoverMarkerRef.current.visible = true;
       } else if (hoverMarkerRef.current) {
@@ -270,7 +305,6 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
       }
     };
 
-    // Pointer down handler for point picking in measuring mode
     const onPointerDown = (ev: PointerEvent) => {
       if (ev.button !== 0 || !measuringRef.current) return;
 
@@ -287,7 +321,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
       const pt = hit.point.clone();
       const picks = picksRef.current;
 
-      // Add sphere marker
+      // Sphere marker at pick point
       const markerGeom = new SphereGeometry(0.25, 16, 16);
       const markerMat = new MeshStandardMaterial({
         color: 0x18bc9c,
@@ -298,33 +332,33 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
       marker.position.copy(pt);
       measures.add(marker);
 
-      picks.push(pt);
-
-      if (picks.length === 2) {
-        // Draw connection line
-        const lineGeom = new BufferGeometry().setFromPoints([picks[0], picks[1]]);
-        const lineMat = new LineBasicMaterial({ color: 0x18bc9c, linewidth: 3 });
+      if (picks.length > 0) {
+        // Draw segment line from last pick to this pick
+        const prev = picks[picks.length - 1];
+        const lineGeom = new BufferGeometry().setFromPoints([prev, pt]);
+        const lineMat = new LineBasicMaterial({ color: 0x18bc9c, linewidth: 2 });
         measures.add(new Line(lineGeom, lineMat));
 
-        const dist = picks[0].distanceTo(picks[1]);
+        // Accumulate distance
+        const segDist = prev.distanceTo(pt);
+        totalDistRef.current += segDist;
+
         const offset = modelOffsetRef.current;
         onMeasure({
-          distance: dist,
+          distance: totalDistRef.current,
           a: picks[0].clone(),
-          b: picks[1].clone(),
+          b: pt.clone(),
           worldA: picks[0].clone().add(offset),
-          worldB: picks[1].clone().add(offset),
+          worldB: pt.clone().add(offset),
         });
-
-        // Reset picks array for subsequent measurements
-        picksRef.current = [];
       }
+
+      picks.push(pt);
     };
 
     canvas.addEventListener("pointermove", onPointerMove);
     canvas.addEventListener("pointerdown", onPointerDown);
 
-    // Keyboard shortcuts
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "r" || e.key === "R") {
         doResetCamera();
@@ -334,7 +368,6 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     };
     window.addEventListener("keydown", onKeyDown);
 
-    // Render loop
     renderer.setAnimationLoop(() => {
       controls.update();
       renderer.render(scene, camera);
@@ -348,8 +381,11 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
       renderer.setAnimationLoop(null);
       disposeObjectTree(root);
       disposeObjectTree(measures);
+      disposeObjectTree(cloudGroup);
+      disposeObjectTree(orthoGroup);
       disposeObjectTree(hoverMarker);
       renderer.dispose();
+      rendererRef.current = null;
     };
   }, [onCoords, onMeasure]);
 
@@ -371,7 +407,84 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     }
   }, [meshVisible]);
 
-  // Load Model from URL with robust error handling, stale request rejection, and memory cleanup
+  // Toggle wireframe on all meshes
+  useEffect(() => {
+    if (!rootRef.current) return;
+    rootRef.current.traverse((o) => {
+      if (o instanceof Mesh) {
+        if (Array.isArray(o.material)) {
+          o.material.forEach((m: any) => { if ("wireframe" in m) m.wireframe = wireframe; });
+        } else if ("wireframe" in o.material) {
+          (o.material as any).wireframe = wireframe;
+        }
+      }
+    });
+  }, [wireframe]);
+
+  useEffect(() => {
+    const group = cloudGroupRef.current;
+    if (!group) return;
+    group.visible = showCloud;
+    disposeObjectTree(group);
+    group.clear();
+    if (!showCloud || !cloudUrl || !modelReady) return;
+    let cancel = false;
+    const headers: Record<string, string> = {};
+    const token = apiTokenSync();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    void fetch(cloudUrl, { headers })
+      .then((res) => {
+        if (!res.ok) throw new Error(`cloud ${res.status}`);
+        return res.json() as Promise<{ positions: number[] }>;
+      })
+      .then((data) => {
+        if (cancel || !data.positions?.length) return;
+        const offset = modelOffsetRef.current;
+        const positions = new Float32Array(data.positions);
+        for (let i = 0; i < positions.length; i += 3) {
+          positions[i] -= offset.x;
+          positions[i + 1] -= offset.y;
+          positions[i + 2] -= offset.z;
+        }
+        const geom = new BufferGeometry();
+        geom.setAttribute("position", new Float32BufferAttribute(positions, 3));
+        group.add(new Points(geom, new PointsMaterial({ color: 0x7ee0c6, size: 0.35, sizeAttenuation: true })));
+      })
+      .catch(() => {});
+    return () => { cancel = true; };
+  }, [showCloud, cloudUrl, modelReady]);
+
+  useEffect(() => {
+    const group = orthoGroupRef.current;
+    if (!group) return;
+    group.visible = showOrtho;
+    disposeObjectTree(group);
+    group.clear();
+    if (!showOrtho || !orthoUrl || !modelReady) return;
+    const loader = new TextureLoader();
+    const token = apiTokenSync();
+    if (token) loader.setRequestHeader({ Authorization: `Bearer ${token}` });
+    let disposed = false;
+    loader.load(orthoUrl, (texture: Texture) => {
+      if (disposed) {
+        texture.dispose();
+        return;
+      }
+      const root = rootRef.current;
+      const box = root ? new Box3().setFromObject(root) : new Box3();
+      const size = box.isEmpty() ? new Vector3(20, 1, 20) : box.getSize(new Vector3());
+      const plane = new Mesh(
+        new PlaneGeometry(Math.max(size.x, 1), Math.max(size.z, 1)),
+        new MeshBasicMaterial({ map: texture, side: DoubleSide, transparent: true, opacity: 0.9 }),
+      );
+      plane.rotation.x = -Math.PI / 2;
+      plane.position.y = box.isEmpty() ? -0.05 : box.min.y - 0.05;
+      group.add(plane);
+    });
+    return () => { disposed = true; };
+  }, [showOrtho, orthoUrl, modelReady]);
+
+  // Load Model
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
@@ -384,6 +497,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
       measuresRef.current.clear();
     }
     picksRef.current = [];
+    totalDistRef.current = 0;
     modelOffsetRef.current.set(0, 0, 0);
     onStats?.({ vertices: 0, triangles: 0 });
 
@@ -394,9 +508,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     const loader = new GLTFLoader();
     const token = apiTokenSync();
     if (token) {
-      loader.setRequestHeader({
-        Authorization: `Bearer ${token}`,
-      });
+      loader.setRequestHeader({ Authorization: `Bearer ${token}` });
     }
     loader.load(
       modelUrl,
@@ -412,9 +524,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
           if (obj instanceof Mesh) {
             if (obj.material) {
               if (Array.isArray(obj.material)) {
-                obj.material.forEach((m) => {
-                  m.side = DoubleSide;
-                });
+                obj.material.forEach((m) => { m.side = DoubleSide; });
               } else if ("side" in obj.material) {
                 obj.material.side = DoubleSide;
               }
@@ -438,12 +548,10 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
           return;
         }
 
-        // Compute original bounding box
         const origBox = new Box3().setFromObject(gltf.scene);
         const center = origBox.getCenter(new Vector3());
         const size = origBox.getSize(new Vector3());
 
-        // Offset geometry to center at (0, 0, 0) to avoid extreme UTM jitter
         gltf.scene.position.sub(center);
         modelOffsetRef.current.copy(center);
 
@@ -463,10 +571,15 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
         }
 
         onLoadSuccess?.();
-        // Frame camera on the newly loaded centered model
         setTimeout(doResetCamera, 50);
       },
-      undefined,
+      (xhr) => {
+        if (currentLoadId !== loadIdRef.current) return;
+        if (xhr.total && xhr.total > 0) {
+          const pct = Math.round((xhr.loaded / xhr.total) * 100);
+          onLoadProgress?.(pct);
+        }
+      },
       (err: any) => {
         if (currentLoadId !== loadIdRef.current) return;
         let errorMsg = "Failed to load 3D GLB model.";
@@ -480,7 +593,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
         onLoadError?.(errorMsg);
       }
     );
-  }, [modelUrl, onStats, onLoadStart, onLoadSuccess, onLoadError]);
+  }, [modelUrl, onStats, onLoadStart, onLoadSuccess, onLoadError, onLoadProgress]);
 
   return (
     <canvas

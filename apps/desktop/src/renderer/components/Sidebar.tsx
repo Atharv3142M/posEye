@@ -11,7 +11,7 @@ const NAV_LINKS = [
 ];
 
 export default function Sidebar() {
-  const health = useHealth(10_000);
+  const health = useHealth(5_000);
 
   return (
     <nav className="sidebar">
@@ -54,6 +54,14 @@ export default function Sidebar() {
         <StatusRow label="Docker Engine" service={health.docker} />
         <StatusRow label="NodeODM" service={health.nodeodm} />
         <StatusRow label="FFmpeg" service={health.ffmpeg} />
+        <StatusRow
+          label="GPU"
+          service={{
+            ok: Boolean(health.gpu?.available),
+            status: health.message === "Connecting…" ? "checking" : health.gpu?.available ? "running" : "stopped",
+            message: health.gpu?.message || health.gpu?.acceleration || "",
+          }}
+        />
       </div>
     </nav>
   );
@@ -77,7 +85,11 @@ function StatusRow({
     statusText = isApiOk ? "Running" : "Offline";
     tooltip = isApiOk ? "FastAPI backend active on port 8765" : "Backend orchestrator is not reachable";
   } else if (service) {
-    if (service.ok) {
+    if (service.status === "checking") {
+      cls = "checking";
+      statusText = "Checking…";
+      tooltip = service.message || "Waiting for the backend";
+    } else if (service.ok) {
       cls = "ok";
       if (service.status === "running") statusText = "Running";
       else if (service.status === "connected") statusText = "Connected";

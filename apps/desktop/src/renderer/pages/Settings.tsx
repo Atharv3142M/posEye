@@ -10,6 +10,7 @@ export default function Settings() {
   const [fps, setFps] = useState(localStorage.getItem("dt-fps") || "3");
   const [blur, setBlur] = useState(localStorage.getItem("dt-blur") || "40");
   const [sys, setSys] = useState<SystemStatus | null>(null);
+  const [gpuOn, setGpuOn] = useState(true);
 
   useEffect(() => {
     localStorage.setItem("dt-preset", preset);
@@ -19,7 +20,15 @@ export default function Settings() {
 
   useEffect(() => {
     void fetchJson<SystemStatus>("/system/status").then(setSys).catch(() => setSys(null));
+    void window.dt?.getPrefs?.().then((prefs) => {
+      if (prefs && typeof prefs.gpu === "boolean") setGpuOn(prefs.gpu);
+    });
   }, []);
+
+  function setGpu(next: boolean) {
+    setGpuOn(next);
+    void window.dt?.setPrefs?.({ gpu: next });
+  }
 
   return (
     <main className="page">
@@ -62,6 +71,26 @@ export default function Settings() {
               <span className="muted" style={{ fontSize: 11 }}>Frames below this score are discarded as blurry. Default: 40.</span>
             </label>
           </div>
+        </Card>
+
+        <Card>
+          <h2>GPU acceleration</h2>
+          <p className="muted" style={{ marginTop: 0 }}>
+            When an NVIDIA GPU is present, the next NodeODM container is started with <code>--gpus all</code>.
+            If Docker rejects GPU passthrough, posEye starts the CPU container instead.
+          </p>
+          <label className="check">
+            <input type="checkbox" checked={gpuOn} onChange={(e) => setGpu(e.target.checked)} />
+            Use NVIDIA GPU for reconstruction
+          </label>
+          <p className="muted" style={{ fontSize: 11 }}>
+            {sys?.cudaAvailable
+              ? "Docker can see the NVIDIA runtime."
+              : sys?.gpuAvailable
+              ? "GPU hardware is visible. Passthrough applies when the poseye-nodeodm container is created."
+              : "No discrete GPU reported yet."}
+            {" "}Restart posEye after changing this if a container is already running.
+          </p>
         </Card>
 
         <Card>
@@ -110,7 +139,7 @@ export default function Settings() {
 
         <Card>
           <h2>About</h2>
-          <p className="muted">posEye 0.1.3 — Single-Pass Drone Video to 3D Model</p>
+          <p className="muted">posEye 0.1.5 — Single-Pass Drone Video to 3D Model</p>
           <p className="muted">Local processing only. Imagery never leaves this machine.</p>
           <div className="actions" style={{ marginTop: 8 }}>
             <Button onClick={() => void window.dt?.openExternal("https://docs.opendronemap.org")}>

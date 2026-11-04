@@ -1,6 +1,6 @@
 {
   "name": "poseye-desktop",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "description": "posEye \u2014 Single-Pass Drone Video to Accurate 3D Model Generation System",
   "main": "electron/main.cjs",
@@ -48,6 +48,10 @@
     ],
     "extraResources": [
       {
+        "from": "electron/posEye.ico",
+        "to": "posEye.ico"
+      },
+      {
         "from": "../../third_party",
         "to": ".",
         "filter": [
@@ -66,7 +70,11 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "${productName}.Setup.${version}.${ext}"
+      "artifactName": "${productName}.Setup.${version}.${ext}",
+      "installerIcon": "electron/posEye.ico",
+      "uninstallerIcon": "electron/posEye.ico",
+      "installerHeaderIcon": "electron/posEye.ico",
+      "include": "installer.nsh"
     }
   }
 }

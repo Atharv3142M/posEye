@@ -29,6 +29,8 @@ contextBridge.exposeInMainWorld("dt", {
   getLogs:      () => ipcRenderer.invoke("get:logs"),
   getStatus:    () => ipcRenderer.invoke("get:status"),
   restartApi:   () => ipcRenderer.invoke("restart:api"),
+  getPrefs:     () => ipcRenderer.invoke("prefs:get"),
+  setPrefs:     (partial) => ipcRenderer.invoke("prefs:set", partial),
 
   // Electron → renderer push events
   // Usage: window.dt.onAppLog(entry => { ... })

@@ -59,7 +59,7 @@ export default function MeasurementTools({
         }}>
           <strong>Point-to-Point Measurement:</strong>
           <div style={{ marginTop: 4, color: "var(--text-secondary)" }}>
-            Click Point A on the 3D surface, then click Point B to calculate distance.
+            Click the surface to add points. Each new point extends the path and adds its length. Esc clears the path.
           </div>
           {hasActiveMeasure && onClearMeasure && (
             <div style={{ marginTop: 8 }}>
@@ -93,19 +93,21 @@ export default function MeasurementTools({
           </span>
         </label>
 
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, padding: "3px 0" }}>
-          <span className="muted">Point Cloud (LAZ)</span>
-          <span className={`badge ${assets?.laz ? "badge-active" : "badge-queued"}`} style={{ fontSize: 9 }}>
-            {assets?.laz ? "Available" : "Not generated"}
+        <label className="check" style={{ cursor: assets?.laz ? "pointer" : "default" }}>
+          <input type="checkbox" checked={layers.cloud} disabled={!assets?.laz} onChange={(e) => onLayer("cloud", e.target.checked)} />
+          <span>Point preview</span>
+          <span className={`badge ${assets?.laz ? "badge-active" : "badge-queued"}`} style={{ marginLeft: "auto", fontSize: 9 }}>
+            {assets?.laz ? "LAZ on disk" : "Not generated"}
           </span>
-        </div>
+        </label>
 
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, padding: "3px 0" }}>
-          <span className="muted">Orthophoto (GeoTIFF)</span>
-          <span className={`badge ${assets?.orthophoto ? "badge-active" : "badge-queued"}`} style={{ fontSize: 9 }}>
-            {assets?.orthophoto ? "Available" : "Not generated"}
+        <label className="check" style={{ cursor: assets?.orthophoto ? "pointer" : "default" }}>
+          <input type="checkbox" checked={layers.ortho} disabled={!assets?.orthophoto} onChange={(e) => onLayer("ortho", e.target.checked)} />
+          <span>Orthophoto</span>
+          <span className={`badge ${assets?.orthophoto ? "badge-active" : "badge-queued"}`} style={{ marginLeft: "auto", fontSize: 9 }}>
+            {assets?.orthophoto ? "GeoTIFF" : "Not generated"}
           </span>
-        </div>
+        </label>
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, padding: "3px 0" }}>
           <span className="muted">DEM (DSM / DTM)</span>

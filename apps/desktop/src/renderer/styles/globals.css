@@ -226,3 +226,51 @@ select:focus {
 @media (max-width: 1100px) {
   .viewer-layout { grid-template-columns: 1fr !important; }
 }
+
+/* ── Pulse animation for status dots ───────────────────────── */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ── Missing semantic colors (referenced in Settings but undefined) ── */
+:root {
+  --text-success: #3fb950;
+  --text-danger: #f85149;
+  --text-warning: #d29922;
+}
+
+[data-theme="light"] {
+  --text-success: #1a7f37;
+  --text-danger: #cf222e;
+  --text-warning: #9a6700;
+}
+
+.toast-host {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 50;
+}
+.toast {
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  font-size: 12px;
+  box-shadow: var(--shadow-md);
+  max-width: 320px;
+}
+.toast-err { border-color: var(--text-danger); }
+.log-copy {
+  margin-left: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 10px;
+}

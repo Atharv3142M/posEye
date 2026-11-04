@@ -1,5 +1,6 @@
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
+import ToastHost from "./components/Toast";
 import Dashboard from "./pages/Dashboard";
 import Logs from "./pages/Logs";
 import NewProject from "./pages/NewProject";
@@ -11,6 +12,7 @@ import Viewer from "./pages/Viewer";
 export default function App() {
   return (
     <HashRouter>
+      <ToastHost />
       <div className="app-shell">
         {/* Sidebar is always shown except on the Viewer page which manages its own layout */}
         <Routes>

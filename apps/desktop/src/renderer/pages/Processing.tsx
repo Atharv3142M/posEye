@@ -93,6 +93,7 @@ export default function Processing() {
 
   async function cancel() {
     if (!id) return;
+    if (!window.confirm("Cancel this reconstruction? Frames already extracted stay on disk.")) return;
     await fetchJson(`/jobs/${id}/cancel`, { method: "POST" });
     await refresh();
   }

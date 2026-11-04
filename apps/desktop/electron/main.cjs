@@ -35,6 +35,7 @@ const crypto = require("node:crypto");
 const API_PORT = parseInt(process.env.DT_PORT || "8765", 10);
 const API_BASE = process.env.DT_API || `http://127.0.0.1:${API_PORT}`;
 const API_TOKEN = process.env.DT_API_TOKEN || crypto.randomBytes(16).toString("hex");
+const APP_VERSION = "0.1.5";
 const NODEODM_URL = process.env.NODEODM_URL || "http://127.0.0.1:3000";
 const STARTUP_TIMEOUT_MS = 30000;      // orchestrator
 const NODEODM_TIMEOUT_MS = 120000;     // NodeODM container start
@@ -85,7 +86,36 @@ function ffmpegPath() {
   for (const c of candidates) {
     if (fs.existsSync(c)) return c;
   }
-  return "";  // will fall back to PATH inside Python
+  return findOnPath("ffmpeg") || "";
+}
+
+function readPrefs() {
+  const defaults = { gpu: true };
+  try {
+    if (!app?.getPath) return defaults;
+    const file = path.join(app.getPath("userData"), "preferences.json");
+    if (!fs.existsSync(file)) return defaults;
+    return { ...defaults, ...JSON.parse(fs.readFileSync(file, "utf8")) };
+  } catch {
+    return defaults;
+  }
+}
+
+function writePrefs(partial) {
+  const next = { ...readPrefs(), ...partial };
+  const file = path.join(app.getPath("userData"), "preferences.json");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(next));
+  return next;
+}
+
+function resolveAppIcon() {
+  const candidates = [
+    app?.isPackaged && process.resourcesPath ? path.join(process.resourcesPath, "posEye.ico") : null,
+    path.join(__dirname, "posEye.ico"),
+    path.join(__dirname, "posEye.png"),
+  ].filter(Boolean);
+  return candidates.find((candidate) => fs.existsSync(candidate));
 }
 
 function orchestratorExe() {
@@ -595,6 +625,48 @@ async function ensureNodeOdm() {
   return nodeOdmProvisionPromise;
 }
 
+async function wantGpuPassthrough() {
+  if (!readPrefs().gpu) return false;
+  try {
+    await runWithTimeout("nvidia-smi", ["-L"], 4000);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function containerRequestsGpu(name) {
+  try {
+    const out = await runWithTimeout(
+      "docker",
+      ["inspect", "--format", "{{json .HostConfig.DeviceRequests}}", name],
+      8000,
+    );
+    return /gpu|nvidia/i.test(out);
+  } catch {
+    return false;
+  }
+}
+
+async function nodeOdmDockerArgs() {
+  const args = ["run", "-d", "--name", "poseye-nodeodm", "--restart", "unless-stopped", "-p", "3000:3000"];
+  if (!(await wantGpuPassthrough())) return { args, gpu: false };
+  args.push("--gpus", "all", "-e", "NVIDIA_VISIBLE_DEVICES=all", "-e", "NVIDIA_DRIVER_CAPABILITIES=compute,utility");
+  try {
+    const runtimes = await runWithTimeout("docker", ["info", "--format", "{{json .Runtimes}}"], 4000);
+    if (/nvidia/i.test(runtimes)) args.push("--runtime", "nvidia");
+  } catch { /* Docker Desktop on Windows exposes GPUs through --gpus all */ }
+  return { args, gpu: true };
+}
+
+async function reuseNodeOdmContainer() {
+  if (!(await wantGpuPassthrough())) return true;
+  if (await containerRequestsGpu("poseye-nodeodm")) return true;
+  log("info", "poseye-nodeodm is running without GPU passthrough — recreating with --gpus all");
+  await run("docker", ["rm", "-f", "poseye-nodeodm"]).catch(() => {});
+  return false;
+}
+
 async function _ensureNodeOdmInternal() {
   log("info", `Checking NodeODM container (pinned: ${PINNED_IMAGE})…`);
 
@@ -604,10 +676,13 @@ async function _ensureNodeOdmInternal() {
     if (res.ok) {
       const info = await res.json().catch(() => null);
       if (verifyNodeOdmInfo(info)) {
-        log("info", `NodeODM already available and verified at ${NODEODM_URL} (version: ${info.version})`);
-        return true;
+        if (await reuseNodeOdmContainer()) {
+          log("info", `NodeODM already available and verified at ${NODEODM_URL} (version: ${info.version})`);
+          return true;
+        }
+      } else {
+        log("warn", `NodeODM responded on ${NODEODM_URL} but returned invalid info: ${JSON.stringify(info)}`);
       }
-      log("warn", `NodeODM responded on ${NODEODM_URL} but returned invalid info: ${JSON.stringify(info)}`);
     }
   } catch { /* not running yet */ }
 
@@ -655,8 +730,10 @@ async function _ensureNodeOdmInternal() {
           const infoRes = await fetch(`${NODEODM_URL}/info`);
           const info = await infoRes.json().catch(() => null);
           if (verifyNodeOdmInfo(info)) {
-            log("info", `Verified healthy running container poseye-nodeodm (version: ${info.version})`);
-            return true;
+            if (await reuseNodeOdmContainer()) {
+              log("info", `Verified healthy running container poseye-nodeodm (version: ${info.version})`);
+              return true;
+            }
           }
         } catch (waitErr) {
           log("warn", `Running container poseye-nodeodm not responding on ${NODEODM_URL}: ${waitErr.message}`);
@@ -670,8 +747,10 @@ async function _ensureNodeOdmInternal() {
           const infoRes = await fetch(`${NODEODM_URL}/info`);
           const info = await infoRes.json().catch(() => null);
           if (verifyNodeOdmInfo(info)) {
-            log("info", `NodeODM started from existing container (version: ${info.version})`);
-            return true;
+            if (await reuseNodeOdmContainer()) {
+              log("info", `NodeODM started from existing container (version: ${info.version})`);
+              return true;
+            }
           }
         } catch (startErr) {
           log("warn", `Could not start existing container: ${startErr.message}`);
@@ -743,16 +822,36 @@ async function _ensureNodeOdmInternal() {
     await run("docker", ["rm", "-f", "poseye-nodeodm"]).catch(() => {});
   }
 
+  const launch = await nodeOdmDockerArgs();
+  let started = false;
+  let startErr = null;
   try {
-    await run("docker", [
-      "run", "-d",
-      "--name", "poseye-nodeodm",
-      "--restart", "unless-stopped",
-      "-p", "3000:3000",
-      PINNED_IMAGE,
-    ]);
+    await run("docker", [...launch.args, PINNED_IMAGE]);
+    started = true;
+    if (launch.gpu) log("info", "NodeODM container started with NVIDIA GPU passthrough");
   } catch (err) {
+    startErr = err;
     const msg = String(err.message || err);
+    if (launch.gpu && /gpu|nvidia|runtime|could not select device/i.test(msg)) {
+      log("warn", `GPU container launch failed (${msg}); retrying on CPU`);
+      await run("docker", ["rm", "-f", "poseye-nodeodm"]).catch(() => {});
+      try {
+        await run("docker", [
+          "run", "-d",
+          "--name", "poseye-nodeodm",
+          "--restart", "unless-stopped",
+          "-p", "3000:3000",
+          PINNED_IMAGE,
+        ]);
+        started = true;
+        startErr = null;
+      } catch (cpuErr) {
+        startErr = cpuErr;
+      }
+    }
+  }
+  if (!started) {
+    const msg = String(startErr && startErr.message ? startErr.message : startErr);
     if (/port is already allocated|bind|address already in use/i.test(msg)) {
       log("warn", "Port 3000 already in use — checking if NodeODM is responding…");
       try {
@@ -785,19 +884,102 @@ async function _ensureNodeOdmInternal() {
 }
 
 // ─── Python API ───────────────────────────────────────────────────────────────
+function orchestratorMatches(data) {
+  return Boolean(data && data.serviceId === "poseye-orchestrator" && data.orchestratorVersion === APP_VERSION);
+}
+
+function pythonCandidates() {
+  const list = [];
+  if (process.env.DT_PYTHON) list.push(process.env.DT_PYTHON);
+  list.push(path.join(repoRoot(), ".venv", "Scripts", "python.exe"));
+  for (const name of ["python", "python3", "py"]) {
+    const found = findOnPath(name);
+    if (found) list.push(found);
+  }
+  return [...new Set(list)];
+}
+
+function spawnOrFail(cmd, args, opts) {
+  return new Promise((resolve, reject) => {
+    let child;
+    try {
+      child = spawn(cmd, args, opts);
+    } catch (err) {
+      reject(err);
+      return;
+    }
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.removeListener("error", onError);
+      child.removeListener("exit", onExit);
+      resolve(child);
+    }, 800);
+    const onError = (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(err);
+    };
+    const onExit = (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(new Error(`${path.basename(cmd)} exited immediately (${code})`));
+    };
+    child.once("error", onError);
+    child.once("exit", onExit);
+  });
+}
+
+function wireApiLogs(child) {
+  child.stdout?.on("data", (d) => {
+    const text = d.toString().trim();
+    if (text) log("api", text);
+  });
+  child.stderr?.on("data", (d) => {
+    const text = d.toString().trim();
+    if (text) log("api", text);
+  });
+  child.on("error", (e) => log("error", `API process error: ${e.message}`));
+  child.on("close", (code) => {
+    log(code === 0 ? "info" : "error", `API process exited with code ${code}`);
+    if (apiProc === child) apiProc = null;
+  });
+}
+
+async function probePython(cmd) {
+  const base = path.basename(cmd).toLowerCase();
+  const prefix = base === "py.exe" || base === "py" ? ["-3"] : [];
+  try {
+    await runWithTimeout(cmd, [...prefix, "-c", "import sys"], 8000);
+    return prefix;
+  } catch (err) {
+    log("warn", `Skipping Python ${cmd}: ${err.message}`);
+    return null;
+  }
+}
+
 async function startApi() {
-  // Check if port is already in use (another instance)
   if (await isPortInUse(API_PORT)) {
     try {
       const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(3000) });
       if (res.ok) {
         const data = await res.json();
-        if (data.serviceId === "poseye-orchestrator" && data.orchestratorVersion === "0.1.4") {
+        if (orchestratorMatches(data)) {
           log("info", `Port ${API_PORT} in use by compatible posEye orchestrator ${data.orchestratorVersion} — connecting`);
           return;
         }
+        if (data.serviceId === "poseye-orchestrator") {
+          throw new Error(
+            `Port ${API_PORT} is serving posEye orchestrator ${data.orchestratorVersion}, which does not match ${APP_VERSION}. Stop that process and restart posEye.`
+          );
+        }
       }
-    } catch {}
+    } catch (err) {
+      if (err instanceof Error && /does not match/.test(err.message)) throw err;
+    }
     throw new Error(
       `Port ${API_PORT} is already occupied by an incompatible or unknown service.\n\n` +
       `Please stop the process using port ${API_PORT} or set the DT_PORT environment variable to an open port.`
@@ -805,12 +987,14 @@ async function startApi() {
   }
 
   const jobsDir = path.join(app.getPath("userData"), "jobs");
+  const bundledFfmpeg = ffmpegPath();
   const env = {
     ...process.env,
     DT_PORT: String(API_PORT),
     DT_API_TOKEN: API_TOKEN,
     NODEODM_URL,
-    FFMPEG_PATH: ffmpegPath() || "",
+    FFMPEG_PATH: bundledFfmpeg || process.env.FFMPEG_PATH || "",
+    ELECTRON_RESOURCES: process.resourcesPath || process.env.ELECTRON_RESOURCES || "",
     DT_JOBS_DIR: jobsDir,
     PYTHONUNBUFFERED: "1",
     PYTHONPATH: [
@@ -820,34 +1004,43 @@ async function startApi() {
     ].filter(Boolean).join(path.delimiter),
   };
 
-  // Check for packaged orchestrator exe first
   const exeInfo = orchestratorExe();
   if (exeInfo) {
     log("info", `Starting orchestrator (packaged exe): ${exeInfo.cmd}`);
-    apiProc = spawn(exeInfo.cmd, exeInfo.args, { env, windowsHide: true });
-  } else {
-    const pyCmd = pythonCmd();
-    log("info", `Starting orchestrator: ${pyCmd} -m orchestrator.main`);
-    apiProc = spawn(pyCmd, ["-m", "orchestrator.main"], {
-      cwd: path.join(repoRoot(), "apps", "orchestrator"),
-      env,
-      windowsHide: true,
-    });
+    try {
+      apiProc = await spawnOrFail(exeInfo.cmd, exeInfo.args, { env, windowsHide: true });
+      wireApiLogs(apiProc);
+      return;
+    } catch (err) {
+      log("warn", `Packaged orchestrator failed to start (${err.message}); trying Python`);
+      apiProc = null;
+    }
   }
 
-  apiProc.stdout?.on("data", (d) => {
-    const text = d.toString().trim();
-    if (text) log("api", text);
-  });
-  apiProc.stderr?.on("data", (d) => {
-    const text = d.toString().trim();
-    if (text) log("api", text);
-  });
-  apiProc.on("error", (e) => log("error", `API process error: ${e.message}`));
-  apiProc.on("close", (code) => {
-    log(code === 0 ? "info" : "error", `API process exited with code ${code}`);
-    apiProc = null;
-  });
+  let lastError = "no usable Python interpreter";
+  for (const cmd of pythonCandidates()) {
+    if (!fs.existsSync(cmd) && path.basename(cmd).toLowerCase() !== "py.exe") continue;
+    const prefix = await probePython(cmd);
+    if (!prefix) continue;
+    log("info", `Starting orchestrator: ${cmd} ${prefix.join(" ")} -m orchestrator.main`);
+    try {
+      apiProc = await spawnOrFail(cmd, [...prefix, "-m", "orchestrator.main"], {
+        cwd: path.join(repoRoot(), "apps", "orchestrator"),
+        env,
+        windowsHide: true,
+      });
+      wireApiLogs(apiProc);
+      return;
+    } catch (err) {
+      lastError = err.message;
+      log("warn", `Python spawn failed for ${cmd}: ${err.message}`);
+      apiProc = null;
+    }
+  }
+  throw new Error(
+    `Orchestrator could not start (${lastError}). The project virtualenv may point at an inaccessible Python. ` +
+    `Install Python 3.11+ or place posEye.Orchestrator.exe in third_party/.`
+  );
 }
 
 async function waitForApi() {
@@ -859,9 +1052,12 @@ async function waitForApi() {
       const res = await fetch(`${API_BASE}/health`);
       if (res.ok) {
         const data = await res.json();
-        if (data && data.serviceId === "poseye-orchestrator" && data.orchestratorVersion === "0.1.4") {
+        if (orchestratorMatches(data)) {
           log("info", `posEye orchestrator v${data.orchestratorVersion} is ready and verified`);
           return;
+        }
+        if (data && data.orchestratorVersion) {
+          lastError = `version ${data.orchestratorVersion} does not match ${APP_VERSION}`;
         }
       }
     } catch (e) {
@@ -883,9 +1079,7 @@ function updateStatus(phase, message) {
 
 // ─── Window ───────────────────────────────────────────────────────────────────
 function createWindow() {
-  const iconIco = path.join(__dirname, "posEye.ico");
-  const iconPng = path.join(__dirname, "posEye.png");
-  const iconPath = fs.existsSync(iconIco) ? iconIco : (fs.existsSync(iconPng) ? iconPng : undefined);
+  const iconPath = resolveAppIcon();
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -1004,12 +1198,12 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+if (process.platform === "win32" && app?.setAppUserModelId) {
+  app.setAppUserModelId("org.icarus.poseye");
+}
+
 if (app?.whenReady) {
 app.whenReady().then(async () => {
-  if (process.platform === "win32") {
-    app.setAppUserModelId("org.icarus.poseye");
-  }
-
   log("info", `posEye starting — Electron ${process.versions.electron}, Node ${process.versions.node}`);
   log("info", `Platform: ${process.platform} ${process.arch}`);
 
@@ -1119,6 +1313,18 @@ app.whenReady().then(async () => {
       packaged: app.isPackaged,
       version: app.getVersion(),
     };
+  });
+
+  ipcMain.handle("prefs:get", (e) => {
+    if (!isTrustedSender(e)) return { gpu: true };
+    return readPrefs();
+  });
+
+  ipcMain.handle("prefs:set", (e, partial) => {
+    if (!isTrustedSender(e)) return { gpu: true };
+    const next = {};
+    if (partial && typeof partial.gpu === "boolean") next.gpu = partial.gpu;
+    return writePrefs(next);
   });
 
   ipcMain.handle("read:file", (e, filePath) => {

@@ -1,7 +1,7 @@
 # posEye — Current State
 
-**Date:** 2026-11-03  
-**Product version:** 0.1.4  
+**Date:** 2026-11-04  
+**Product version:** 0.1.5  
 **Product name:** posEye  
 **Source of truth:** [MVP_Spec.md](MVP_Spec.md)
 

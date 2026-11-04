@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.5] - 2026-11-04
+
+### Fixed
+- Orchestrator `/health` answers immediately instead of blocking on Docker and GPU probes, so the desktop no longer treats a slow status check as a dead backend.
+- Python startup probes each interpreter and skips a virtualenv whose base Python returns "Access is denied".
+- FFmpeg resolution no longer crashes when the packaged layout has no repo root, and falls back to `PATH`.
+- NodeODM starts with `--gpus all` when an NVIDIA GPU is present, and falls back to CPU if Docker rejects the GPU flags.
+- Windows shortcuts and the taskbar identity use the posEye icon (`AppUserModelID` is set before the app is ready).
+- Dashboard, sidebar, logs, settings, and the 3D viewer report real connection state and expose point-cloud and orthophoto previews.
+
 ## [Unreleased]
 
 ### Planned

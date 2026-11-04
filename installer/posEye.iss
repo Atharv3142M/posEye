@@ -2,7 +2,7 @@
 ; Compile after: scripts\fetch-ffmpeg.ps1, scripts\build-orchestrator.ps1, apps\desktop npm run dist
 
 #define MyAppName "posEye"
-#define MyAppVersion "0.1.4"
+#define MyAppVersion "0.1.5"
 #define MyAppPublisher "Team ICARUS"
 #define MyAppURL "https://github.com/posEye"
 #define MyAppExeName "posEye.exe"
@@ -35,6 +35,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 ; Packaged Electron application
 Source: "..\apps\desktop\release\win-unpacked\*"; DestDir: "{app}"; Flags: recursesubdirs
+Source: "..\apps\desktop\electron\posEye.ico"; DestDir: "{app}"; DestName: "posEye.ico"
 ; Bundled static ffmpeg binary (101MB local static build)
 Source: "..\third_party\ffmpeg.exe"; DestDir: "{app}\resources"; Flags: ignoreversion
 ; Standalone Orchestrator API binary (Python PyInstaller)
@@ -49,9 +50,9 @@ Source: "..\scripts\detect-virtualization.ps1"; DestDir: "{app}\scripts"
 Source: "payload\Docker Desktop Installer.exe"; DestDir: "{tmp}"; Flags: skipifsourcedoesntexist
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\posEye.ico"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\posEye.ico"; Tasks: desktopicon
 
 [Run]
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\scripts\provision-docker.ps1"" -InstallerExe ""{tmp}\Docker Desktop Installer.exe"" -NodeOdmTar ""{app}\third_party\nodeodm.tar"""; StatusMsg: "Configuring NodeODM and container environment..."; Flags: runhidden
