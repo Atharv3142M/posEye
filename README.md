@@ -5,7 +5,7 @@
   <p><strong>Offline Drone Video Photogrammetry & 3D Reconstruction System for Windows</strong></p>
 
   [![CI Pipeline](https://github.com/Atharv3142M/posEye/actions/workflows/ci.yml/badge.svg)](https://github.com/Atharv3142M/posEye/actions/workflows/ci.yml)
-  [![Release Candidate](https://img.shields.io/badge/pre--release-v0.1.5-blue.svg)](https://github.com/Atharv3142M/posEye/releases/tag/v0.1.5)
+  [![Release Candidate](https://img.shields.io/badge/pre--release-v0.1.6-blue.svg)](https://github.com/Atharv3142M/posEye/releases/tag/v0.1.6)
   [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64-lightgrey.svg)](https://github.com/Atharv3142M/posEye)
   [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
   [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
@@ -283,7 +283,7 @@ npm run pack
 npm run dist
 ```
 
-Outputs are generated in `apps/desktop/release/posEye.Setup.0.1.4.exe`.
+Outputs are generated in `apps/desktop/release/posEye.Setup.0.1.6.exe`.
 
 ---
 

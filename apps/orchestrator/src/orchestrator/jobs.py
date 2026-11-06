@@ -17,6 +17,7 @@ from typing import Any
 from pipeline.errors import ExtractCanceledError, ExtractError, PipelineError
 from pipeline.extract import ExtractConfig, extract_frames
 
+from orchestrator.accuracy import TimestampProvenance, parse_odm_accuracy
 from orchestrator.convert import ConvertError, convert_textured_model, extract_all_zip, validate_glb
 from orchestrator.nodeodm import NodeODMClient, NodeODMError
 from orchestrator.presets import canonical_preset, detect_preset, preset_options
@@ -120,6 +121,10 @@ class Job:
     is_georeferenced: bool = False
     georeferencing: dict[str, Any] = field(default_factory=dict)
     model_stats: dict[str, Any] = field(default_factory=dict)
+    capture_start: str | None = None
+    capture_end: str | None = None
+    accuracy: dict[str, Any] = field(default_factory=dict)
+    provenance: dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     events: list[JobEvent] = field(default_factory=list)
@@ -227,6 +232,10 @@ class JobStore:
                 is_georeferenced=bool(data.get("isGeoreferenced", False)),
                 georeferencing=data.get("georeferencing") or {},
                 model_stats=data.get("modelStats") or model_info,
+                capture_start=data.get("captureStart"),
+                capture_end=data.get("captureEnd"),
+                accuracy=data.get("accuracy") or {},
+                provenance=data.get("provenance") or {},
                 nodeodm_uuid=data.get("nodeodmUuid"),
                 nodeodm_url=data.get("nodeodmUrl") or "http://127.0.0.1:3000",
             )
@@ -254,6 +263,8 @@ class JobStore:
         description: str = "",
         fps: float = 3.0,
         blur_threshold: float = 40.0,
+        capture_start: str | None = None,
+        capture_end: str | None = None,
     ) -> Job:
         job_id = uuid.uuid4().hex[:12]
         job = Job(
@@ -268,6 +279,8 @@ class JobStore:
             loop=loop,
             fps=fps,
             blur_threshold=blur_threshold,
+            capture_start=capture_start,
+            capture_end=capture_end,
         )
         job.work_dir.mkdir(parents=True, exist_ok=True)
         with self.lock:
@@ -351,6 +364,10 @@ class JobStore:
             "isGeoreferenced": job.is_georeferenced,
             "georeferencing": job.georeferencing,
             "modelStats": job.model_stats,
+            "captureStart": job.capture_start,
+            "captureEnd": job.capture_end,
+            "accuracy": job.accuracy,
+            "provenance": job.provenance,
             "nodeodmUuid": job.nodeodm_uuid,
             "nodeodmUrl": job.nodeodm_url,
             "createdAt": job.created_at,
@@ -488,6 +505,10 @@ class JobStore:
             job.geotagged = result.geotagged
             job.frame_count = len(result.frames)
             job.extract_stats = result.as_dict()
+            if not job.capture_start and result.capture_start:
+                job.capture_start = result.capture_start
+            if not job.capture_end and result.capture_end:
+                job.capture_end = result.capture_end
 
             self._emit(job, "uploading", 36.0, f"Uploading {len(result.frames)} frames to NodeODM")
 
@@ -529,6 +550,16 @@ class JobStore:
             is_geo, geo_meta = _inspect_georeferencing(unpacked, job.geotagged)
             job.is_georeferenced = is_geo
             job.georeferencing = geo_meta
+            job.accuracy = parse_odm_accuracy(unpacked)
+            job.provenance = TimestampProvenance(
+                video_creation_time=job.extract_stats.get("videoCreationTime"),
+                srt_telemetry_time=job.capture_start,
+                capture_start=job.capture_start,
+                capture_end=job.capture_end,
+                flight_duration_s=job.extract_stats.get("duration"),
+                report_generation_time=datetime.now(timezone.utc).isoformat(),
+                provenance_source="telemetry_srt" if job.srt_path else ("exif" if job.geotagged > 0 else "video_container"),
+            ).as_dict()
 
             textured = unpacked / "odm_texturing" / "odm_textured_model_geo.obj"
             if not textured.is_file():

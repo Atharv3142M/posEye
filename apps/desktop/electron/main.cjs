@@ -35,7 +35,7 @@ const crypto = require("node:crypto");
 const API_PORT = parseInt(process.env.DT_PORT || "8765", 10);
 const API_BASE = process.env.DT_API || `http://127.0.0.1:${API_PORT}`;
 const API_TOKEN = process.env.DT_API_TOKEN || crypto.randomBytes(16).toString("hex");
-const APP_VERSION = "0.1.5";
+const APP_VERSION = "0.1.6";
 const NODEODM_URL = process.env.NODEODM_URL || "http://127.0.0.1:3000";
 const STARTUP_TIMEOUT_MS = 30000;      // orchestrator
 const NODEODM_TIMEOUT_MS = 120000;     // NodeODM container start
@@ -489,7 +489,9 @@ function resolveAppAssetPath(reqUrl, distDir) {
 }
 
 const PINNED_NODEODM_VERSION = "3.6.2";
-const PINNED_IMAGE = `opendronemap/nodeodm:${PINNED_NODEODM_VERSION}`;
+const PINNED_CPU_IMAGE = `opendronemap/nodeodm:${PINNED_NODEODM_VERSION}`;
+const PINNED_GPU_IMAGE = `opendronemap/nodeodm:${PINNED_NODEODM_VERSION}-gpu`;
+const PINNED_IMAGE = PINNED_CPU_IMAGE;
 
 function verifyNodeOdmInfo(info, expectedVersion = PINNED_NODEODM_VERSION) {
   if (!info || typeof info !== "object" || Array.isArray(info)) return false;
@@ -502,8 +504,12 @@ function evaluateContainerCompatibility(container, { pinnedImage = PINNED_IMAGE,
   if (!container || typeof container !== "object") {
     return { canReuse: false, reason: "missing" };
   }
-  // 1. Exact image tag match
-  if (container.configImage === pinnedImage) {
+  // 1. Exact image tag match (either CPU or GPU pinned tag)
+  if (
+    container.configImage === pinnedImage ||
+    container.configImage === PINNED_CPU_IMAGE ||
+    container.configImage === PINNED_GPU_IMAGE
+  ) {
     return { canReuse: true, reason: "pinned_image_match" };
   }
   // 2. Exact image ID match (alternative tag or digest pointing to same image)
@@ -650,13 +656,27 @@ async function containerRequestsGpu(name) {
 
 async function nodeOdmDockerArgs() {
   const args = ["run", "-d", "--name", "poseye-nodeodm", "--restart", "unless-stopped", "-p", "3000:3000"];
-  if (!(await wantGpuPassthrough())) return { args, gpu: false };
+  if (!(await wantGpuPassthrough())) {
+    return { args, gpu: false, image: PINNED_CPU_IMAGE };
+  }
+
+  let hasGpuImage = false;
+  try {
+    const out = await run("docker", ["images", "-q", PINNED_GPU_IMAGE]);
+    if (out && out.trim()) hasGpuImage = true;
+  } catch {}
+
+  if (!hasGpuImage) {
+    log("info", `GPU image ${PINNED_GPU_IMAGE} not in local docker cache; running CPU image ${PINNED_CPU_IMAGE}`);
+    return { args, gpu: false, image: PINNED_CPU_IMAGE };
+  }
+
   args.push("--gpus", "all", "-e", "NVIDIA_VISIBLE_DEVICES=all", "-e", "NVIDIA_DRIVER_CAPABILITIES=compute,utility");
   try {
     const runtimes = await runWithTimeout("docker", ["info", "--format", "{{json .Runtimes}}"], 4000);
     if (/nvidia/i.test(runtimes)) args.push("--runtime", "nvidia");
   } catch { /* Docker Desktop on Windows exposes GPUs through --gpus all */ }
-  return { args, gpu: true };
+  return { args, gpu: true, image: PINNED_GPU_IMAGE };
 }
 
 async function reuseNodeOdmContainer() {
@@ -826,9 +846,11 @@ async function _ensureNodeOdmInternal() {
   let started = false;
   let startErr = null;
   try {
-    await run("docker", [...launch.args, PINNED_IMAGE]);
+    const targetImage = launch.image || PINNED_CPU_IMAGE;
+    await run("docker", [...launch.args, targetImage]);
     started = true;
-    if (launch.gpu) log("info", "NodeODM container started with NVIDIA GPU passthrough");
+    if (launch.gpu) log("info", `NodeODM container started with NVIDIA GPU passthrough (${targetImage})`);
+    else log("info", `NodeODM container started in CPU mode (${targetImage})`);
   } catch (err) {
     startErr = err;
     const msg = String(err.message || err);
@@ -841,7 +863,7 @@ async function _ensureNodeOdmInternal() {
           "--name", "poseye-nodeodm",
           "--restart", "unless-stopped",
           "-p", "3000:3000",
-          PINNED_IMAGE,
+          PINNED_CPU_IMAGE,
         ]);
         started = true;
         startErr = null;
@@ -961,29 +983,51 @@ async function probePython(cmd) {
   }
 }
 
+async function killProcessOnPort(port) {
+  if (process.platform !== "win32") return;
+  try {
+    const out = await run("powershell.exe", [
+      "-NoProfile", "-Command",
+      `(Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue).OwningProcess`
+    ]);
+    const pids = out.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    for (const pid of pids) {
+      if (pid && pid !== "0" && pid !== String(process.pid)) {
+        log("warn", `Terminating stale process PID ${pid} occupying port ${port}`);
+        try {
+          await run("taskkill.exe", ["/F", "/T", "/PID", pid]);
+        } catch {}
+      }
+    }
+  } catch (e) {
+    log("warn", `Port reclaim notice for port ${port}: ${e.message}`);
+  }
+}
+
 async function startApi() {
   if (await isPortInUse(API_PORT)) {
+    // Check if port is already served by an orchestrator with our current session token
     try {
-      const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(3000) });
+      const res = await fetch(`${API_BASE}/system/status`, {
+        headers: { Authorization: `Bearer ${API_TOKEN}` },
+        signal: AbortSignal.timeout(2000),
+      });
       if (res.ok) {
-        const data = await res.json();
-        if (orchestratorMatches(data)) {
-          log("info", `Port ${API_PORT} in use by compatible posEye orchestrator ${data.orchestratorVersion} — connecting`);
-          return;
-        }
-        if (data.serviceId === "poseye-orchestrator") {
-          throw new Error(
-            `Port ${API_PORT} is serving posEye orchestrator ${data.orchestratorVersion}, which does not match ${APP_VERSION}. Stop that process and restart posEye.`
-          );
-        }
+        log("info", `Port ${API_PORT} in use by posEye orchestrator authenticated with current token — connecting`);
+        return;
       }
-    } catch (err) {
-      if (err instanceof Error && /does not match/.test(err.message)) throw err;
+    } catch {}
+
+    // Otherwise it's a zombie from a previous session or mismatched token
+    log("warn", `Port ${API_PORT} occupied by stale or unauthenticated process. Reclaiming port…`);
+    await killProcessOnPort(API_PORT);
+    await sleep(800);
+
+    if (await isPortInUse(API_PORT)) {
+      throw new Error(
+        `Port ${API_PORT} remains occupied after cleanup. Please close the process using port ${API_PORT} or set DT_PORT.`
+      );
     }
-    throw new Error(
-      `Port ${API_PORT} is already occupied by an incompatible or unknown service.\n\n` +
-      `Please stop the process using port ${API_PORT} or set the DT_PORT environment variable to an open port.`
-    );
   }
 
   const jobsDir = path.join(app.getPath("userData"), "jobs");
@@ -1093,6 +1137,12 @@ function createWindow() {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
+      additionalArguments: [
+        `--poseye-api-base=${API_BASE}`,
+        `--poseye-api-token=${API_TOKEN}`,
+        `--poseye-version=${APP_VERSION}`,
+        `--poseye-packaged=${app.isPackaged}`,
+      ],
     },
   });
 
@@ -1222,6 +1272,21 @@ app.whenReady().then(async () => {
       return new Response("Internal Server Error", { status: 500 });
     }
   });
+
+  // ── Network Authorization Interceptor ────────────────────────────────────
+  const { session } = electron;
+  if (session?.defaultSession?.webRequest) {
+    session.defaultSession.webRequest.onBeforeSendHeaders(
+      { urls: ["*://127.0.0.1:8765/*", "*://localhost:8765/*"] },
+      (details, callback) => {
+        const requestHeaders = details.requestHeaders || {};
+        if (API_TOKEN && !requestHeaders["Authorization"] && !requestHeaders["authorization"]) {
+          requestHeaders["Authorization"] = `Bearer ${API_TOKEN}`;
+        }
+        callback({ requestHeaders });
+      }
+    );
+  }
 
   // ── Sender validation helper ───────────────────────────────────────────────
   function isTrustedSender(e) {
@@ -1451,8 +1516,14 @@ app.whenReady().then(async () => {
 app.on("before-quit", () => {
   log("info", "Shutting down…");
   if (apiProc && !apiProc.killed) {
-    log("info", "Stopping orchestrator process");
-    apiProc.kill();
+    log("info", "Stopping orchestrator process tree");
+    try {
+      if (process.platform === "win32" && apiProc.pid) {
+        execFile("taskkill.exe", ["/F", "/T", "/PID", String(apiProc.pid)], () => {});
+      } else {
+        apiProc.kill("SIGTERM");
+      }
+    } catch {}
   }
   // External Docker/NodeODM services are not terminated by posEye
 });
@@ -1468,6 +1539,8 @@ app.on("activate", () => {
 
 module.exports = {
   PINNED_NODEODM_VERSION,
+  PINNED_CPU_IMAGE,
+  PINNED_GPU_IMAGE,
   PINNED_IMAGE,
   validateSender,
   isPathAllowed,

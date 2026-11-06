@@ -1,5 +1,24 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
+// Synchronously hydrate environment from process.argv injected by Electron main process
+const envData = {
+  apiBase: "http://127.0.0.1:8765",
+  apiToken: "",
+  version: "0.1.6",
+  isPackaged: false,
+};
+
+if (Array.isArray(process.argv)) {
+  for (const arg of process.argv) {
+    if (typeof arg === "string") {
+      if (arg.startsWith("--poseye-api-base=")) envData.apiBase = arg.slice(18);
+      else if (arg.startsWith("--poseye-api-token=")) envData.apiToken = arg.slice(19);
+      else if (arg.startsWith("--poseye-version=")) envData.version = arg.slice(17);
+      else if (arg.startsWith("--poseye-packaged=")) envData.isPackaged = arg.slice(18) === "true";
+    }
+  }
+}
+
 contextBridge.exposeInMainWorld("dt", {
   // File dialogs
   pickVideo:    () => ipcRenderer.invoke("dialog:video"),
@@ -7,15 +26,9 @@ contextBridge.exposeInMainWorld("dt", {
   pickGlb:      () => ipcRenderer.invoke("dialog:glb"),
   saveFile:     (defaultName, ext) => ipcRenderer.invoke("dialog:save", defaultName, ext),
 
-  // Environment / config
-  env:          () => ipcRenderer.invoke("env"),
-  envSync:      () => {
-    try {
-      return ipcRenderer.sendSync("env:sync");
-    } catch {
-      return null;
-    }
-  },
+  // Environment / config - instant synchronous access with zero race conditions
+  env:          () => Promise.resolve(envData),
+  envSync:      () => envData,
 
   // File utilities
   readFile:     (filePath) => ipcRenderer.invoke("read:file", filePath),

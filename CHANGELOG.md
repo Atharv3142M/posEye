@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.6] - 2026-11-06
+
+### Added
+- Synchronous preload environment hydration via `process.argv` (`--poseye-api-token`, `--poseye-api-base`, `--poseye-version`), eliminating token propagation race conditions and packaged 401 Unauthorized errors on initial load.
+- Process ownership and zombie port reclaiming on port 8765 to prevent mismatched session tokens from causing persistent 401s.
+- Automatic child process tree termination on Windows during `app.on("before-quit")`.
+- Global loopback network request authorization interceptor in Electron ensuring all backend and Three.js asset requests carry `Authorization: Bearer <token>`.
+- Authenticated WebSocket events using `sec-websocket-protocol` (`poseye-auth.<token>`) and in-band handshake, completely removing query-string tokens.
+- Geospatial accuracy calculation engine (`apps/orchestrator/src/orchestrator/accuracy.py`) computing unrounded residuals and enforcing $\text{RMS}_{3D} = \sqrt{\text{RMS}_X^2 + \text{RMS}_Y^2 + \text{RMS}_Z^2}$ with clear GCP control vs checkpoint separation.
+- Timestamp provenance model tracking video creation time, telemetry timestamps, capture start/end, and generation time without date fabrication.
+- 8-stage NVIDIA GPU integration with strict image pinning (`opendronemap/nodeodm:3.6.2` for CPU, `opendronemap/nodeodm:3.6.2-gpu` for CUDA) and reliable CPU fallback.
+- First-launch diagnostics modal (`DiagnosticsModal.tsx`) and `GET /system/diagnostics` endpoint with sanitized, exportable report (secrets redacted).
+- WebODM-inspired 3-viewer domain separation architecture documentation (`Docs/VIEWER_ARCHITECTURE_v0.1.6.md`) and UI mode tabs in 3D Viewer.
+
+### Fixed
+- Fixed 3D viewer WebGL initialization error handling, ResizeObserver dimensions, and resource disposal (`OrbitControls.dispose()`).
+- Fixed hardcoded version numbers across Dashboard and Settings.
+
+---
+
 ## [0.1.5] - 2026-11-04
 
 ### Fixed

@@ -45,6 +45,8 @@ class ExtractResult:
     width: int | None = None
     height: int | None = None
     match_stats: dict = field(default_factory=dict)
+    capture_start: str | None = None
+    capture_end: str | None = None
 
     def as_dict(self) -> dict:
         data = {
@@ -58,6 +60,10 @@ class ExtractResult:
             "fps": self.source_fps,
             "resolution": f"{self.width}x{self.height}" if self.width and self.height else None,
         }
+        if self.capture_start:
+            data["captureStart"] = self.capture_start
+        if self.capture_end:
+            data["captureEnd"] = self.capture_end
         if self.match_stats:
             data.update(self.match_stats)
         return data
@@ -278,6 +284,18 @@ def extract_frames(
 
     shutil.rmtree(raw_dir, ignore_errors=True)
     _emit(progress, "geotagging", 100.0, f"Preprocessing complete: {len(written)} sharp, geotagged frames ready for reconstruction")
+
+    capture_start: str | None = None
+    capture_end: str | None = None
+    timed_samples = [s for s in samples if s.timestamp is not None]
+    if timed_samples:
+        capture_start = timed_samples[0].timestamp.isoformat()
+        capture_end = timed_samples[-1].timestamp.isoformat()
+    elif getattr(info, "creation_time", None) is not None:
+        capture_start = info.creation_time.isoformat()
+        if info.duration_s:
+            capture_end = (info.creation_time + timedelta(seconds=info.duration_s)).isoformat()
+
     return ExtractResult(
         frames=written,
         geotagged=geotagged,
@@ -290,4 +308,6 @@ def extract_frames(
         width=info.width,
         height=info.height,
         match_stats=stats.as_dict() if samples else {},
+        capture_start=capture_start,
+        capture_end=capture_end,
     )
