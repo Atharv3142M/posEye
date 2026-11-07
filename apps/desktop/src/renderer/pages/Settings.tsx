@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { fetchJson, type SystemStatus } from "../api";
 import Button from "../components/Button";
 import Card from "../components/Card";
+import DiagnosticsModal from "../components/DiagnosticsModal";
 import { useTheme, type Theme } from "../hooks/useTheme";
 
 export default function Settings() {
@@ -11,6 +12,8 @@ export default function Settings() {
   const [blur, setBlur] = useState(localStorage.getItem("dt-blur") || "40");
   const [sys, setSys] = useState<SystemStatus | null>(null);
   const [gpuOn, setGpuOn] = useState(true);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const appVersion = window.dt?.envSync()?.version || "0.1.6";
 
   useEffect(() => {
     localStorage.setItem("dt-preset", preset);
@@ -139,14 +142,19 @@ export default function Settings() {
 
         <Card>
           <h2>About</h2>
-          <p className="muted">posEye 0.1.5 — Single-Pass Drone Video to 3D Model</p>
+          <p className="muted">posEye {appVersion} — Single-Pass Drone Video to 3D Model</p>
           <p className="muted">Local processing only. Imagery never leaves this machine.</p>
           <div className="actions" style={{ marginTop: 8 }}>
+            <Button variant="secondary" onClick={() => setShowDiagnostics(true)}>
+              🔍 Open Diagnostics
+            </Button>
             <Button onClick={() => void window.dt?.openExternal("https://docs.opendronemap.org")}>
               OpenDroneMap docs
             </Button>
           </div>
         </Card>
+
+        <DiagnosticsModal isOpen={showDiagnostics} onClose={() => setShowDiagnostics(false)} />
       </div>
     </main>
   );

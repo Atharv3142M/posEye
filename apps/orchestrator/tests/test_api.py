@@ -14,7 +14,7 @@ def test_health():
     assert data["serviceId"] == "poseye-orchestrator"
     assert data["product"] == "posEye"
     assert data["component"] == "Orchestrator"
-    assert data["orchestratorVersion"] == "0.1.5"
+    assert data["orchestratorVersion"] == "0.1.6"
     assert "docker" in data
     assert "nodeodm" in data
     assert "ffmpeg" in data
@@ -321,3 +321,103 @@ def test_asset_route_security_and_cors(tmp_path: Path, monkeypatch):
     assert res_laz.headers.get("access-control-allow-origin") == "poseye://app"
     assert res_laz.headers.get("content-type") == "application/octet-stream"
     assert res_laz.content == b"LAZ_mock_data"
+
+
+def test_system_diagnostics_redacts_secrets(monkeypatch):
+    token = "super-secret-token-12345"
+    monkeypatch.setattr("orchestrator.main.API_TOKEN", token)
+    monkeypatch.setenv("DT_API_TOKEN", token)
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "super-secret-aws-key")
+
+    client = TestClient(app)
+    # 1. Unauthenticated request rejected
+    res_unauth = client.get("/system/diagnostics")
+    assert res_unauth.status_code == 401
+
+    # 2. Authenticated request succeeds and redacts secrets
+    res = client.get("/system/diagnostics", headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 200
+    data = res.json()
+    assert "reportGeneratedAt" in data
+    assert "platform" in data
+    assert "systemStatus" in data
+    assert "pinnedImages" in data
+    assert data["pinnedImages"]["nodeodmVersion"] == "3.6.2"
+    assert data["pinnedImages"]["cpuImage"] == "opendronemap/nodeodm:3.6.2"
+    assert data["pinnedImages"]["gpuImage"] == "opendronemap/nodeodm:3.6.2-gpu"
+
+    env_vars = data.get("environmentVariables", {})
+    for key, val in env_vars.items():
+        if any(term in key.upper() for term in ["TOKEN", "SECRET", "KEY", "PASSWORD", "AUTH"]):
+            assert val == "[REDACTED]"
+            assert token not in val
+
+
+def test_websocket_authentication(monkeypatch, tmp_path: Path):
+    token = "ws-secret-token-456"
+    monkeypatch.setattr("orchestrator.main.API_TOKEN", token)
+
+    client = TestClient(app)
+    job = store.create(tmp_path / "flight.mp4")
+
+    # 1. WebSocket with invalid token fails with close code 4401
+    with client.websocket_connect(
+        f"/jobs/{job.id}/events",
+        headers={"Authorization": "Bearer bad-token"},
+    ) as ws:
+        # Should be closed by server with 4401
+        try:
+            ws.receive_json()
+            assert False, "Should have disconnected"
+        except Exception:
+            pass
+
+    # 2. WebSocket with valid Bearer header succeeds
+    with client.websocket_connect(
+        f"/jobs/{job.id}/events",
+        headers={"Authorization": f"Bearer {token}"},
+    ) as ws:
+        # Initial queued event is received
+        data = ws.receive_json()
+        assert data["stage"] == "queued"
+
+    # 3. WebSocket with subprotocol succeeds
+    with client.websocket_connect(
+        f"/jobs/{job.id}/events",
+        subprotocols=[f"poseye-auth.{token}"],
+    ) as ws:
+        data = ws.receive_json()
+        assert data["stage"] == "queued"
+
+
+def test_create_job_timestamp_validation(tmp_path: Path):
+    client = TestClient(app)
+    vid = tmp_path / "valid.mp4"
+    vid.write_bytes(b"dummy_video")
+
+    # Invalid timestamp order: end before start
+    res_bad = client.post(
+        "/jobs",
+        json={
+            "videoPath": str(vid),
+            "captureStart": "2026-05-10T12:00:00Z",
+            "captureEnd": "2026-05-10T11:00:00Z",
+        },
+    )
+    assert res_bad.status_code == 400
+    assert "earlier" in res_bad.json()["detail"]
+
+    # Valid timestamp order
+    res_ok = client.post(
+        "/jobs",
+        json={
+            "videoPath": str(vid),
+            "captureStart": "2026-05-10T12:00:00Z",
+            "captureEnd": "2026-05-10T12:15:00Z",
+        },
+    )
+    assert res_ok.status_code == 200
+    data = res_ok.json()
+    assert data["captureStart"] == "2026-05-10T12:00:00Z"
+    assert data["captureEnd"] == "2026-05-10T12:15:00Z"
+

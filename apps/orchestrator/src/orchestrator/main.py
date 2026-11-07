@@ -19,9 +19,9 @@ from pydantic import BaseModel
 
 from orchestrator.jobs import JobStore
 from orchestrator.presets import detect_preset
-from orchestrator.system import system_status
+from orchestrator.system import system_diagnostics_report, system_status
 
-ORCHESTRATOR_VERSION = "0.1.5"
+ORCHESTRATOR_VERSION = "0.1.6"
 
 JOBS_ROOT = Path(os.environ.get("DT_JOBS_DIR", Path.cwd() / ".jobs"))
 store = JobStore(JOBS_ROOT)
@@ -123,6 +123,8 @@ class CreateJob(BaseModel):
     description: str | None = None
     fps: float | None = None
     blurThreshold: float | None = None
+    captureStart: str | None = None
+    captureEnd: str | None = None
 
 
 class JobOut(BaseModel):
@@ -140,6 +142,10 @@ class JobOut(BaseModel):
     isGeoreferenced: bool = False
     georeferencing: dict = {}
     modelStats: dict = {}
+    captureStart: str | None = None
+    captureEnd: str | None = None
+    accuracy: dict = {}
+    provenance: dict = {}
     createdAt: str = ""
     updatedAt: str = ""
     videoPath: str = ""
@@ -310,6 +316,16 @@ async def create_job(body: CreateJob) -> JobOut:
     srt = Path(body.srtPath) if body.srtPath else None
     if srt and not srt.is_file():
         raise HTTPException(400, f"SRT not found: {srt}")
+
+    if body.captureStart and body.captureEnd:
+        try:
+            dt_s = datetime.fromisoformat(body.captureStart.replace("Z", "+00:00"))
+            dt_e = datetime.fromisoformat(body.captureEnd.replace("Z", "+00:00"))
+            if dt_e < dt_s:
+                raise HTTPException(400, "captureEnd cannot be earlier than captureStart")
+        except ValueError as ve:
+            raise HTTPException(400, f"Invalid capture timestamp format: {ve}")
+
     import asyncio
 
     job = store.create(
@@ -322,6 +338,8 @@ async def create_job(body: CreateJob) -> JobOut:
         description=body.description or "",
         fps=body.fps if body.fps and body.fps > 0 else 3.0,
         blur_threshold=body.blurThreshold if body.blurThreshold and body.blurThreshold > 0 else 40.0,
+        capture_start=body.captureStart,
+        capture_end=body.captureEnd,
     )
     # Track worker thread
     worker = threading.Thread(target=store.run_job, args=(job,), name=f"poseye-worker-{job.id}", daemon=True)
@@ -467,20 +485,57 @@ def job_diagnostics(job_id: str) -> dict:
     }
 
 
+@app.get("/system/diagnostics", dependencies=[Depends(verify_api_token)])
+def system_diagnostics() -> dict:
+    return system_diagnostics_report()
+
+
 @app.websocket("/jobs/{job_id}/events")
-async def job_events(websocket: WebSocket, job_id: str, token: str | None = Query(None)) -> None:
-    if API_TOKEN:
-        auth_header = websocket.headers.get("authorization", "")
-        token_val = token or (auth_header.split(" ", 1)[1] if " " in auth_header else "")
-        if token_val != API_TOKEN:
-            await websocket.close(code=4401)
-            return
+async def job_events(websocket: WebSocket, job_id: str) -> None:
+    token_val = ""
+    auth_header = websocket.headers.get("authorization", "")
+    if " " in auth_header:
+        token_val = auth_header.split(" ", 1)[1]
+    elif websocket.headers.get("x-api-token"):
+        token_val = websocket.headers.get("x-api-token")
+
+    proto_header = websocket.headers.get("sec-websocket-protocol", "")
+    selected_subprotocol = None
+    if proto_header:
+        parts = [p.strip() for p in proto_header.split(",") if p.strip()]
+        for idx, part in enumerate(parts):
+            if part.startswith("poseye-auth."):
+                token_val = part[len("poseye-auth."):]
+                selected_subprotocol = part
+                break
+            elif part == "poseye-auth" and idx + 1 < len(parts):
+                token_val = parts[idx + 1]
+                selected_subprotocol = "poseye-auth"
+                break
 
     job = store.get(job_id)
     if not job:
         await websocket.close(code=4404)
         return
-    await websocket.accept()
+
+    # Check authentication
+    if not API_TOKEN or token_val == API_TOKEN:
+        await websocket.accept(subprotocol=selected_subprotocol)
+    else:
+        # In-band fallback: accept and wait briefly for an auth JSON frame
+        await websocket.accept()
+        try:
+            import asyncio
+            msg = await asyncio.wait_for(websocket.receive_json(), timeout=5.0)
+            if isinstance(msg, dict) and msg.get("type") == "auth" and msg.get("token") == API_TOKEN:
+                pass
+            else:
+                await websocket.close(code=4401)
+                return
+        except Exception:
+            await websocket.close(code=4401)
+            return
+
     queue = store.subscribe(job)
     try:
         while True:
@@ -513,6 +568,10 @@ def _out(job) -> JobOut:
         isGeoreferenced=bool(getattr(job, "is_georeferenced", False)),
         georeferencing=getattr(job, "georeferencing", {}),
         modelStats=getattr(job, "model_stats", {}),
+        captureStart=getattr(job, "capture_start", None),
+        captureEnd=getattr(job, "capture_end", None),
+        accuracy=getattr(job, "accuracy", {}),
+        provenance=getattr(job, "provenance", {}),
         createdAt=job.created_at,
         updatedAt=job.updated_at,
         videoPath=str(job.video_path),

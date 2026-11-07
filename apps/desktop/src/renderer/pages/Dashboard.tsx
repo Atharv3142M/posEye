@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { fetchJson, type SystemStatus } from "../api";
 import Button from "../components/Button";
 import Card from "../components/Card";
+import DiagnosticsModal from "../components/DiagnosticsModal";
 import StatusBadge from "../components/StatusBadge";
 import { useProjects } from "../hooks/useProject";
 
@@ -13,6 +14,8 @@ export default function Dashboard() {
   const [sysLoading, setSysLoading] = useState(true);
   const [sysError, setSysError] = useState<string | null>(null);
   const [appStatus, setAppStatus] = useState<{ phase: string; message: string } | null>(null);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const appVersion = window.dt?.envSync()?.version || "0.1.6";
 
   async function loadSys() {
     setSysLoading(true);
@@ -51,7 +54,7 @@ export default function Dashboard() {
         <div style={{ marginBottom: 24 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
             <h1 style={{ marginBottom: 0 }}>posEye</h1>
-            <span className="badge" style={{ fontSize: 11 }}>v0.1.5</span>
+            <span className="badge" style={{ fontSize: 11 }}>v{appVersion}</span>
             {activeJobs.length > 0 && (
               <span className="badge badge-active" style={{ fontSize: 11 }}>
                 {activeJobs.length} job{activeJobs.length > 1 ? "s" : ""} running
@@ -161,15 +164,25 @@ export default function Dashboard() {
         <Card>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <h2 style={{ margin: 0 }}>System Status</h2>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              style={{ fontSize: 11, padding: "3px 8px" }}
-              onClick={() => void loadSys()}
-              disabled={sysLoading}
-            >
-              {sysLoading ? "Refreshing…" : "⟳ Refresh"}
-            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ fontSize: 11, padding: "3px 8px" }}
+                onClick={() => setShowDiagnostics(true)}
+              >
+                🔍 Diagnostics
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ fontSize: 11, padding: "3px 8px" }}
+                onClick={() => void loadSys()}
+                disabled={sysLoading}
+              >
+                {sysLoading ? "Refreshing…" : "⟳ Refresh"}
+              </button>
+            </div>
           </div>
           <div className="grid-3" style={{ marginBottom: 0 }}>
             <div>
@@ -218,6 +231,8 @@ export default function Dashboard() {
             </div>
           </div>
         </Card>
+
+        <DiagnosticsModal isOpen={showDiagnostics} onClose={() => setShowDiagnostics(false)} />
       </div>
     </main>
   );

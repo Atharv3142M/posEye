@@ -18,6 +18,7 @@ export default function Viewer() {
   const [measure, setMeasure] = useState<MeasureResult>(null);
   const [stats, setStats] = useState<ModelStats | null>(null);
   const [loadProgress, setLoadProgress] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<"mesh" | "pointcloud" | "orthomap">("mesh");
 
   const [modelStatus, setModelStatus] = useState<"idle" | "loading" | "ready" | "error" | "no_model">("idle");
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -124,18 +125,49 @@ export default function Viewer() {
         <strong style={{ fontSize: 13, color: "var(--text-primary)" }}>{job?.name || id}</strong>
         <div style={{ flex: 1 }} />
 
-        {/* Viewer tool controls */}
-        <Button
-          variant={wireframe ? "primary" : "ghost"}
-          style={{ padding: "4px 8px", fontSize: 12 }}
-          onClick={() => setWireframe(!wireframe)}
-          title="Toggle wireframe (W)"
-        >
-          ⬡ Wire
-        </Button>
-        <div className="toolbar-sep" />
+        {/* WebODM-style multi-viewer tabs */}
+        <div style={{ display: "flex", background: "var(--bg-panel-header)", padding: 2, borderRadius: 6, gap: 2, marginRight: 12 }}>
+          <button
+            type="button"
+            className={`btn ${activeTab === "mesh" ? "btn-primary" : "btn-ghost"}`}
+            style={{ fontSize: 11, padding: "3px 10px", height: 26 }}
+            onClick={() => setActiveTab("mesh")}
+          >
+            3D Mesh
+          </button>
+          <button
+            type="button"
+            className={`btn ${activeTab === "pointcloud" ? "btn-primary" : "btn-ghost"}`}
+            style={{ fontSize: 11, padding: "3px 10px", height: 26 }}
+            onClick={() => setActiveTab("pointcloud")}
+          >
+            Point Cloud — Export
+          </button>
+          <button
+            type="button"
+            className={`btn ${activeTab === "orthomap" ? "btn-primary" : "btn-ghost"}`}
+            style={{ fontSize: 11, padding: "3px 10px", height: 26 }}
+            onClick={() => setActiveTab("orthomap")}
+          >
+            Orthophoto — Export
+          </button>
+        </div>
 
-        <Button onClick={resetCamera} title="Reset camera (R)">Reset View (R)</Button>
+        {/* Viewer tool controls */}
+        {activeTab === "mesh" && (
+          <>
+            <Button
+              variant={wireframe ? "primary" : "ghost"}
+              style={{ padding: "4px 8px", fontSize: 12 }}
+              onClick={() => setWireframe(!wireframe)}
+              title="Toggle wireframe (W)"
+            >
+              ⬡ Wire
+            </Button>
+            <div className="toolbar-sep" />
+            <Button onClick={resetCamera} title="Reset camera (R)">Reset View (R)</Button>
+          </>
+        )}
 
         {id && job?.hasModel && (
           <>
@@ -298,204 +330,308 @@ export default function Viewer() {
           </>
         )}
 
-        {/* 3D Canvas Area */}
+        {/* 3D Canvas / Specialized Viewer Area */}
         <div className="viewer-canvas-wrap">
-          <ThreeViewer
-            ref={viewerRef}
-            modelUrl={modelUrl}
-            meshVisible={layers.mesh}
-            measuring={tool === "distance"}
-            wireframe={wireframe}
-            showCloud={layers.cloud}
-            cloudUrl={layers.cloud && job?.assets?.laz ? assetUrl("cloud.json") : null}
-            showOrtho={layers.ortho}
-            orthoUrl={layers.ortho && job?.assets?.orthophoto ? assetUrl("orthophoto.jpg") : null}
-            modelReady={modelStatus === "ready"}
-            onCoords={onCoords}
-            onMeasure={onMeasure}
-            onStats={setStats}
-            onLoadStart={() => {
-              setModelStatus("loading");
-              setLoadError(null);
-              setLoadProgress(0);
-            }}
-            onLoadProgress={(pct) => setLoadProgress(pct)}
-            onLoadSuccess={() => {
-              setModelStatus("ready");
-              setLoadError(null);
-              setLoadProgress(null);
-            }}
-            onLoadError={(err) => {
-              setModelStatus("error");
-              setLoadError(err);
-              setLoadProgress(null);
-            }}
-          />
+          {activeTab === "mesh" ? (
+            <>
+              <ThreeViewer
+                ref={viewerRef}
+                modelUrl={modelUrl}
+                meshVisible={layers.mesh}
+                measuring={tool === "distance"}
+                wireframe={wireframe}
+                showCloud={layers.cloud}
+                cloudUrl={layers.cloud && job?.assets?.laz ? assetUrl("cloud.json") : null}
+                showOrtho={layers.ortho}
+                orthoUrl={layers.ortho && job?.assets?.orthophoto ? assetUrl("orthophoto.jpg") : null}
+                modelReady={modelStatus === "ready"}
+                onCoords={onCoords}
+                onMeasure={onMeasure}
+                onStats={setStats}
+                onLoadStart={() => {
+                  setModelStatus("loading");
+                  setLoadError(null);
+                  setLoadProgress(0);
+                }}
+                onLoadProgress={(pct) => setLoadProgress(pct)}
+                onLoadSuccess={() => {
+                  setModelStatus("ready");
+                  setLoadError(null);
+                  setLoadProgress(null);
+                }}
+                onLoadError={(err) => {
+                  setModelStatus("error");
+                  setLoadError(err);
+                  setLoadProgress(null);
+                }}
+              />
 
-          {/* Model Loading Overlay */}
-          {modelStatus === "loading" && (
-            <div style={{
-              position: "absolute",
-              top: 20,
-              left: 20,
-              background: "rgba(30, 39, 46, 0.92)",
-              border: "1px solid var(--border-light)",
-              padding: "10px 16px",
-              borderRadius: "var(--radius)",
-              color: "#fff",
-              fontSize: 12,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              boxShadow: "var(--shadow-md)",
-              minWidth: 200,
-            }}>
-              <span className="status-dot checking" style={{ animation: "pulse 1s infinite" }} />
-              <div style={{ flex: 1 }}>
-                <div>Loading 3D mesh…</div>
-                {loadProgress !== null && loadProgress > 0 && (
-                  <div style={{ marginTop: 6, height: 3, background: "rgba(255,255,255,0.15)", borderRadius: 2 }}>
-                    <div style={{ height: "100%", width: `${loadProgress}%`, background: "#18bc9c", borderRadius: 2, transition: "width 0.3s" }} />
+              {/* Model Loading Overlay */}
+              {modelStatus === "loading" && (
+                <div style={{
+                  position: "absolute",
+                  top: 20,
+                  left: 20,
+                  background: "rgba(30, 39, 46, 0.92)",
+                  border: "1px solid var(--border-light)",
+                  padding: "10px 16px",
+                  borderRadius: "var(--radius)",
+                  color: "#fff",
+                  fontSize: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  boxShadow: "var(--shadow-md)",
+                  minWidth: 200,
+                }}>
+                  <span className="status-dot checking" style={{ animation: "pulse 1s infinite" }} />
+                  <div style={{ flex: 1 }}>
+                    <div>Loading 3D mesh…</div>
+                    {loadProgress !== null && loadProgress > 0 && (
+                      <div style={{ marginTop: 6, height: 3, background: "rgba(255,255,255,0.15)", borderRadius: 2 }}>
+                        <div style={{ height: "100%", width: `${loadProgress}%`, background: "#18bc9c", borderRadius: 2, transition: "width 0.3s" }} />
+                      </div>
+                    )}
                   </div>
+                  {loadProgress !== null && loadProgress > 0 && (
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>{loadProgress}%</span>
+                  )}
+                </div>
+              )}
+
+              {/* Error Overlay */}
+              {modelStatus === "error" && (
+                <div style={{
+                  position: "absolute",
+                  top: 20,
+                  left: 20,
+                  background: "rgba(192, 57, 43, 0.95)",
+                  border: "1px solid #c0392b",
+                  padding: "10px 16px",
+                  borderRadius: "var(--radius)",
+                  color: "#fff",
+                  fontSize: 12,
+                  boxShadow: "var(--shadow-md)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                }}>
+                  <span>⚠ {loadError || "Could not load 3D model."}</span>
+                  <Button
+                    variant="secondary"
+                    style={{ fontSize: 11, padding: "2px 8px" }}
+                    onClick={() => void refresh()}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              )}
+
+              {modelStatus === "no_model" && (
+                <div style={{
+                  position: "absolute",
+                  top: "40%",
+                  left: "50%",
+                  transform: "translate(-50%, -50%)",
+                  background: "rgba(30, 39, 46, 0.92)",
+                  border: "1px solid var(--border-light)",
+                  padding: "20px 28px",
+                  borderRadius: "var(--radius)",
+                  color: "#fff",
+                  textAlign: "center",
+                  boxShadow: "var(--shadow-md)",
+                }}>
+                  <div style={{ fontSize: 28, marginBottom: 8 }}>📐</div>
+                  <h3 style={{ margin: "0 0 6px 0" }}>No 3D Model Generated</h3>
+                  <p style={{ color: "var(--text-muted)", fontSize: 12, maxWidth: 320, margin: "0 0 16px 0" }}>
+                    This project has not completed photogrammetry reconstruction or the GLB asset was not created.
+                  </p>
+                  <Button variant="primary" onClick={() => nav(`/processing/${id}`)}>
+                    Check Pipeline Progress
+                  </Button>
+                </div>
+              )}
+
+              {/* Coordinate HUD */}
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: 10,
+                  left: 10,
+                  background: "rgba(0, 0, 0, 0.75)",
+                  color: "#fff",
+                  padding: "4px 10px",
+                  borderRadius: 4,
+                  fontSize: 11,
+                  fontFamily: "var(--font-mono)",
+                  pointerEvents: "none",
+                }}
+              >
+                {coords}
+              </div>
+
+              {/* Measurement HUD */}
+              {measure && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 12,
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    background: "rgba(24, 188, 156, 0.95)",
+                    color: "#1e272e",
+                    padding: "8px 18px",
+                    borderRadius: 6,
+                    fontSize: 13,
+                    fontWeight: 700,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.35)",
+                  }}
+                >
+                  <span>
+                    Total: {measure.distance.toFixed(2)} {isGeoreferenced ? "m (approx.)" : "model units"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={clearMeasurements}
+                    style={{
+                      background: "rgba(0, 0, 0, 0.15)",
+                      border: "none",
+                      borderRadius: 4,
+                      padding: "2px 6px",
+                      cursor: "pointer",
+                      fontSize: 11,
+                      fontWeight: 600,
+                    }}
+                    title="Clear measurements (Esc)"
+                  >
+                    ✕ Clear
+                  </button>
+                </div>
+              )}
+
+              {/* Wireframe badge */}
+              {wireframe && (
+                <div
+                  style={{
+                    position: "absolute",
+                    bottom: 10,
+                    right: 10,
+                    background: "rgba(240, 246, 252, 0.15)",
+                    border: "1px solid rgba(240, 246, 252, 0.3)",
+                    color: "#fff",
+                    padding: "3px 8px",
+                    borderRadius: 3,
+                    fontSize: 10,
+                    fontFamily: "var(--font-mono)",
+                    pointerEvents: "none",
+                  }}
+                >
+                  WIREFRAME
+                </div>
+              )}
+            </>
+          ) : activeTab === "pointcloud" ? (
+            <div style={{ padding: 32, maxWidth: 840, margin: "0 auto", overflowY: "auto", height: "100%", color: "var(--text-primary)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+                <div>
+                  <h2 style={{ margin: "0 0 4px 0", fontSize: 20 }}>Point Cloud (LAZ / LAS)</h2>
+                  <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+                    Dense point cloud data generated from aerial photogrammetry bundle adjustment
+                  </div>
+                </div>
+                {job?.assets?.laz && id && (
+                  <Button variant="primary" onClick={() => handleExport("model.laz", `${job?.name || "model"}.laz`)}>
+                    ↓ Download LAZ Point Cloud
+                  </Button>
                 )}
               </div>
-              {loadProgress !== null && loadProgress > 0 && (
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>{loadProgress}%</span>
-              )}
+
+              <div style={{ background: "var(--bg-panel)", border: "1px solid var(--border-strong)", borderRadius: "var(--radius)", padding: 20, marginBottom: 20 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 12, color: "var(--text-secondary)", textTransform: "uppercase", marginBottom: 6 }}>Asset Status</div>
+                    <div>{job?.assets?.laz ? "✓ LAZ Point Cloud Generated" : "⏳ Processing / Unavailable"}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 12, color: "var(--text-secondary)", textTransform: "uppercase", marginBottom: 6 }}>Coordinate System</div>
+                    <div>{isGeoreferenced ? "Georeferenced (Projected UTM / WGS84)" : "Arbitrary / Relative"}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 12, color: "var(--text-secondary)", textTransform: "uppercase", marginBottom: 6 }}>Geotagged Aerial Frames</div>
+                    <div>{job?.geotagged ?? 0} frames with GNSS EXIF</div>
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 12, color: "var(--text-secondary)", textTransform: "uppercase", marginBottom: 6 }}>Standard Formats</div>
+                    <div>ASPRS LAS / Compressed LAZ 1.4</div>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ background: "rgba(234, 179, 8, 0.1)", border: "1px solid rgba(234, 179, 8, 0.3)", borderRadius: "var(--radius)", padding: 12, marginBottom: 16, fontSize: 12, color: "#eab308" }}>
+                <strong>Viewer Status:</strong> Interactive point cloud rendering is unavailable in this version. Download the LAZ file below to inspect full-resolution points in Potree, CloudCompare, or QGIS.
+              </div>
+
+              <div style={{ background: "var(--bg-panel-header)", border: "1px solid var(--border-light)", borderRadius: "var(--radius)", padding: 16, fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                <strong>Data Preservation:</strong> Dense point clouds are exported in standard ASPRS LAS/LAZ format with 3D coordinate metadata. Mesh visualization remains available in the 3D Mesh tab.
+              </div>
             </div>
-          )}
+          ) : (
+            <div style={{ padding: 32, maxWidth: 840, margin: "0 auto", overflowY: "auto", height: "100%", color: "var(--text-primary)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+                <div>
+                  <h2 style={{ margin: "0 0 4px 0", fontSize: 20 }}>Orthophoto & Elevation Rasters</h2>
+                  <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+                    True-scale georeferenced orthomosaic and digital surface elevation models
+                  </div>
+                </div>
+                {job?.assets?.orthophoto && id && (
+                  <Button variant="primary" onClick={() => handleExport("orthophoto.tif", `${job?.name || "model"}_orthophoto.tif`)}>
+                    ↓ Download GeoTIFF Orthophoto
+                  </Button>
+                )}
+              </div>
 
-          {/* Error Overlay */}
-          {modelStatus === "error" && (
-            <div style={{
-              position: "absolute",
-              top: 20,
-              left: 20,
-              background: "rgba(192, 57, 43, 0.95)",
-              border: "1px solid #c0392b",
-              padding: "10px 16px",
-              borderRadius: "var(--radius)",
-              color: "#fff",
-              fontSize: 12,
-              boxShadow: "var(--shadow-md)",
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-            }}>
-              <span>⚠ {loadError || "Could not load 3D model."}</span>
-              <Button
-                variant="secondary"
-                style={{ fontSize: 11, padding: "2px 8px" }}
-                onClick={() => void refresh()}
-              >
-                Retry
-              </Button>
-            </div>
-          )}
+              <div style={{ background: "var(--bg-panel)", border: "1px solid var(--border-strong)", borderRadius: "var(--radius)", padding: 20, marginBottom: 20 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 12, color: "var(--text-secondary)", textTransform: "uppercase", marginBottom: 6 }}>Orthophoto GeoTIFF</div>
+                    <div>{job?.assets?.orthophoto ? "✓ Ready for GIS import (QGIS, ArcGIS)" : "⏳ Unavailable"}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 12, color: "var(--text-secondary)", textTransform: "uppercase", marginBottom: 6 }}>Elevation Products</div>
+                    <div>{job?.assets?.dsm ? "✓ DSM Available" : "DSM N/A"} · {job?.assets?.dtm ? "✓ DTM Available" : "DTM N/A"}</div>
+                  </div>
+                </div>
 
-          {modelStatus === "no_model" && (
-            <div style={{
-              position: "absolute",
-              top: "40%",
-              left: "50%",
-              transform: "translate(-50%, -50%)",
-              background: "rgba(30, 39, 46, 0.92)",
-              border: "1px solid var(--border-light)",
-              padding: "20px 28px",
-              borderRadius: "var(--radius)",
-              color: "#fff",
-              textAlign: "center",
-              boxShadow: "var(--shadow-md)",
-            }}>
-              <div style={{ fontSize: 28, marginBottom: 8 }}>📐</div>
-              <h3 style={{ margin: "0 0 6px 0" }}>No 3D Model Generated</h3>
-              <p style={{ color: "var(--text-muted)", fontSize: 12, maxWidth: 320, margin: "0 0 16px 0" }}>
-                This project has not completed photogrammetry reconstruction or the GLB asset was not created.
-              </p>
-              <Button variant="primary" onClick={() => nav(`/processing/${id}`)}>
-                Check Pipeline Progress
-              </Button>
-            </div>
-          )}
+                <div style={{ display: "flex", gap: 10 }}>
+                  {job?.assets?.dsm && id && (
+                    <Button variant="secondary" onClick={() => handleExport("dsm.tif", `${job?.name || "model"}_dsm.tif`)}>
+                      ↓ Export DSM (.tif)
+                    </Button>
+                  )}
+                  {job?.assets?.dtm && id && (
+                    <Button variant="secondary" onClick={() => handleExport("dtm.tif", `${job?.name || "model"}_dtm.tif`)}>
+                      ↓ Export DTM (.tif)
+                    </Button>
+                  )}
+                  {job?.assets?.report && id && (
+                    <Button variant="secondary" onClick={() => handleExport("report.pdf", `${job?.name || "model"}_report.pdf`)}>
+                      ↓ Quality Report (PDF)
+                    </Button>
+                  )}
+                </div>
+              </div>
 
-          {/* Coordinate HUD */}
-          <div
-            style={{
-              position: "absolute",
-              bottom: 10,
-              left: 10,
-              background: "rgba(0, 0, 0, 0.75)",
-              color: "#fff",
-              padding: "4px 10px",
-              borderRadius: 4,
-              fontSize: 11,
-              fontFamily: "var(--font-mono)",
-              pointerEvents: "none",
-            }}
-          >
-            {coords}
-          </div>
+              <div style={{ background: "rgba(234, 179, 8, 0.1)", border: "1px solid rgba(234, 179, 8, 0.3)", borderRadius: "var(--radius)", padding: 12, marginBottom: 16, fontSize: 12, color: "#eab308" }}>
+                <strong>Viewer Status:</strong> Interactive 2D map/orthophoto rendering is unavailable in this version. Download the GeoTIFF raster below for use in GIS applications (QGIS, ArcGIS).
+              </div>
 
-          {/* Measurement HUD */}
-          {measure && (
-            <div
-              style={{
-                position: "absolute",
-                top: 12,
-                left: "50%",
-                transform: "translateX(-50%)",
-                background: "rgba(24, 188, 156, 0.95)",
-                color: "#1e272e",
-                padding: "8px 18px",
-                borderRadius: 6,
-                fontSize: 13,
-                fontWeight: 700,
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                boxShadow: "0 4px 12px rgba(0, 0, 0, 0.35)",
-              }}
-            >
-              <span>
-                Total: {measure.distance.toFixed(2)} {isGeoreferenced ? "m (approx.)" : "model units"}
-              </span>
-              <button
-                type="button"
-                onClick={clearMeasurements}
-                style={{
-                  background: "rgba(0, 0, 0, 0.15)",
-                  border: "none",
-                  borderRadius: 4,
-                  padding: "2px 6px",
-                  cursor: "pointer",
-                  fontSize: 11,
-                  fontWeight: 600,
-                }}
-                title="Clear measurements (Esc)"
-              >
-                ✕ Clear
-              </button>
-            </div>
-          )}
-
-          {/* Wireframe badge */}
-          {wireframe && (
-            <div
-              style={{
-                position: "absolute",
-                bottom: 10,
-                right: 10,
-                background: "rgba(240, 246, 252, 0.15)",
-                border: "1px solid rgba(240, 246, 252, 0.3)",
-                color: "#fff",
-                padding: "3px 8px",
-                borderRadius: 3,
-                fontSize: 10,
-                fontFamily: "var(--font-mono)",
-                pointerEvents: "none",
-              }}
-            >
-              WIREFRAME
+              <div style={{ background: "var(--bg-panel-header)", border: "1px solid var(--border-light)", borderRadius: "var(--radius)", padding: 16, fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                <strong>Geospatial Products:</strong> 2D Orthophoto and Digital Surface Model (DSM/DTM) GeoTIFFs preserve embedded spatial referencing (CRS/datum and pixel ground sample distance).
+              </div>
             </div>
           )}
         </div>

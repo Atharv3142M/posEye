@@ -14,6 +14,10 @@ export type Job = {
   preset: string;
   hasModel: boolean;
   isGeoreferenced?: boolean;
+  captureStart?: string | null;
+  captureEnd?: string | null;
+  accuracy?: Record<string, any>;
+  provenance?: Record<string, any>;
   createdAt: string;
   updatedAt?: string;
   videoPath: string;
@@ -120,8 +124,8 @@ declare global {
       pickGlb:      () => Promise<string | null>;
       saveFile:     (defaultName: string, ext: string) => Promise<string | null>;
       // Environment
-      env:          () => Promise<{ apiBase: string; apiToken?: string; packaged: boolean }>;
-      envSync:      () => { apiBase: string; apiToken?: string; packaged: boolean } | null;
+      env:          () => Promise<{ apiBase: string; apiToken?: string; packaged: boolean; version?: string }>;
+      envSync:      () => { apiBase: string; apiToken?: string; packaged: boolean; version?: string } | null;
       // File utilities
       readFile:     (filePath: string) => Promise<string | null>;
       saveAsset?:   (opts: { jobId: string; asset: string; defaultFilename?: string }) => Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }>;
@@ -196,9 +200,10 @@ function withTimeout<T>(promise: Promise<T>, ms = 30_000): Promise<T> {
 
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const base = await apiBase();
+  const token = apiTokenSync();
   const headers = new Headers(init?.headers);
-  if (cachedToken && !headers.has("Authorization")) {
-    headers.set("Authorization", `Bearer ${cachedToken}`);
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
   }
   let res: Response;
   try {
@@ -212,6 +217,16 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
     throw new ApiError(res.status, text || res.statusText);
   }
   return res.json() as Promise<T>;
+}
+
+export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const base = await apiBase();
+  const token = apiTokenSync();
+  const headers = new Headers(init?.headers);
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  return withTimeout(fetch(`${base}${path}`, { ...init, headers }));
 }
 
 /** Poll /health every `intervalMs` ms and return connectivity status */

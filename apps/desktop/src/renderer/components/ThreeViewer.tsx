@@ -190,13 +190,19 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const renderer = new WebGLRenderer({
-      canvas,
-      antialias: true,
-      alpha: true,
-      powerPreference: "high-performance",
-      preserveDrawingBuffer: true,
-    });
+    let renderer: WebGLRenderer;
+    try {
+      renderer = new WebGLRenderer({
+        canvas,
+        antialias: true,
+        alpha: true,
+        powerPreference: "high-performance",
+        preserveDrawingBuffer: true,
+      });
+    } catch (e: any) {
+      onLoadError?.(`WebGL initialization failed: ${e?.message || "WebGL 2 graphics hardware acceleration unavailable"}`);
+      return;
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     rendererRef.current = renderer;
 
@@ -384,6 +390,8 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
       disposeObjectTree(cloudGroup);
       disposeObjectTree(orthoGroup);
       disposeObjectTree(hoverMarker);
+      controls.dispose();
+      controlsRef.current = null;
       renderer.dispose();
       rendererRef.current = null;
     };
@@ -589,6 +597,9 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
           errorMsg = `HTTP ${err.target.status}: ${err.target.statusText || "Unable to retrieve model asset"}`;
         } else if (typeof err === "string") {
           errorMsg = err;
+        }
+        if (err?.target?.status === 401 || String(errorMsg).includes("401")) {
+          errorMsg = "Authentication failed (401 Unauthorized) retrieving model asset. Refreshing API credentials…";
         }
         onLoadError?.(errorMsg);
       }
