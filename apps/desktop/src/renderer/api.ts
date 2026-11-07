@@ -20,6 +20,11 @@ export type Job = {
   provenance?: Record<string, any>;
   createdAt: string;
   updatedAt?: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  failedAt?: string | null;
+  cancelledAt?: string | null;
+  durationSeconds?: number;
   videoPath: string;
   extract?: {
     rawFrames?: number;
@@ -306,4 +311,17 @@ export async function downloadAsset(jobId: string, asset: string, defaultFilenam
     console.error("Failed to download asset:", err);
     return false;
   }
+}
+
+
+export function formatDuration(seconds: number | undefined | null): string {
+  if (seconds === undefined || seconds === null || isNaN(seconds) || seconds < 0) return "—";
+  if (seconds < 1) return "< 1s";
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  if (m < 60) return `${m}m ${s}s`;
+  const h = Math.floor(m / 60);
+  const remM = m % 60;
+  return `${h}h ${remM}m ${s}s`;
 }

@@ -47,6 +47,11 @@ class ExtractResult:
     match_stats: dict = field(default_factory=dict)
     capture_start: str | None = None
     capture_end: str | None = None
+    telemetry_start: str | None = None
+    telemetry_end: str | None = None
+    first_frame_timestamp: str | None = None
+    last_frame_timestamp: str | None = None
+    video_creation_time: str | None = None
 
     def as_dict(self) -> dict:
         data = {
@@ -64,6 +69,16 @@ class ExtractResult:
             data["captureStart"] = self.capture_start
         if self.capture_end:
             data["captureEnd"] = self.capture_end
+        if self.first_frame_timestamp:
+            data["firstFrameTimestamp"] = self.first_frame_timestamp
+        if self.last_frame_timestamp:
+            data["lastFrameTimestamp"] = self.last_frame_timestamp
+        if self.telemetry_start:
+            data["telemetryStart"] = self.telemetry_start
+        if self.telemetry_end:
+            data["telemetryEnd"] = self.telemetry_end
+        if self.video_creation_time:
+            data["videoCreationTime"] = self.video_creation_time
         if self.match_stats:
             data.update(self.match_stats)
         return data
@@ -226,6 +241,8 @@ def extract_frames(
     _emit(progress, "geotagging", 50.0, "Parsing SRT flight telemetry & matching timestamps...")
     samples = parse_srt(config.srt_path) if config.srt_path else []
     geotagged = 0
+    first_written_ts: str | None = None
+    last_written_ts: str | None = None
     written: list[Path] = []
     total_kept = len(kept)
     stats = MatchStats(total_frames=total_kept)
@@ -253,6 +270,11 @@ def extract_frames(
                 ts_to_write = container_creation_time + timedelta(seconds=t)
             write_gps_exif(dest, sample.latitude, sample.longitude, sample.altitude, sample.altitude_ref, timestamp=ts_to_write)
             geotagged += 1
+            if ts_to_write is not None:
+                iso_str = ts_to_write.isoformat() if hasattr(ts_to_write, "isoformat") else str(ts_to_write)
+                if not first_written_ts:
+                    first_written_ts = iso_str
+                last_written_ts = iso_str
         written.append(dest)
 
         if index % 10 == 0 or index == total_kept:
@@ -282,6 +304,11 @@ def extract_frames(
 
     capture_start: str | None = None
     capture_end: str | None = None
+    telemetry_start: str | None = None
+    telemetry_end: str | None = None
+    first_frame_timestamp: str | None = None
+    last_frame_timestamp: str | None = None
+    video_creation_time: str | None = None
     timed_samples = [s for s in samples if s.timestamp is not None]
     if timed_samples:
         capture_start = timed_samples[0].timestamp.isoformat()
@@ -290,6 +317,15 @@ def extract_frames(
         capture_start = info.creation_time.isoformat()
         if info.duration_s:
             capture_end = (info.creation_time + timedelta(seconds=info.duration_s)).isoformat()
+
+    if samples and samples[0].timestamp:
+        telemetry_start = samples[0].timestamp.isoformat()
+    if samples and samples[-1].timestamp:
+        telemetry_end = samples[-1].timestamp.isoformat()
+    if getattr(info, "creation_time", None) is not None:
+        video_creation_time = info.creation_time.isoformat()
+    first_frame_timestamp = first_written_ts
+    last_frame_timestamp = last_written_ts
 
     return ExtractResult(
         frames=written,
@@ -305,4 +341,9 @@ def extract_frames(
         match_stats=stats.as_dict() if samples else {},
         capture_start=capture_start,
         capture_end=capture_end,
+        telemetry_start=telemetry_start,
+        telemetry_end=telemetry_end,
+        first_frame_timestamp=first_frame_timestamp,
+        last_frame_timestamp=last_frame_timestamp,
+        video_creation_time=video_creation_time,
     )

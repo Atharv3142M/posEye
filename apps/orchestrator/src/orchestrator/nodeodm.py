@@ -37,6 +37,7 @@ class TaskInfo:
     progress: float
     message: str
     raw: dict[str, Any]
+    gpu_sift_detected: bool = False
 
     @property
     def completed(self) -> bool:
@@ -255,6 +256,7 @@ class NodeODMClient:
         last_emitted_pct = -1.0
         last_emitted_msg = ""
         current_phase = "Running photogrammetry pipeline"
+        gpu_sift_detected = False
 
         while True:
             if should_stop and should_stop():
@@ -276,6 +278,8 @@ class NodeODMClient:
                             phase = parse_odm_phase(clean_line)
                             if phase:
                                 current_phase = phase
+                            if "using gpu for extracting sift features" in clean_line.lower():
+                                gpu_sift_detected = True
                             progress("reconstructing", pct, clean_line)
                             last_emitted_pct = pct
                             last_emitted_msg = clean_line

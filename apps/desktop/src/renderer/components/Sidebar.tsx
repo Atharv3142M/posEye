@@ -1,6 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { type ServiceState, useHealth } from "../api";
-import logoUrl from "../assets/posEye.png";
+import BrandLogo from "./BrandLogo";
 
 const NAV_LINKS = [
   { to: "/dashboard", label: "Dashboard", icon: "⬛" },
@@ -17,19 +17,7 @@ export default function Sidebar() {
     <nav className="sidebar">
       {/* Brand Header with Logo */}
       <div className="sidebar-logo">
-        <img
-          src={logoUrl}
-          alt="posEye Logo"
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 6,
-            objectFit: "contain",
-            background: "rgba(255, 255, 255, 0.08)",
-            padding: 2,
-          }}
-        />
-        <span className="sidebar-logo-text">posEye</span>
+        <BrandLogo size={28} showWordmark={true} />
       </div>
 
       {/* Navigation */}

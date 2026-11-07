@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { apiBaseSync, downloadAsset } from "../api";
+import { apiBaseSync, downloadAsset, formatDuration } from "../api";
+import BrandLogo from "../components/BrandLogo";
 import { toast } from "../components/Toast";
 import Button from "../components/Button";
 import MeasurementTools from "../components/MeasurementTools";
-import ThreeViewer, { type MeasureResult, type ModelStats, type ThreeViewerHandle } from "../components/ThreeViewer";
+import ThreeViewer, { type MeasureResult, type ModelStats, type ModelLoadPhase, type ThreeViewerHandle } from "../components/ThreeViewer";
 import { useProject } from "../hooks/useProject";
 
 export default function Viewer() {
@@ -19,6 +20,7 @@ export default function Viewer() {
   const [stats, setStats] = useState<ModelStats | null>(null);
   const [loadProgress, setLoadProgress] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<"mesh" | "pointcloud" | "orthomap">("mesh");
+  const [modelPhase, setModelPhase] = useState<ModelLoadPhase>("idle");
 
   const [modelStatus, setModelStatus] = useState<"idle" | "loading" | "ready" | "error" | "no_model">("idle");
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -111,6 +113,8 @@ export default function Viewer() {
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
       {/* Top Toolbar */}
       <div className="toolbar">
+        <BrandLogo size={22} showWordmark={true} style={{ marginRight: 8 }} />
+        <div className="toolbar-sep" />
         <Button onClick={() => nav("/projects")}>← Projects</Button>
         <div className="toolbar-sep" />
         <Button
@@ -283,6 +287,27 @@ export default function Viewer() {
                 <div><kbd style={{ background: "var(--bg-tertiary)", padding: "0 3px", borderRadius: 2, fontSize: 10 }}>Right-drag</kbd> Pan</div>
               </div>
 
+              {/* Processing Duration */}
+              {job?.durationSeconds !== undefined && job.durationSeconds > 0 && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: "10px 12px",
+                    background: "var(--bg-panel-header)",
+                    border: "1px solid var(--border-light)",
+                    borderRadius: "var(--radius)",
+                    fontSize: 11,
+                  }}
+                >
+                  <div style={{ fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                    Processing Duration
+                  </div>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "#18bc9c", fontWeight: 600 }}>
+                    ⏱ {formatDuration(job.durationSeconds)}
+                  </div>
+                </div>
+              )}
+
               {/* Georeference Notice Card */}
               <div
                 style={{
@@ -340,8 +365,22 @@ export default function Viewer() {
                 meshVisible={layers.mesh}
                 measuring={tool === "distance"}
                 wireframe={wireframe}
-                showCloud={layers.cloud}
-                cloudUrl={layers.cloud && job?.assets?.laz ? assetUrl("cloud.json") : null}
+                onLoadPhase={(phase, detail) => {
+                  setModelPhase(phase);
+                  if (phase === "fetching" && detail?.progress !== undefined) {
+                    setLoadProgress(detail.progress);
+                  }
+                  if (phase === "failed") {
+                    setModelStatus("error");
+                    setLoadError(detail?.message || "Failed to load 3D GLB model.");
+                  } else if (phase === "loaded") {
+                    setModelStatus("ready");
+                    setLoadError(null);
+                  } else if (phase !== "idle") {
+                    setModelStatus("loading");
+                  }
+                }}
+
                 showOrtho={layers.ortho}
                 orthoUrl={layers.ortho && job?.assets?.orthophoto ? assetUrl("orthophoto.jpg") : null}
                 modelReady={modelStatus === "ready"}
@@ -386,7 +425,17 @@ export default function Viewer() {
                 }}>
                   <span className="status-dot checking" style={{ animation: "pulse 1s infinite" }} />
                   <div style={{ flex: 1 }}>
-                    <div>Loading 3D mesh…</div>
+                    <div style={{ fontWeight: 600 }}>
+                      {modelPhase === "fetching"
+                        ? `Fetching 3D mesh… ${loadProgress ? `(${loadProgress}%)` : ""}`
+                        : modelPhase === "parsing"
+                        ? "Decompressing Draco geometry…"
+                        : modelPhase === "uploading"
+                        ? "Uploading geometry & textures to GPU…"
+                        : modelPhase === "rendering"
+                        ? "Rendering first frame…"
+                        : "Initializing 3D viewport…"}
+                    </div>
                     {loadProgress !== null && loadProgress > 0 && (
                       <div style={{ marginTop: 6, height: 3, background: "rgba(255,255,255,0.15)", borderRadius: 2 }}>
                         <div style={{ height: "100%", width: `${loadProgress}%`, background: "#18bc9c", borderRadius: 2, transition: "width 0.3s" }} />

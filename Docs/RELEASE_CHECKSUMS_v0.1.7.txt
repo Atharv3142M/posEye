@@ -1,0 +1,2 @@
+2ed2b1aa5409526aafc08903c7534935e8c3d74ccef35796d66cde34ac53d0ba *posEye.Setup.0.1.7.exe
+a8f2850bc10eb4c34054facf5df2d8e7b982f9827f45d08aae3f570875ecd97c *posEye-Windows-Installer-v0.1.7.zip

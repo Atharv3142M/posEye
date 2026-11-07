@@ -56,11 +56,14 @@ def canonical_preset(name: str) -> str:
     return _ALIASES.get(key, key)
 
 
-def preset_options(name: str) -> list[dict[str, str]]:
+def preset_options(name: str, use_gpu: bool = False) -> list[dict[str, str]]:
     key = canonical_preset(name)
     if key not in _PRESETS:
         raise ValueError(f"Unknown preset {name}")
-    return list(_PRESETS[key])
+    opts = [dict(opt) for opt in _PRESETS[key]]
+    if use_gpu:
+        opts.append({"name": "feature-extract-gpu", "value": "true"})
+    return opts
 
 
 def detect_preset() -> PresetName:

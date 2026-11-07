@@ -58,3 +58,6 @@ dist-installer/
 /.agents
 /.claude
 skills-lock.json
+
+# User test artifacts
+testing results/

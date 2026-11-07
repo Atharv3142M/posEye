@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchJson, type SystemStatus } from "../api";
 import Button from "../components/Button";
+import BrandLogo from "../components/BrandLogo";
 import Card from "../components/Card";
 import DiagnosticsModal from "../components/DiagnosticsModal";
 import { useTheme, type Theme } from "../hooks/useTheme";
@@ -36,7 +37,10 @@ export default function Settings() {
   return (
     <main className="page">
       <div className="container" style={{ maxWidth: 760 }}>
-        <h1>Settings</h1>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+          <BrandLogo size={26} showWordmark={false} />
+          <h1 style={{ margin: 0 }}>Settings</h1>
+        </div>
 
         <Card>
           <h2>Appearance</h2>

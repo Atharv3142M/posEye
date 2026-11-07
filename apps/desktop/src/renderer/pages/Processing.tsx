@@ -57,14 +57,24 @@ export default function Processing() {
 
   // Track elapsed time
   useEffect(() => {
-    if (!job?.createdAt) return;
-    const startTime = new Date(job.createdAt).getTime();
+    const isTerminal = stage === "ready" || stage === "error" || stage === "cancelled";
+    if (isTerminal && job?.durationSeconds !== undefined && job.durationSeconds > 0) {
+      setElapsed(Math.round(job.durationSeconds));
+      return;
+    }
+    const startStr = job?.startedAt || job?.createdAt;
+    if (!startStr) return;
+    const startTime = new Date(startStr).getTime();
 
     const updateTimer = () => {
-      const isTerminal = stage === "ready" || stage === "error" || stage === "cancelled";
-      if (isTerminal && job?.updatedAt) {
-        const endTime = new Date(job.updatedAt).getTime();
-        setElapsed(Math.max(0, Math.round((endTime - startTime) / 1000)));
+      const isTerm = stage === "ready" || stage === "error" || stage === "cancelled";
+      if (isTerm) {
+        if (job?.durationSeconds !== undefined && job.durationSeconds > 0) {
+          setElapsed(Math.round(job.durationSeconds));
+        } else if (job?.completedAt || job?.updatedAt) {
+          const endTime = new Date((job.completedAt || job.updatedAt)!).getTime();
+          setElapsed(Math.max(0, Math.round((endTime - startTime) / 1000)));
+        }
       } else {
         const now = Date.now();
         setElapsed(Math.max(0, Math.round((now - startTime) / 1000)));
@@ -74,7 +84,7 @@ export default function Processing() {
     updateTimer();
     const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
-  }, [job?.createdAt, job?.updatedAt, stage]);
+  }, [job?.startedAt, job?.createdAt, job?.completedAt, job?.updatedAt, job?.durationSeconds, stage]);
 
   // Auto-scroll log
   useEffect(() => {
@@ -112,7 +122,7 @@ export default function Processing() {
             <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
               <span className="muted" style={{ fontSize: 13, fontWeight: 500 }}>{job?.name || id}</span>
               <span className="badge badge-active" style={{ fontSize: 11 }}>
-                ⏱ {formatDuration(elapsed)} elapsed
+                ⏱ {formatDuration(elapsed)} {stage === "ready" ? "duration" : "elapsed"}
               </span>
               <span className="muted" style={{ fontSize: 11 }}>
                 Preset: <strong>{job?.preset || "default"}</strong>
