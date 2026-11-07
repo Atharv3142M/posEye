@@ -221,6 +221,12 @@ class TimestampProvenance:
     capture_start: str | None = None
     capture_end: str | None = None
     flight_duration_s: float | None = None
+    video_recording_start: str | None = None
+    telemetry_coverage_start: str | None = None
+    telemetry_coverage_end: str | None = None
+    first_extracted_frame_time: str | None = None
+    last_extracted_frame_time: str | None = None
+    reconstruction_duration_s: float | None = None
     local_display_timezone: str = "UTC"
     report_generation_time: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     provenance_source: str = "telemetry_srt"
@@ -232,6 +238,12 @@ class TimestampProvenance:
             "captureStart": self.capture_start,
             "captureEnd": self.capture_end,
             "flightDurationS": self.flight_duration_s,
+            "videoRecordingStart": self.video_recording_start or self.video_creation_time,
+            "telemetryCoverageStart": self.telemetry_coverage_start or self.srt_telemetry_time,
+            "telemetryCoverageEnd": self.telemetry_coverage_end,
+            "firstExtractedFrameTime": self.first_extracted_frame_time,
+            "lastExtractedFrameTime": self.last_extracted_frame_time,
+            "reconstructionDurationS": self.reconstruction_duration_s,
             "localDisplayTimezone": self.local_display_timezone,
             "reportGenerationTime": self.report_generation_time,
             "provenanceSource": self.provenance_source,

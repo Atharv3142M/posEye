@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { fetchJson, type SystemStatus } from "../api";
+import { fetchJson, formatDuration, type SystemStatus } from "../api";
 import Button from "../components/Button";
 import Card from "../components/Card";
+import BrandLogo from "../components/BrandLogo";
 import DiagnosticsModal from "../components/DiagnosticsModal";
 import StatusBadge from "../components/StatusBadge";
 import { useProjects } from "../hooks/useProject";
@@ -53,7 +54,7 @@ export default function Dashboard() {
         {/* Header */}
         <div style={{ marginBottom: 24 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
-            <h1 style={{ marginBottom: 0 }}>posEye</h1>
+            <BrandLogo size={32} showWordmark={true} />
             <span className="badge" style={{ fontSize: 11 }}>v{appVersion}</span>
             {activeJobs.length > 0 && (
               <span className="badge badge-active" style={{ fontSize: 11 }}>
@@ -132,6 +133,7 @@ export default function Dashboard() {
                 <tr>
                   <th>Name</th>
                   <th>Status</th>
+                  <th>Duration</th>
                   <th>Preset</th>
                   <th>Frames</th>
                   <th>Created</th>
@@ -147,6 +149,9 @@ export default function Dashboard() {
                   >
                     <td><strong>{j.name || j.id.slice(0, 8)}</strong></td>
                     <td><StatusBadge stage={j.stage} /></td>
+                    <td className="muted" style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>
+                      {formatDuration(j.durationSeconds)}
+                    </td>
                     <td className="muted">{j.preset}</td>
                     <td className="muted">{j.frameCount || "—"}</td>
                     <td className="muted">{fmtDate(j.createdAt)}</td>
