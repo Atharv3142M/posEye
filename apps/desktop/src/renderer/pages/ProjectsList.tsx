@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { downloadAsset, fetchJson } from "../api";
+import { downloadAsset, fetchJson, formatDuration } from "../api";
 import Button from "../components/Button";
 import Card from "../components/Card";
 import StatusBadge from "../components/StatusBadge";
@@ -70,6 +70,7 @@ export default function ProjectsList() {
                 <tr>
                   <th>Name</th>
                   <th>Status</th>
+                  <th>Duration</th>
                   <th>Preset</th>
                   <th>Frames</th>
                   <th>Created</th>
@@ -89,6 +90,9 @@ export default function ProjectsList() {
                       <div className="muted" style={{ fontSize: 11 }}>{j.id}</div>
                     </td>
                     <td><StatusBadge stage={j.stage} /></td>
+                    <td className="muted" style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>
+                      {formatDuration(j.durationSeconds)}
+                    </td>
                     <td className="muted">{j.preset}</td>
                     <td className="muted">{j.frameCount || "—"}</td>
                     <td className="muted">{fmtDate(j.createdAt)}</td>

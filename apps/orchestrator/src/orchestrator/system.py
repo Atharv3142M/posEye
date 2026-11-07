@@ -52,6 +52,14 @@ def _find_nvidia_smi() -> str | None:
     return None
 
 
+_ODM_GPU_SIFT_CONFIRMED: bool = False
+
+
+def set_odm_gpu_confirmed(confirmed: bool = True) -> None:
+    global _ODM_GPU_SIFT_CONFIRMED
+    _ODM_GPU_SIFT_CONFIRMED = confirmed
+
+
 def is_exact_pinned_gpu_image(image_name: str | None) -> bool:
     """Verify exact pinned GPU image contract (reject arbitrary substrings)."""
     if not image_name:
@@ -340,9 +348,17 @@ def _gpu() -> dict[str, Any]:
         running_container_image=running_image,
         container_has_gpus_flag=container_gpus_flag,
         container_cuda_verified=container_cuda_verified,
-        odm_gpu_confirmed=False,
+        odm_gpu_confirmed=_ODM_GPU_SIFT_CONFIRMED,
         gpu_telemetry=telemetry,
     )
+
+
+def is_gpu_reconstruction_ready() -> bool:
+    try:
+        gpu_info = _gpu()
+        return bool(gpu_info.get("containerCudaCapable"))
+    except Exception:
+        return False
 
 
 def _ffmpeg() -> dict[str, Any]:

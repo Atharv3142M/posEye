@@ -15,9 +15,6 @@ import {
   MeshStandardMaterial,
   PerspectiveCamera,
   PlaneGeometry,
-  Points,
-  PointsMaterial,
-  Float32BufferAttribute,
   Raycaster,
   RingGeometry,
   Scene,
@@ -30,6 +27,7 @@ import {
 } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { apiTokenSync } from "../api";
 
 export type MeasureResult = {
@@ -50,10 +48,21 @@ export type ModelStats = {
   };
 };
 
+export type ModelLoadPhase =
+  | "idle"
+  | "initializing"
+  | "fetching"
+  | "parsing"
+  | "uploading"
+  | "rendering"
+  | "loaded"
+  | "failed";
+
 export interface ThreeViewerHandle {
   resetCamera: () => void;
   clearMeasurements: () => void;
   takeScreenshot: () => string | null;
+  requestRender: () => void;
 }
 
 interface ThreeViewerProps {
@@ -61,8 +70,6 @@ interface ThreeViewerProps {
   meshVisible: boolean;
   measuring: boolean;
   wireframe?: boolean;
-  showCloud?: boolean;
-  cloudUrl?: string | null;
   showOrtho?: boolean;
   orthoUrl?: string | null;
   modelReady?: boolean;
@@ -73,6 +80,7 @@ interface ThreeViewerProps {
   onLoadProgress?: (pct: number) => void;
   onLoadSuccess?: () => void;
   onLoadError?: (error: string) => void;
+  onLoadPhase?: (phase: ModelLoadPhase, detail?: { progress?: number; message?: string }) => void;
 }
 
 const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function ThreeViewer(
@@ -81,8 +89,6 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     meshVisible,
     measuring,
     wireframe = false,
-    showCloud = false,
-    cloudUrl = null,
     showOrtho = false,
     orthoUrl = null,
     modelReady = false,
@@ -93,10 +99,12 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     onLoadProgress,
     onLoadSuccess,
     onLoadError,
+    onLoadPhase,
   },
   ref
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const sceneRef = useRef<Scene | null>(null);
   const rootRef = useRef<Group | null>(null);
   const measuresRef = useRef<Group | null>(null);
   const hoverMarkerRef = useRef<Mesh | null>(null);
@@ -104,8 +112,10 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
   const cameraRef = useRef<PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const rendererRef = useRef<WebGLRenderer | null>(null);
-  const cloudGroupRef = useRef<Group | null>(null);
   const orthoGroupRef = useRef<Group | null>(null);
+  const cachedMeshesRef = useRef<Mesh[]>([]);
+  const requestRenderRef = useRef<() => void>(() => {});
+  const dracoLoaderRef = useRef<DRACOLoader | null>(null);
 
   const measuringRef = useRef(measuring);
   measuringRef.current = measuring;
@@ -124,13 +134,32 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
       if (child.geometry) child.geometry.dispose();
       if (child.material) {
         if (Array.isArray(child.material)) {
-          child.material.forEach((m: any) => { m.map?.dispose(); m.dispose(); });
+          child.material.forEach((m: any) => {
+            m.map?.dispose();
+            m.dispose();
+          });
         } else {
           child.material.map?.dispose();
           child.material.dispose();
         }
       }
     });
+  };
+
+  const updateCachedMeshes = () => {
+    const root = rootRef.current;
+    if (!root) {
+      cachedMeshesRef.current = [];
+      return;
+    }
+    const meshes: Mesh[] = [];
+    root.traverse((o) => {
+      if (o instanceof Mesh && o.visible) {
+        meshes.push(o);
+      }
+    });
+    cachedMeshesRef.current = meshes;
+    requestRenderRef.current();
   };
 
   const doResetCamera = () => {
@@ -144,6 +173,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
       camera.position.set(40, 30, 40);
       controls.target.set(0, 0, 0);
       controls.update();
+      requestRenderRef.current();
       return;
     }
 
@@ -157,6 +187,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     camera.far = Math.max(2000, maxDim * 50);
     camera.updateProjectionMatrix();
     controls.update();
+    requestRenderRef.current();
   };
 
   const doClearMeasurements = () => {
@@ -164,28 +195,36 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
       disposeObjectTree(measuresRef.current);
       measuresRef.current.clear();
     }
+    if (hoverMarkerRef.current) {
+      hoverMarkerRef.current.visible = false;
+    }
     picksRef.current = [];
     totalDistRef.current = 0;
     onMeasure(null);
-  };
-
-  const doTakeScreenshot = (): string | null => {
-    const renderer = rendererRef.current;
-    if (!renderer) return null;
-    try {
-      return renderer.domElement.toDataURL("image/png");
-    } catch {
-      return null;
-    }
+    requestRenderRef.current();
   };
 
   useImperativeHandle(ref, () => ({
     resetCamera: doResetCamera,
     clearMeasurements: doClearMeasurements,
-    takeScreenshot: doTakeScreenshot,
+    requestRender: () => requestRenderRef.current(),
+    takeScreenshot: () => {
+      const renderer = rendererRef.current;
+      const scene = sceneRef.current;
+      const camera = cameraRef.current;
+      const canvas = canvasRef.current;
+      if (!renderer || !scene || !camera || !canvas) return null;
+      // Force an immediate render into framebuffer right before capture
+      renderer.render(scene, camera);
+      try {
+        return canvas.toDataURL("image/png");
+      } catch {
+        return null;
+      }
+    },
   }));
 
-  // Setup Three.js Scene & Render loop
+  // Setup WebGL Scene and Demand-Driven Render Loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -200,14 +239,18 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
         preserveDrawingBuffer: true,
       });
     } catch (e: any) {
-      onLoadError?.(`WebGL initialization failed: ${e?.message || "WebGL 2 graphics hardware acceleration unavailable"}`);
+      const msg = `WebGL initialization failed: ${e?.message || "WebGL hardware acceleration unavailable"}`;
+      onLoadPhase?.("failed", { message: msg });
+      onLoadError?.(msg);
       return;
     }
+
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     rendererRef.current = renderer;
 
     const scene = new Scene();
     scene.background = new Color("#1e272e");
+    sceneRef.current = scene;
 
     const camera = new PerspectiveCamera(50, 1, 0.1, 100000);
     camera.position.set(40, 30, 40);
@@ -230,20 +273,18 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
 
     scene.add(new AmbientLight(0xffffff, 0.65));
 
-    // Ground grid
+    // Ground reference grid
     const grid = new GridHelper(200, 40, 0x4a5568, 0x2d3748);
     scene.add(grid);
 
     // Groups
     const root = new Group();
     const measures = new Group();
-    const cloudGroup = new Group();
     const orthoGroup = new Group();
     rootRef.current = root;
     measuresRef.current = measures;
-    cloudGroupRef.current = cloudGroup;
     orthoGroupRef.current = orthoGroup;
-    scene.add(root, measures, cloudGroup, orthoGroup);
+    scene.add(root, measures, orthoGroup);
 
     // Hover marker for measuring
     const hoverMarker = new Mesh(
@@ -257,6 +298,28 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     const raycaster = new Raycaster();
     const pointer = new Vector2();
 
+    // Demand-Driven Render Loop
+    let renderRequested = false;
+    const render = () => {
+      renderRequested = false;
+      if (!rendererRef.current || !cameraRef.current || !sceneRef.current) return;
+      const animating = controls.update();
+      rendererRef.current.render(sceneRef.current, cameraRef.current);
+      if (animating) {
+        requestRender();
+      }
+    };
+
+    const requestRender = () => {
+      if (!renderRequested) {
+        renderRequested = true;
+        requestAnimationFrame(render);
+      }
+    };
+    requestRenderRef.current = requestRender;
+
+    controls.addEventListener("change", requestRender);
+
     const resize = () => {
       if (!canvas) return;
       const w = canvas.clientWidth || canvas.parentElement?.clientWidth || 800;
@@ -264,51 +327,64 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
       renderer.setSize(w, h, false);
       camera.aspect = w / Math.max(h, 1);
       camera.updateProjectionMatrix();
+      requestRender();
     };
     resize();
 
     const ro = new ResizeObserver(resize);
     if (canvas.parentElement) ro.observe(canvas.parentElement);
 
-    const getVisibleMeshes = (): Mesh[] => {
-      if (!meshVisibleRef.current) return [];
-      const out: Mesh[] = [];
-      root.traverse((o) => {
-        if (o instanceof Mesh && o.visible) out.push(o);
-      });
-      return out;
-    };
-
+    // Throttled Pointer Movement for Picking
+    let pointerRafId: number | null = null;
     const onPointerMove = (ev: PointerEvent) => {
-      const rect = canvas.getBoundingClientRect();
-      pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
-      pointer.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+      if (pointerRafId !== null) return;
+      pointerRafId = requestAnimationFrame(() => {
+        pointerRafId = null;
+        if (!canvas || !cameraRef.current) return;
+        const rect = canvas.getBoundingClientRect();
+        pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+        pointer.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
 
-      raycaster.setFromCamera(pointer, camera);
-      const meshes = getVisibleMeshes();
-      const hits = raycaster.intersectObjects(meshes, true);
-
-      if (hits.length === 0) {
-        onCoords("—");
-        if (hoverMarkerRef.current) hoverMarkerRef.current.visible = false;
-        return;
-      }
-
-      const hit = hits[0];
-      const p = hit.point;
-      const worldP = p.clone().add(modelOffsetRef.current);
-
-      onCoords(`X: ${worldP.x.toFixed(2)}  Y: ${worldP.y.toFixed(2)}  Z: ${worldP.z.toFixed(2)}`);
-
-      if (measuringRef.current && hoverMarkerRef.current) {
-        hoverMarkerRef.current.position.copy(p);
-        if (hit.face) {
-          hoverMarkerRef.current.quaternion.setFromUnitVectors(new Vector3(0, 0, 1), hit.face.normal);
+        raycaster.setFromCamera(pointer, cameraRef.current);
+        const meshes = meshVisibleRef.current ? cachedMeshesRef.current : [];
+        if (meshes.length === 0) {
+          onCoords("—");
+          if (hoverMarkerRef.current?.visible) {
+            hoverMarkerRef.current.visible = false;
+            requestRender();
+          }
+          return;
         }
-        hoverMarkerRef.current.visible = true;
-      } else if (hoverMarkerRef.current) {
-        hoverMarkerRef.current.visible = false;
-      }
+
+        // Non-recursive test against flat cached mesh array for high-FPS picking
+        const hits = raycaster.intersectObjects(meshes, false);
+        if (hits.length === 0) {
+          onCoords("—");
+          if (hoverMarkerRef.current?.visible) {
+            hoverMarkerRef.current.visible = false;
+            requestRender();
+          }
+          return;
+        }
+
+        const hit = hits[0];
+        const p = hit.point;
+        const worldP = p.clone().add(modelOffsetRef.current);
+
+        onCoords(`X: ${worldP.x.toFixed(2)}  Y: ${worldP.y.toFixed(2)}  Z: ${worldP.z.toFixed(2)}`);
+
+        if (measuringRef.current && hoverMarkerRef.current) {
+          hoverMarkerRef.current.position.copy(p);
+          if (hit.face) {
+            hoverMarkerRef.current.quaternion.setFromUnitVectors(new Vector3(0, 0, 1), hit.face.normal);
+          }
+          hoverMarkerRef.current.visible = true;
+          requestRender();
+        } else if (hoverMarkerRef.current?.visible) {
+          hoverMarkerRef.current.visible = false;
+          requestRender();
+        }
+      });
     };
 
     const onPointerDown = (ev: PointerEvent) => {
@@ -319,15 +395,14 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
       pointer.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
 
       raycaster.setFromCamera(pointer, camera);
-      const meshes = getVisibleMeshes();
-      const hits = raycaster.intersectObjects(meshes, true);
+      const meshes = meshVisibleRef.current ? cachedMeshesRef.current : [];
+      const hits = raycaster.intersectObjects(meshes, false);
       if (hits.length === 0) return;
 
       const hit = hits[0];
       const pt = hit.point.clone();
       const picks = picksRef.current;
 
-      // Sphere marker at pick point
       const markerGeom = new SphereGeometry(0.25, 16, 16);
       const markerMat = new MeshStandardMaterial({
         color: 0x18bc9c,
@@ -339,13 +414,11 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
       measures.add(marker);
 
       if (picks.length > 0) {
-        // Draw segment line from last pick to this pick
         const prev = picks[picks.length - 1];
         const lineGeom = new BufferGeometry().setFromPoints([prev, pt]);
         const lineMat = new LineBasicMaterial({ color: 0x18bc9c, linewidth: 2 });
         measures.add(new Line(lineGeom, lineMat));
 
-        // Accumulate distance
         const segDist = prev.distanceTo(pt);
         totalDistRef.current += segDist;
 
@@ -357,9 +430,19 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
           worldA: picks[0].clone().add(offset),
           worldB: pt.clone().add(offset),
         });
+      } else {
+        const offset = modelOffsetRef.current;
+        onMeasure({
+          distance: 0,
+          a: pt.clone(),
+          b: pt.clone(),
+          worldA: pt.clone().add(offset),
+          worldB: pt.clone().add(offset),
+        });
       }
 
       picks.push(pt);
+      requestRender();
     };
 
     canvas.addEventListener("pointermove", onPointerMove);
@@ -374,26 +457,39 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     };
     window.addEventListener("keydown", onKeyDown);
 
-    renderer.setAnimationLoop(() => {
-      controls.update();
-      renderer.render(scene, camera);
-    });
+    // WebGL Context Loss Handling
+    const onContextLost = (e: Event) => {
+      e.preventDefault();
+      onLoadError?.("WebGL graphics context lost. Restoring…");
+    };
+    const onContextRestored = () => {
+      requestRender();
+    };
+    canvas.addEventListener("webglcontextlost", onContextLost);
+    canvas.addEventListener("webglcontextrestored", onContextRestored);
+
+    // Initial render
+    requestRender();
 
     return () => {
       canvas.removeEventListener("pointermove", onPointerMove);
       canvas.removeEventListener("pointerdown", onPointerDown);
+      canvas.removeEventListener("webglcontextlost", onContextLost);
+      canvas.removeEventListener("webglcontextrestored", onContextRestored);
       window.removeEventListener("keydown", onKeyDown);
       ro.disconnect();
-      renderer.setAnimationLoop(null);
+      if (pointerRafId !== null) cancelAnimationFrame(pointerRafId);
+      controls.removeEventListener("change", requestRender);
       disposeObjectTree(root);
       disposeObjectTree(measures);
-      disposeObjectTree(cloudGroup);
       disposeObjectTree(orthoGroup);
       disposeObjectTree(hoverMarker);
       controls.dispose();
       controlsRef.current = null;
       renderer.dispose();
       rendererRef.current = null;
+      sceneRef.current = null;
+      cameraRef.current = null;
     };
   }, [onCoords, onMeasure]);
 
@@ -405,6 +501,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     }
     if (!measuring && hoverMarkerRef.current) {
       hoverMarkerRef.current.visible = false;
+      requestRenderRef.current();
     }
   }, [measuring]);
 
@@ -413,6 +510,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     if (rootRef.current) {
       rootRef.current.visible = meshVisible;
     }
+    updateCachedMeshes();
   }, [meshVisible]);
 
   // Toggle wireframe on all meshes
@@ -421,78 +519,62 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     rootRef.current.traverse((o) => {
       if (o instanceof Mesh) {
         if (Array.isArray(o.material)) {
-          o.material.forEach((m: any) => { if ("wireframe" in m) m.wireframe = wireframe; });
+          o.material.forEach((m: any) => {
+            if ("wireframe" in m) m.wireframe = wireframe;
+          });
         } else if ("wireframe" in o.material) {
           (o.material as any).wireframe = wireframe;
         }
       }
     });
+    requestRenderRef.current();
   }, [wireframe]);
 
-  useEffect(() => {
-    const group = cloudGroupRef.current;
-    if (!group) return;
-    group.visible = showCloud;
-    disposeObjectTree(group);
-    group.clear();
-    if (!showCloud || !cloudUrl || !modelReady) return;
-    let cancel = false;
-    const headers: Record<string, string> = {};
-    const token = apiTokenSync();
-    if (token) headers.Authorization = `Bearer ${token}`;
-    void fetch(cloudUrl, { headers })
-      .then((res) => {
-        if (!res.ok) throw new Error(`cloud ${res.status}`);
-        return res.json() as Promise<{ positions: number[] }>;
-      })
-      .then((data) => {
-        if (cancel || !data.positions?.length) return;
-        const offset = modelOffsetRef.current;
-        const positions = new Float32Array(data.positions);
-        for (let i = 0; i < positions.length; i += 3) {
-          positions[i] -= offset.x;
-          positions[i + 1] -= offset.y;
-          positions[i + 2] -= offset.z;
-        }
-        const geom = new BufferGeometry();
-        geom.setAttribute("position", new Float32BufferAttribute(positions, 3));
-        group.add(new Points(geom, new PointsMaterial({ color: 0x7ee0c6, size: 0.35, sizeAttenuation: true })));
-      })
-      .catch(() => {});
-    return () => { cancel = true; };
-  }, [showCloud, cloudUrl, modelReady]);
-
+  // Orthophoto overlay plane
   useEffect(() => {
     const group = orthoGroupRef.current;
     if (!group) return;
     group.visible = showOrtho;
     disposeObjectTree(group);
     group.clear();
-    if (!showOrtho || !orthoUrl || !modelReady) return;
+    if (!showOrtho || !orthoUrl || !modelReady) {
+      requestRenderRef.current();
+      return;
+    }
     const loader = new TextureLoader();
     const token = apiTokenSync();
     if (token) loader.setRequestHeader({ Authorization: `Bearer ${token}` });
     let disposed = false;
-    loader.load(orthoUrl, (texture: Texture) => {
-      if (disposed) {
-        texture.dispose();
-        return;
+    loader.load(
+      orthoUrl,
+      (texture: Texture) => {
+        if (disposed) {
+          texture.dispose();
+          return;
+        }
+        const root = rootRef.current;
+        const box = root ? new Box3().setFromObject(root) : new Box3();
+        const size = box.isEmpty() ? new Vector3(20, 1, 20) : box.getSize(new Vector3());
+        const plane = new Mesh(
+          new PlaneGeometry(Math.max(size.x, 1), Math.max(size.z, 1)),
+          new MeshBasicMaterial({ map: texture, side: DoubleSide, transparent: true, opacity: 0.9 })
+        );
+        plane.rotation.x = -Math.PI / 2;
+        plane.position.y = box.isEmpty() ? -0.05 : box.min.y - 0.05;
+        group.add(plane);
+        requestRenderRef.current();
+      },
+      undefined,
+      () => {
+        // Silent failure for optional raster
       }
-      const root = rootRef.current;
-      const box = root ? new Box3().setFromObject(root) : new Box3();
-      const size = box.isEmpty() ? new Vector3(20, 1, 20) : box.getSize(new Vector3());
-      const plane = new Mesh(
-        new PlaneGeometry(Math.max(size.x, 1), Math.max(size.z, 1)),
-        new MeshBasicMaterial({ map: texture, side: DoubleSide, transparent: true, opacity: 0.9 }),
-      );
-      plane.rotation.x = -Math.PI / 2;
-      plane.position.y = box.isEmpty() ? -0.05 : box.min.y - 0.05;
-      group.add(plane);
-    });
-    return () => { disposed = true; };
+    );
+    return () => {
+      disposed = true;
+    };
   }, [showOrtho, orthoUrl, modelReady]);
 
-  // Load Model
+  // Model Loading with DRACOLoader and Multi-Phase Progress
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
@@ -500,6 +582,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     const currentLoadId = ++loadIdRef.current;
     disposeObjectTree(root);
     root.clear();
+    cachedMeshesRef.current = [];
     if (measuresRef.current) {
       disposeObjectTree(measuresRef.current);
       measuresRef.current.clear();
@@ -508,23 +591,41 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     totalDistRef.current = 0;
     modelOffsetRef.current.set(0, 0, 0);
     onStats?.({ vertices: 0, triangles: 0 });
+    requestRenderRef.current();
 
-    if (!modelUrl) return;
+    if (!modelUrl) {
+      onLoadPhase?.("idle");
+      return;
+    }
 
     onLoadStart?.();
+    onLoadPhase?.("initializing");
 
+    // Initialize GLTFLoader and local offline DRACOLoader
     const loader = new GLTFLoader();
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath("draco/");
+    dracoLoaderRef.current = dracoLoader;
+    loader.setDRACOLoader(dracoLoader);
+
     const token = apiTokenSync();
     if (token) {
       loader.setRequestHeader({ Authorization: `Bearer ${token}` });
     }
+
+    onLoadPhase?.("fetching", { progress: 0 });
+
     loader.load(
       modelUrl,
       (gltf) => {
         if (currentLoadId !== loadIdRef.current) {
           disposeObjectTree(gltf.scene);
+          dracoLoader.dispose();
           return;
         }
+
+        onLoadPhase?.("parsing");
+
         let totalVerts = 0;
         let totalTriangles = 0;
 
@@ -532,7 +633,9 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
           if (obj instanceof Mesh) {
             if (obj.material) {
               if (Array.isArray(obj.material)) {
-                obj.material.forEach((m) => { m.side = DoubleSide; });
+                obj.material.forEach((m) => {
+                  m.side = DoubleSide;
+                });
               } else if ("side" in obj.material) {
                 obj.material.side = DoubleSide;
               }
@@ -551,10 +654,15 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
 
         if (totalVerts === 0 || totalTriangles === 0) {
           disposeObjectTree(gltf.scene);
+          dracoLoader.dispose();
           onStats?.({ vertices: 0, triangles: 0 });
-          onLoadError?.("Model contains no usable polygon geometry.");
+          const err = "Model contains no usable polygon geometry.";
+          onLoadPhase?.("failed", { message: err });
+          onLoadError?.(err);
           return;
         }
+
+        onLoadPhase?.("uploading");
 
         const origBox = new Box3().setFromObject(gltf.scene);
         const center = origBox.getCenter(new Vector3());
@@ -565,6 +673,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
 
         root.add(gltf.scene);
         root.visible = meshVisibleRef.current;
+        updateCachedMeshes();
 
         if (onStats) {
           onStats({
@@ -578,6 +687,13 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
           });
         }
 
+        onLoadPhase?.("rendering");
+        if (rendererRef.current && sceneRef.current && cameraRef.current) {
+          rendererRef.current.compile(sceneRef.current, cameraRef.current);
+          rendererRef.current.render(sceneRef.current, cameraRef.current);
+        }
+
+        onLoadPhase?.("loaded");
         onLoadSuccess?.();
         setTimeout(doResetCamera, 50);
       },
@@ -586,6 +702,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
         if (xhr.total && xhr.total > 0) {
           const pct = Math.round((xhr.loaded / xhr.total) * 100);
           onLoadProgress?.(pct);
+          onLoadPhase?.("fetching", { progress: pct });
         }
       },
       (err: any) => {
@@ -599,12 +716,17 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
           errorMsg = err;
         }
         if (err?.target?.status === 401 || String(errorMsg).includes("401")) {
-          errorMsg = "Authentication failed (401 Unauthorized) retrieving model asset. Refreshing API credentials…";
+          errorMsg = "Authentication failed (401 Unauthorized) retrieving model asset.";
         }
+        onLoadPhase?.("failed", { message: errorMsg });
         onLoadError?.(errorMsg);
       }
     );
-  }, [modelUrl, onStats, onLoadStart, onLoadSuccess, onLoadError, onLoadProgress]);
+
+    return () => {
+      dracoLoader.dispose();
+    };
+  }, [modelUrl, onStats, onLoadStart, onLoadSuccess, onLoadError, onLoadProgress, onLoadPhase]);
 
   return (
     <canvas
