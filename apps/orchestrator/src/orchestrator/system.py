@@ -52,6 +52,31 @@ def _find_nvidia_smi() -> str | None:
     return None
 
 
+def is_exact_pinned_gpu_image(image_name: str | None) -> bool:
+    """Verify exact pinned GPU image contract (reject arbitrary substrings)."""
+    if not image_name:
+        return False
+    clean = image_name.strip()
+    return clean == PINNED_GPU_IMAGE or clean.startswith(f"{PINNED_GPU_IMAGE}@sha256:")
+
+
+def _verify_container_cuda_runtime(container_name: str = "poseye-nodeodm") -> bool:
+    """Verify that nvidia-smi / CUDA runtime is functional inside the running container."""
+    docker_bin = shutil.which("docker")
+    if not docker_bin:
+        return False
+    try:
+        proc = subprocess.run(
+            ["docker", "exec", container_name, "nvidia-smi", "-L"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        return proc.returncode == 0 and "GPU" in proc.stdout
+    except Exception:
+        return False
+
+
 def evaluate_gpu_state(
     host_hardware: dict[str, Any],
     driver: dict[str, Any],
@@ -60,12 +85,15 @@ def evaluate_gpu_state(
     gpu_image_available: bool,
     running_container_image: str | None = None,
     container_has_gpus_flag: bool = False,
+    container_cuda_verified: bool = False,
+    odm_gpu_confirmed: bool = False,
     gpu_telemetry: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Evaluate the 8-stage GPU verification and acceleration state.
     Strictly enforces that opendronemap/nodeodm:3.6.2 is NEVER reported as
     GPU accelerated merely because Docker accepts --gpus all.
+    Differentiates GPU capability, container CUDA availability, and active GPU processing.
     """
     nvidia_detected = bool(host_hardware.get("has_nvidia"))
     display_adapter_detected = bool(host_hardware.get("display_adapter_detected", nvidia_detected))
@@ -76,26 +104,34 @@ def evaluate_gpu_state(
     driver_version = driver.get("version")
     smi_ok = bool(driver.get("smi_ok"))
 
-    # Pinned image contract verification
-    is_gpu_image_running = bool(
-        running_container_image
-        and ("gpu" in running_container_image.lower() or running_container_image == PINNED_GPU_IMAGE)
-    )
+    # Exact pinned image contract verification (reject arbitrary 'gpu' substrings)
+    is_gpu_image_running = is_exact_pinned_gpu_image(running_container_image)
 
-    # CUDA acceleration is active ONLY when full stack is present AND container is a validated GPU image
-    cuda_active = bool(
-        nvidia_detected
-        and driver_ok
+    # Separate states:
+    gpu_hardware_detected = nvidia_detected
+    gpu_driver_available = driver_ok and smi_ok
+    gpu_available = bool(gpu_hardware_detected and gpu_driver_available)
+    gpu_capability = bool(gpu_available and docker_passthrough and container_toolkit and gpu_image_available)
+
+    # Container CUDA is capable ONLY when all requirements are met AND container CUDA runtime is verified
+    container_cuda_capable = bool(
+        gpu_available
         and docker_passthrough
         and container_has_gpus_flag
         and is_gpu_image_running
+        and container_cuda_verified
     )
-    gpu_processing_active = cuda_active
-    cpu_fallback_active = not cuda_active
 
-    if cuda_active:
-        accel = f"CUDA GPU container acceleration active ({running_container_image})"
-        message = f"{gpu_name or 'NVIDIA GPU'} (CUDA acceleration active)"
+    # Active GPU processing is set ONLY when ODM logs or execution confirm GPU feature extraction
+    gpu_processing_active = bool(container_cuda_capable and odm_gpu_confirmed)
+    cpu_fallback_active = not container_cuda_capable
+
+    if gpu_processing_active:
+        accel = f"CUDA GPU feature extraction active ({running_container_image})"
+        message = f"{gpu_name or 'NVIDIA GPU'} (CUDA processing verified)"
+    elif container_cuda_capable:
+        accel = f"CUDA GPU container ready (standby: {running_container_image})"
+        message = f"{gpu_name or 'NVIDIA GPU'} (CUDA container ready · standby)"
     elif nvidia_detected and driver_ok:
         accel = f"CPU processing (standard NodeODM container: {running_container_image or PINNED_CPU_IMAGE})"
         message = f"{gpu_name or 'NVIDIA GPU'} (Driver {driver_version or 'OK'} · CPU processing)"
@@ -109,8 +145,9 @@ def evaluate_gpu_state(
     tel = gpu_telemetry or {}
 
     return {
-        "gpuAvailable": bool(nvidia_detected or display_adapter_detected),
+        "gpuAvailable": gpu_available or display_adapter_detected,
         "gpuHardware": bool(nvidia_detected or display_adapter_detected),
+        "gpuHardwareDetected": gpu_hardware_detected,
         "gpuName": gpu_name,
         "driverVersion": driver_version,
         "displayAdapterDetected": display_adapter_detected,
@@ -124,10 +161,12 @@ def evaluate_gpu_state(
         "dockerGpuAccess": docker_passthrough,
         "dockerGpuPassthrough": docker_passthrough,
         "gpuImageAvailable": gpu_image_available,
-        "engineGpuCapability": bool(docker_passthrough and container_toolkit and gpu_image_available),
+        "engineGpuCapability": gpu_capability,
+        "gpuCapability": gpu_capability,
         "gpuProcessingActive": gpu_processing_active,
-        "containerCudaActive": cuda_active,
-        "cudaAvailable": cuda_active,
+        "containerCudaActive": container_cuda_capable,
+        "containerCudaCapable": container_cuda_capable,
+        "cudaAvailable": container_cuda_capable,
         "cudaDriverAvailable": driver_ok,
         "cpuFallbackActive": cpu_fallback_active,
         "gpuUtilization": tel.get("utilization"),
@@ -286,6 +325,12 @@ def _gpu() -> dict[str, Any]:
         "temperature": temp,
     }
 
+    container_cuda_verified = (
+        _verify_container_cuda_runtime()
+        if (container_gpus_flag and is_exact_pinned_gpu_image(running_image))
+        else False
+    )
+
     return evaluate_gpu_state(
         host_hardware=host_hardware,
         driver=driver_dict,
@@ -294,6 +339,8 @@ def _gpu() -> dict[str, Any]:
         gpu_image_available=gpu_image_available,
         running_container_image=running_image,
         container_has_gpus_flag=container_gpus_flag,
+        container_cuda_verified=container_cuda_verified,
+        odm_gpu_confirmed=False,
         gpu_telemetry=telemetry,
     )
 
@@ -449,12 +496,16 @@ def system_diagnostics_report() -> dict[str, Any]:
     from datetime import datetime, timezone
 
     status = system_status()
+    ALLOWED_PREFIXES = ("DT_", "NODEODM_", "FFMPEG_", "POSEYE_")
+    SENSITIVE_TERMS = ("TOKEN", "SECRET", "KEY", "PASSWORD", "AUTH")
+
     env_safe: dict[str, str] = {}
     for k, v in os.environ.items():
-        if any(term in k.upper() for term in ["TOKEN", "SECRET", "KEY", "PASSWORD", "AUTH"]):
-            env_safe[k] = "[REDACTED]"
-        else:
-            env_safe[k] = v
+        if any(k.startswith(p) for p in ALLOWED_PREFIXES):
+            if any(term in k.upper() for term in SENSITIVE_TERMS):
+                env_safe[k] = "[REDACTED]"
+            else:
+                env_safe[k] = v
 
     return {
         "reportGeneratedAt": datetime.now(timezone.utc).isoformat(),

@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import json
+import logging
 import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -18,6 +23,10 @@ class PointResidual:
     error_3d: float = field(init=False)
 
     def __post_init__(self):
+        if self.point_type not in {"control", "checkpoint"}:
+            raise ValueError(f"Invalid point_type: '{self.point_type}'. Must be 'control' or 'checkpoint'.")
+        if not (math.isfinite(self.dx) and math.isfinite(self.dy) and math.isfinite(self.dz)):
+            raise ValueError(f"Point residuals must be finite numbers: dx={self.dx}, dy={self.dy}, dz={self.dz}")
         err_2d = math.sqrt(self.dx * self.dx + self.dy * self.dy)
         err_3d = math.sqrt(self.dx * self.dx + self.dy * self.dy + self.dz * self.dz)
         object.__setattr__(self, "error_2d", err_2d)
@@ -76,37 +85,79 @@ class AccuracyStats:
 
 def compute_residuals(
     points: list[dict[str, Any]],
+    errors: list[str] | None = None,
 ) -> list[PointResidual]:
     """
     Compute residuals from paired estimated and reference coordinates.
-    Each point dict should contain:
-      id: str
-      type: "control" | "checkpoint"
-      estimated: [x, y, z]
-      reference: [x, y, z]
-    Or directly dx, dy, dz.
+    Never substitutes zero for missing measurements.
+    Rejects points with unknown point roles or non-finite coordinates.
     """
     residuals: list[PointResidual] = []
-    for p in points:
-        p_id = str(p.get("id", f"pt_{len(residuals)}"))
-        p_type = str(p.get("type", "control")).lower()
+    for idx, p in enumerate(points):
+        p_id = str(p.get("id") or f"pt_{idx + 1}").strip()
+        raw_type = p.get("type") or p.get("role")
+        if raw_type is None:
+            if errors is not None:
+                errors.append(f"Point '{p_id}': point role missing (neither control nor checkpoint specified); rejected.")
+            continue
+
+        p_type = str(raw_type).strip().lower()
         if p_type not in {"control", "checkpoint"}:
-            p_type = "control"
+            if errors is not None:
+                errors.append(f"Point '{p_id}': unknown point role '{raw_type}'; rejected.")
+            continue
+
+        # Extract dx, dy, dz without substituting 0.0 for missing data
+        dx_val: Any = None
+        dy_val: Any = None
+        dz_val: Any = None
 
         if "dx" in p and "dy" in p and "dz" in p:
-            dx = float(p["dx"])
-            dy = float(p["dy"])
-            dz = float(p["dz"])
+            dx_val, dy_val, dz_val = p["dx"], p["dy"], p["dz"]
+        elif "error_x" in p and "error_y" in p and "error_z" in p:
+            dx_val, dy_val, dz_val = p["error_x"], p["error_y"], p["error_z"]
         elif "estimated" in p and "reference" in p:
             est = p["estimated"]
             ref = p["reference"]
-            dx = float(est[0]) - float(ref[0])
-            dy = float(est[1]) - float(ref[1])
-            dz = float(est[2]) - float(ref[2])
-        else:
+            if (
+                isinstance(est, (list, tuple))
+                and isinstance(ref, (list, tuple))
+                and len(est) >= 3
+                and len(ref) >= 3
+            ):
+                try:
+                    dx_val = float(est[0]) - float(ref[0])
+                    dy_val = float(est[1]) - float(ref[1])
+                    dz_val = float(est[2]) - float(ref[2])
+                except (TypeError, ValueError):
+                    pass
+
+        if dx_val is None or dy_val is None or dz_val is None:
+            if errors is not None:
+                errors.append(f"Point '{p_id}': incomplete residual measurements; rejected.")
             continue
 
-        residuals.append(PointResidual(point_id=p_id, point_type=p_type, dx=dx, dy=dy, dz=dz))
+        try:
+            dx = float(dx_val)
+            dy = float(dy_val)
+            dz = float(dz_val)
+        except (TypeError, ValueError):
+            if errors is not None:
+                errors.append(f"Point '{p_id}': invalid numeric format in residuals; rejected.")
+            continue
+
+        if not (math.isfinite(dx) and math.isfinite(dy) and math.isfinite(dz)):
+            if errors is not None:
+                errors.append(f"Point '{p_id}': non-finite residual coordinates (NaN or Inf); rejected.")
+            continue
+
+        try:
+            residual = PointResidual(point_id=p_id, point_type=p_type, dx=dx, dy=dy, dz=dz)
+            residuals.append(residual)
+        except ValueError as val_err:
+            if errors is not None:
+                errors.append(f"Point '{p_id}': {val_err}; rejected.")
+
     return residuals
 
 
@@ -170,7 +221,6 @@ class TimestampProvenance:
     capture_start: str | None = None
     capture_end: str | None = None
     flight_duration_s: float | None = None
-    utc_datetime: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     local_display_timezone: str = "UTC"
     report_generation_time: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     provenance_source: str = "telemetry_srt"
@@ -182,7 +232,6 @@ class TimestampProvenance:
             "captureStart": self.capture_start,
             "captureEnd": self.capture_end,
             "flightDurationS": self.flight_duration_s,
-            "utcDateTime": self.utc_datetime,
             "localDisplayTimezone": self.local_display_timezone,
             "reportGenerationTime": self.report_generation_time,
             "provenanceSource": self.provenance_source,
@@ -198,6 +247,8 @@ class GeoreferenceReport:
     checkpoint_stats: AccuracyStats | None
     residuals: list[PointResidual] = field(default_factory=list)
     provenance: TimestampProvenance = field(default_factory=TimestampProvenance)
+    parse_errors: list[str] = field(default_factory=list)
+    validation_status: str = "valid"
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -205,47 +256,121 @@ class GeoreferenceReport:
             "crs": self.crs,
             "controlPoints": self.control_stats.as_dict() if self.control_stats else None,
             "checkpoints": self.checkpoint_stats.as_dict() if self.checkpoint_stats else None,
+            "checkpointValidation": "evaluated" if self.checkpoint_stats else "none_provided",
             "residuals": [r.as_dict() for r in self.residuals],
             "provenance": self.provenance.as_dict(),
+            "parseErrors": self.parse_errors,
+            "validationStatus": self.validation_status,
         }
 
 
 def parse_odm_accuracy(unpacked_dir: Any) -> dict[str, Any]:
-    """Parse ODM stats and residual reports if present."""
-    from pathlib import Path
-    import json
-
+    """
+    Parse ODM stats and residual reports if present.
+    Preserves parse errors and never substitutes zero for missing residual measurements.
+    Distinguishes independent checkpoint accuracy from control points.
+    """
     unpacked = Path(unpacked_dir)
     if not unpacked.is_dir():
         return {}
+
     stats_file = unpacked / "odm_report" / "stats.json"
     if not stats_file.is_file():
         stats_file = unpacked / "stats.json"
 
-    points: list[dict[str, Any]] = []
-    if stats_file.is_file():
-        try:
-            data = json.loads(stats_file.read_text(encoding="utf-8"))
-            raw_gcps = data.get("gcp_errors") or data.get("gcps") or []
-            for g in raw_gcps:
-                points.append({
-                    "id": str(g.get("id", len(points) + 1)),
-                    "type": "checkpoint" if g.get("is_checkpoint") else "control",
-                    "dx": float(g.get("error_x", g.get("dx", 0.0))),
-                    "dy": float(g.get("error_y", g.get("dy", 0.0))),
-                    "dz": float(g.get("error_z", g.get("dz", 0.0))),
-                })
-        except Exception:
-            pass
+    if not stats_file.is_file():
+        return {}
 
-    residuals = compute_residuals(points)
+    parse_errors: list[str] = []
+    points: list[dict[str, Any]] = []
+
+    try:
+        data = json.loads(stats_file.read_text(encoding="utf-8"))
+    except Exception as exc:
+        err_msg = f"Failed to parse {stats_file.name}: {exc}"
+        logger.error(err_msg)
+        return {
+            "validationStatus": "parse_failed",
+            "controlPoints": None,
+            "checkpoints": None,
+            "checkpointValidation": "none_provided",
+            "residuals": [],
+            "parseErrors": [err_msg],
+        }
+
+    raw_gcps = data.get("gcp_errors") or data.get("gcps")
+    if not isinstance(raw_gcps, list) or len(raw_gcps) == 0:
+        return {}
+
+    for idx, g in enumerate(raw_gcps):
+        if not isinstance(g, dict):
+            parse_errors.append(f"GCP index {idx}: entry is not a dictionary; rejected.")
+            continue
+
+        g_id = str(g.get("id") or g.get("name") or f"gcp_{idx + 1}").strip()
+
+        # Strict point role determination — do NOT default missing roles to control
+        is_chk = g.get("is_checkpoint")
+        point_role: str | None = None
+        if is_chk is True:
+            point_role = "checkpoint"
+        elif is_chk is False:
+            point_role = "control"
+        else:
+            raw_role = g.get("type") or g.get("role") or g.get("point_type")
+            if raw_role:
+                norm_role = str(raw_role).strip().lower()
+                if norm_role in {"checkpoint", "control"}:
+                    point_role = norm_role
+
+        if point_role is None:
+            parse_errors.append(
+                f"GCP '{g_id}': point role is missing or ambiguous (neither control nor checkpoint explicitly indicated); rejected."
+            )
+            continue
+
+        # Extract residual coordinates — do NOT default missing keys to 0.0
+        x_val = g.get("error_x") if "error_x" in g else g.get("dx")
+        y_val = g.get("error_y") if "error_y" in g else g.get("dy")
+        z_val = g.get("error_z") if "error_z" in g else g.get("dz")
+
+        if x_val is None or y_val is None or z_val is None:
+            parse_errors.append(
+                f"GCP '{g_id}': missing residual coordinate measurements (x={x_val}, y={y_val}, z={z_val}); rejected."
+            )
+            continue
+
+        points.append({
+            "id": g_id,
+            "type": point_role,
+            "dx": x_val,
+            "dy": y_val,
+            "dz": z_val,
+        })
+
+    residuals = compute_residuals(points, errors=parse_errors)
+
+    if not residuals:
+        if parse_errors:
+            return {
+                "validationStatus": "invalid",
+                "controlPoints": None,
+                "checkpoints": None,
+                "checkpointValidation": "none_provided",
+                "residuals": [],
+                "parseErrors": parse_errors,
+            }
+        return {}
+
     control_stats = calculate_rms(residuals, point_type="control")
     checkpoint_stats = calculate_rms(residuals, point_type="checkpoint")
-    if not control_stats and not checkpoint_stats:
-        return {}
+    validation_status = "incomplete" if parse_errors else "valid"
+
     return {
+        "validationStatus": validation_status,
         "controlPoints": control_stats.as_dict() if control_stats else None,
         "checkpoints": checkpoint_stats.as_dict() if checkpoint_stats else None,
+        "checkpointValidation": "evaluated" if checkpoint_stats else "none_provided",
         "residuals": [r.as_dict() for r in residuals],
+        "parseErrors": parse_errors,
     }
-

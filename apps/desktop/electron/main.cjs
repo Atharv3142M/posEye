@@ -983,20 +983,40 @@ async function probePython(cmd) {
   }
 }
 
+function isPosEyeProcess(name, cmd, port = API_PORT) {
+  const normName = (name || "").toLowerCase();
+  const normCmd = (cmd || "").toLowerCase();
+  const portStr = String(port);
+  return (
+    normName.includes("poseye.orchestrator") ||
+    normCmd.includes("poseye.orchestrator") ||
+    normCmd.includes("orchestrator.main") ||
+    (normCmd.includes("poseye") && normCmd.includes(portStr))
+  );
+}
+
 async function killProcessOnPort(port) {
   if (process.platform !== "win32") return;
   try {
     const out = await run("powershell.exe", [
       "-NoProfile", "-Command",
-      `(Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue).OwningProcess`
+      `$pids = (Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue).OwningProcess; foreach ($p in $pids) { if ($p -and $p -ne 0) { $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $p" -ErrorAction SilentlyContinue; if ($proc) { Write-Output "$p|$($proc.Name)|$($proc.CommandLine)" } } }`
     ]);
-    const pids = out.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
-    for (const pid of pids) {
-      if (pid && pid !== "0" && pid !== String(process.pid)) {
-        log("warn", `Terminating stale process PID ${pid} occupying port ${port}`);
+    const lines = out.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    for (const line of lines) {
+      const [pidStr, procName, ...cmdParts] = line.split("|");
+      const pid = pidStr?.trim();
+      const name = (procName || "").trim();
+      const cmd = cmdParts.join("|");
+      if (!pid || pid === "0" || pid === String(process.pid)) continue;
+
+      if (isPosEyeProcess(name, cmd, port)) {
+        log("warn", `Terminating verified stale posEye orchestrator PID ${pid} (${name}) occupying port ${port}`);
         try {
           await run("taskkill.exe", ["/F", "/T", "/PID", pid]);
         } catch {}
+      } else {
+        log("error", `Port ${port} is occupied by an external non-posEye process PID ${pid} (${name}). Refusing to terminate foreign process.`);
       }
     }
   } catch (e) {
@@ -1248,6 +1268,25 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+function shouldAuthorizeLoopbackRequest(rawUrl, apiPort = API_PORT) {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== "http:") return false;
+    if (parsed.hostname !== "127.0.0.1" && parsed.hostname !== "localhost") return false;
+    if (parsed.port !== String(apiPort)) return false;
+    const path = parsed.pathname;
+    return (
+      path.startsWith("/jobs") ||
+      path.startsWith("/system") ||
+      path.startsWith("/health") ||
+      path.startsWith("/docs") ||
+      path.startsWith("/openapi.json")
+    );
+  } catch {
+    return false;
+  }
+}
+
 if (process.platform === "win32" && app?.setAppUserModelId) {
   app.setAppUserModelId("org.icarus.poseye");
 }
@@ -1277,11 +1316,13 @@ app.whenReady().then(async () => {
   const { session } = electron;
   if (session?.defaultSession?.webRequest) {
     session.defaultSession.webRequest.onBeforeSendHeaders(
-      { urls: ["*://127.0.0.1:8765/*", "*://localhost:8765/*"] },
+      { urls: [`http://127.0.0.1:${API_PORT}/*`, `http://localhost:${API_PORT}/*`] },
       (details, callback) => {
         const requestHeaders = details.requestHeaders || {};
-        if (API_TOKEN && !requestHeaders["Authorization"] && !requestHeaders["authorization"]) {
-          requestHeaders["Authorization"] = `Bearer ${API_TOKEN}`;
+        if (API_TOKEN && shouldAuthorizeLoopbackRequest(details.url, API_PORT)) {
+          if (!requestHeaders["Authorization"] && !requestHeaders["authorization"]) {
+            requestHeaders["Authorization"] = `Bearer ${API_TOKEN}`;
+          }
         }
         callback({ requestHeaders });
       }
@@ -1551,4 +1592,6 @@ module.exports = {
   allowedFilePaths,
   pullDockerImage,
   ensureNodeOdm,
+  shouldAuthorizeLoopbackRequest,
+  isPosEyeProcess,
 };

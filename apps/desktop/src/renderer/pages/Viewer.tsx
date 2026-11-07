@@ -141,7 +141,7 @@ export default function Viewer() {
             style={{ fontSize: 11, padding: "3px 10px", height: 26 }}
             onClick={() => setActiveTab("pointcloud")}
           >
-            Point Cloud (LAZ)
+            Point Cloud — Export
           </button>
           <button
             type="button"
@@ -149,7 +149,7 @@ export default function Viewer() {
             style={{ fontSize: 11, padding: "3px 10px", height: 26 }}
             onClick={() => setActiveTab("orthomap")}
           >
-            Orthophoto / Map
+            Orthophoto — Export
           </button>
         </div>
 
@@ -570,8 +570,12 @@ export default function Viewer() {
                 </div>
               </div>
 
+              <div style={{ background: "rgba(234, 179, 8, 0.1)", border: "1px solid rgba(234, 179, 8, 0.3)", borderRadius: "var(--radius)", padding: 12, marginBottom: 16, fontSize: 12, color: "#eab308" }}>
+                <strong>Viewer Status:</strong> Interactive point cloud rendering is unavailable in this version. Download the LAZ file below to inspect full-resolution points in Potree, CloudCompare, or QGIS.
+              </div>
+
               <div style={{ background: "var(--bg-panel-header)", border: "1px solid var(--border-light)", borderRadius: "var(--radius)", padding: 16, fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.6 }}>
-                <strong>WebODM Roadmap Architecture:</strong> In accordance with the posEye v0.1.6 architectural specification, dense point clouds are preserved in native compressed LAZ format and will be rendered via a dedicated, uncompromised Potree viewer engine rather than downsampling into the polygonal Three.js scene.
+                <strong>Data Preservation:</strong> Dense point clouds are exported in standard ASPRS LAS/LAZ format with 3D coordinate metadata. Mesh visualization remains available in the 3D Mesh tab.
               </div>
             </div>
           ) : (
@@ -621,8 +625,12 @@ export default function Viewer() {
                 </div>
               </div>
 
+              <div style={{ background: "rgba(234, 179, 8, 0.1)", border: "1px solid rgba(234, 179, 8, 0.3)", borderRadius: "var(--radius)", padding: 12, marginBottom: 16, fontSize: 12, color: "#eab308" }}>
+                <strong>Viewer Status:</strong> Interactive 2D map/orthophoto rendering is unavailable in this version. Download the GeoTIFF raster below for use in GIS applications (QGIS, ArcGIS).
+              </div>
+
               <div style={{ background: "var(--bg-panel-header)", border: "1px solid var(--border-light)", borderRadius: "var(--radius)", padding: 16, fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.6 }}>
-                <strong>WebODM Roadmap Architecture:</strong> 2D Orthophoto and GeoTIFF rasters are isolated from 3D mesh rendering and will be displayed via OpenLayers with CRS/datum transformations, tile layering, and geospatial bounding boxes.
+                <strong>Geospatial Products:</strong> 2D Orthophoto and Digital Surface Model (DSM/DTM) GeoTIFFs preserve embedded spatial referencing (CRS/datum and pixel ground sample distance).
               </div>
             </div>
           )}

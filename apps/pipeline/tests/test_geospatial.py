@@ -167,3 +167,26 @@ def test_no_fabricated_dates_when_metadata_missing(tmp_path: Path):
     assert piexif.ExifIFD.DateTimeOriginal not in exif.get("Exif", {})
     assert piexif.GPSIFD.GPSDateStamp not in exif.get("GPS", {})
     assert piexif.GPSIFD.GPSTimeStamp not in exif.get("GPS", {})
+
+
+def test_preflight_footage_and_offset_rejection():
+    """
+    If video begins before telemetry (e.g. pre-flight footage where telemetry only starts at t=30.0s),
+    frames extracted prior to telemetry start must be rejected as out-of-coverage,
+    not given fabricated coordinates or times.
+    """
+    samples = [
+        TelemetrySample(t_start=30.0, t_end=31.0, latitude=37.77, longitude=-122.42, altitude=50.0, altitude_ref="absolute"),
+        TelemetrySample(t_start=31.0, t_end=32.0, latitude=37.78, longitude=-122.43, altitude=52.0, altitude_ref="absolute"),
+    ]
+    stats = MatchStats(total_frames=3)
+
+    # Frame at t=5.0 (pre-flight video before telemetry)
+    s_pre = sample_at(samples, 5.0, max_offset_s=1.5, stats=stats)
+    assert s_pre is None
+    assert stats.out_of_coverage >= 1
+
+    # Frame at t=30.5 (within flight telemetry)
+    s_flight = sample_at(samples, 30.5, max_offset_s=1.5, stats=stats)
+    assert s_flight is not None
+    assert s_flight.latitude == 37.77

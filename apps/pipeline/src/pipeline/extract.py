@@ -229,17 +229,11 @@ def extract_frames(
     written: list[Path] = []
     total_kept = len(kept)
     stats = MatchStats(total_frames=total_kept)
-    # Resolve base capture datetime strictly from trustworthy source metadata:
-    # 1. First sample with an explicit telemetry timestamp from the SRT log
-    # 2. Or video container creation_time metadata (via FFmpeg probe)
-    # Do NOT fabricate capture dates when metadata is unavailable.
-    base_dt: datetime | None = None
-    for s in samples:
-        if s.timestamp is not None:
-            base_dt = s.timestamp - timedelta(seconds=s.t_start)
-            break
-    if base_dt is None and getattr(info, "creation_time", None) is not None:
-        base_dt = info.creation_time
+    # Telemetry alignment integrity:
+    # 1. Prefer explicit timestamp recorded directly within the matched SRT cue block.
+    # 2. Or video container creation_time metadata (via FFmpeg container probe) if verified.
+    # 3. Do NOT extrapolate or fabricate capture timestamps where alignment is unknown.
+    container_creation_time = getattr(info, "creation_time", None)
 
     for index, score in enumerate(kept, start=1):
         if should_stop and should_stop():
@@ -252,10 +246,11 @@ def extract_frames(
         digits = "".join(ch for ch in stem if ch.isdigit())
         raw_index = int(digits) if digits else index
         t = max(0.0, (raw_index - 1) / config.fps)
-        frame_dt = (base_dt + timedelta(seconds=t)) if base_dt is not None else None
         sample = sample_at(samples, t, max_offset_s=1.5, stats=stats)
         if sample and sample.latitude is not None and sample.longitude is not None:
-            ts_to_write = sample.timestamp if sample.timestamp is not None else frame_dt
+            ts_to_write = sample.timestamp
+            if ts_to_write is None and container_creation_time is not None:
+                ts_to_write = container_creation_time + timedelta(seconds=t)
             write_gps_exif(dest, sample.latitude, sample.longitude, sample.altitude, sample.altitude_ref, timestamp=ts_to_write)
             geotagged += 1
         written.append(dest)

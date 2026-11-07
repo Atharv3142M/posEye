@@ -16,16 +16,10 @@ export function useJobEvents(jobId: string | undefined) {
       const token = apiTokenSync();
       if (closed) return;
       const wsUrl = `${base}/jobs/${jobId}/events`;
+      // Documented standard WebSocket authentication via subprotocol
       const subprotocols = token ? [`poseye-auth.${token}`] : undefined;
       const ws = new WebSocket(wsUrl, subprotocols);
       wsRef.current = ws;
-      ws.onopen = () => {
-        if (token) {
-          try {
-            ws.send(JSON.stringify({ type: "auth", token }));
-          } catch {}
-        }
-      };
       ws.onmessage = (ev) => {
         const data = JSON.parse(ev.data) as WsEvent;
         setLatest(data);

@@ -1,6 +1,6 @@
 # posEye — Current State
 
-**Date:** 2026-11-06  
+**Date:** 2026-11-07  
 **Product version:** 0.1.6  
 **Product name:** posEye  
 **Source of truth:** [MVP_Spec.md](MVP_Spec.md)
@@ -11,10 +11,10 @@
 
 1. **Authentication Lifecycle & Clean-Machine Authorization (P0):**
    - **Preload Synchronous Hydration:** Replaced fragile early IPC `env:sync` calls with synchronous injection of `--poseye-api-token`, `--poseye-api-base`, and `--poseye-version` via `webPreferences.additionalArguments`. Evaluated at bundle evaluation time on tick 0, eliminating token propagation race conditions and initial-load 401 Unauthorized errors.
-   - **Process Ownership & Zombie Port Reclaiming:** Before spawning orchestrator on port 8765, checks if port is occupied by an unauthenticated or stale process from a prior session. Automatically terminates orphaned processes via PowerShell/taskkill, ensuring the new session's token matches the listening backend 100% of the time.
+   - **Process-Verified Port Reclaiming:** Before spawning orchestrator on port 8765, checks if the port is occupied. Only processes verified as genuine stale posEye orchestrators (`posEye.Orchestrator.exe` or `orchestrator.main`) can be terminated via PowerShell/taskkill. Foreign external processes are never killed.
    - **Clean Subprocess Tree Teardown:** `app.on("before-quit")` terminates the orchestrator child process tree via `taskkill /F /T /PID` to prevent background zombie processes on Windows.
-   - **Global Network Authorization Interceptor:** `session.defaultSession.webRequest.onBeforeSendHeaders` automatically attaches `Authorization: Bearer <token>` to all loopback requests targeting port 8765, guaranteeing authenticated requests across Three.js loaders, textures, and assets.
-   - **Elimination of Query-String Tokens:** WebSocket connections now authenticate via WebSocket subprotocol `['poseye-auth.<token>']` and in-band handshake, strictly forbidding query-string credentials (`?token=...`).
+   - **Confined Loopback Network Authorization Interceptor:** `session.defaultSession.webRequest.onBeforeSendHeaders` attaches `Authorization: Bearer <token>` strictly to loopback requests (`http://127.0.0.1:8765`, `http://localhost:8765`) on authorized API paths (`/jobs`, `/system`, `/health`, `/docs`, `/openapi.json`), preventing credential leakage on external URLs or redirects.
+   - **Standardized WebSocket Subprotocol Authentication:** WebSocket connections authenticate via documented subprotocol `['poseye-auth.<token>']`, eliminating duplicate in-band token handshakes and query-string secrets (`?token=...`).
 
 2. **3D Viewer Repair & Diagnostics (P0):**
    - **Hardware & WebGL Capability Detection:** Wrapped `new WebGLRenderer` in defensive capability checks with explicit user diagnostic messages when hardware acceleration is unavailable.
@@ -23,23 +23,28 @@
    - **ResizeObserver Dimension Handling:** Handled initial zero-dimension layout states gracefully, preventing aspect ratio and camera near/far clipping issues.
 
 3. **Geospatial Accuracy Engine & Provenance Integrity (P0):**
-   - **Unrounded Floating-Point Residuals:** Created `apps/orchestrator/src/orchestrator/accuracy.py`, calculating RMS metrics from raw floating-point coordinate errors rather than rounded tables.
+   - **Rejection of Incomplete Residual Records:** Strict parsing in `apps/orchestrator/src/orchestrator/accuracy.py` rejects point records lacking complete $(dx, dy, dz)$ measurements, never substituting zero for missing data.
+   - **Finite Number Validation:** Enforces that residual coordinate values are finite numbers ($\text{NaN}$ and $\pm\infty$ rejected).
+   - **Control vs. Checkpoint Role Distinction:** Only points explicitly identified as checkpoints (`is_checkpoint: true` or `role: checkpoint`) are evaluated for checkpoint accuracy. Ambiguous or unknown roles are rejected rather than defaulted to control.
+   - **Preserved Parse Diagnostics:** Parser errors and malformed records are preserved and exposed in the accuracy dictionary and diagnostics rather than silently swallowed.
+   - **Missing Checkpoint Differentiation:** The report clearly distinguishes missing checkpoint validation (`checkpointValidation: "none_provided"`) from zero checkpoint error.
    - **Strict RMS Equation Enforcement:** Guarantees $\text{RMS}_{3D} = \sqrt{\text{RMS}_X^2 + \text{RMS}_Y^2 + \text{RMS}_Z^2}$ and $\text{RMS}_{XY} = \sqrt{\text{RMS}_X^2 + \text{RMS}_Y^2}$ for all matching point samples.
-   - **Control vs. Checkpoint Separation:** Distinctly separates GCP control fitting residuals from independent checkpoint validation.
-   - **Timestamp Provenance Tracking:** Tracks full provenance (video container creation time, SRT first sample, capture start, capture end, UTC time, local display timezone, and report generation time). Never fabricates current system time for missing telemetry.
+   - **Timestamp Provenance Tracking:** Removed ambiguous `utc_datetime` field. Tracks full provenance (`video_creation_time`, `srt_telemetry_time`, `capture_start`, `capture_end`, and `report_generation_time`). Never fabricates capture dates when telemetry metadata is missing.
+   - **Telemetry Pre-flight Protection:** Extracted frames before telemetry start (pre-flight video footage) are rejected as out-of-coverage rather than given fabricated coordinates or times.
 
 4. **NVIDIA GPU Detection & Image Compatibility Contract (Phase 5):**
-   - **8-Stage Hardware & Software Evaluation:** Evaluates host hardware, Windows NVIDIA driver, nvidia-smi, Docker GPU passthrough, Container Toolkit, GPU image availability, CUDA runtime, and CPU fallback.
-   - **Pinned Image Contract:** Explicitly separates standard CPU image (`opendronemap/nodeodm:3.6.2`) from validated GPU image (`opendronemap/nodeodm:3.6.2-gpu`). The standard CPU image is never claimed as GPU accelerated merely because Docker accepts `--gpus all`.
+   - **Exact Pinned GPU Image Contract:** Strict image identification requiring exact match with `opendronemap/nodeodm:3.6.2-gpu` (or its repository digest), rejecting arbitrary substrings containing `"gpu"`.
+   - **Container CUDA Runtime Execution Check:** Docker container CUDA capability requires successful execution of `nvidia-smi -L` inside the container.
+   - **State Separation:** Discrete separation of `gpuHardwareDetected`, `gpuAvailable`, `gpuCapability`, `containerCudaCapable`, and `gpuProcessingActive`. Active processing is set only when confirmed during reconstruction.
    - **Graceful CPU Fallback:** Seamlessly falls back to CPU execution when NVIDIA drivers or Container Toolkit are absent.
 
 5. **First-Launch Diagnostics Screen (Phase 6):**
    - Implemented `GET /system/diagnostics` and `DiagnosticsModal.tsx` displaying full environment readiness and hardware status.
-   - Provides an exportable diagnostic report (`.json`) with all secrets (including `DT_API_TOKEN`) sanitized as `[REDACTED]`.
+   - Provides an exportable diagnostic report (`.json`) with whitelisted posEye environment variables (`DT_`, `NODEODM_`, `FFMPEG_`, `POSEYE_`) and all secrets strictly sanitized as `[REDACTED]`.
 
-6. **WebODM-Inspired Viewer Architecture (Phase 8):**
+6. **WebODM-Inspired Viewer Architecture & Export Panels (Phase 8):**
    - Designed 3-viewer domain separation in `Docs/VIEWER_ARCHITECTURE_v0.1.6.md`: Three.js for 3D meshes, Potree for dense LAZ point clouds, and OpenLayers for GeoTIFF orthophotos and GIS maps.
-   - Added viewer mode tabs in the desktop interface while keeping the stable Three.js mesh viewer operational.
+   - Dedicated export panels for Point Clouds and Orthophotos with explicit disclaimers that interactive Potree/OpenLayers rendering is unavailable in this version, while keeping the stable Three.js mesh viewer operational.
 
 ---
 

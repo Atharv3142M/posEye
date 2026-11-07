@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { validateSender } = require("../electron/main.cjs");
+const { validateSender, shouldAuthorizeLoopbackRequest, isPosEyeProcess } = require("../electron/main.cjs");
 
 test("Preload Hydration - Synchronous process.argv parsing", () => {
   const mockArgv = [
@@ -94,4 +94,38 @@ test("Token Security Contract - No query-string tokens allowed", () => {
   // PosEye specification strictly forbids query-string tokens
   const cleanUrl = `${parsed.origin}${parsed.pathname}`;
   assert.equal(cleanUrl, "http://127.0.0.1:8765/system/status");
+});
+
+
+test("Loopback Interceptor Scope - Strictly confined to authorized API endpoints on port 8765", () => {
+  // Authorized loopback endpoints
+  assert.equal(shouldAuthorizeLoopbackRequest("http://127.0.0.1:8765/jobs/job123/assets/model.glb", 8765), true);
+  assert.equal(shouldAuthorizeLoopbackRequest("http://localhost:8765/system/status", 8765), true);
+  assert.equal(shouldAuthorizeLoopbackRequest("http://127.0.0.1:8765/health", 8765), true);
+
+  // External URLs — token must NEVER be attached!
+  assert.equal(shouldAuthorizeLoopbackRequest("https://example.com/jobs", 8765), false);
+  assert.equal(shouldAuthorizeLoopbackRequest("http://attacker.com:8765/jobs", 8765), false);
+  assert.equal(shouldAuthorizeLoopbackRequest("https://raw.githubusercontent.com/assets/model.glb", 8765), false);
+
+  // Other ports on loopback — token must NEVER be attached!
+  assert.equal(shouldAuthorizeLoopbackRequest("http://127.0.0.1:3000/task/new", 8765), false);
+  assert.equal(shouldAuthorizeLoopbackRequest("http://127.0.0.1:8080/jobs", 8765), false);
+
+  // Unwhitelisted path space on loopback
+  assert.equal(shouldAuthorizeLoopbackRequest("http://127.0.0.1:8765/admin/restart", 8765), false);
+  assert.equal(shouldAuthorizeLoopbackRequest("invalid-url", 8765), false);
+});
+
+test("Process Reclamation Safety - Refuses to terminate non-posEye processes", () => {
+  // Verified posEye processes
+  assert.equal(isPosEyeProcess("posEye.Orchestrator.exe", "posEye.Orchestrator.exe", 8765), true);
+  assert.equal(isPosEyeProcess("python.exe", "python -m orchestrator.main --port 8765", 8765), true);
+  assert.equal(isPosEyeProcess("uvicorn.exe", "uvicorn orchestrator.main:app --port 8765", 8765), true);
+
+  // Unrelated external processes that happen to occupy port 8765
+  assert.equal(isPosEyeProcess("node.exe", "node server.js", 8765), false);
+  assert.equal(isPosEyeProcess("nginx.exe", "nginx -g daemon off;", 8765), false);
+  assert.equal(isPosEyeProcess("chrome.exe", "chrome.exe --remote-debugging-port=8765", 8765), false);
+  assert.equal(isPosEyeProcess("java.exe", "java -jar unrelated.jar", 8765), false);
 });

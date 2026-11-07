@@ -7,19 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.1.6] - 2026-11-06
+## [0.1.6] - 2026-11-07
 
 ### Added
 - Synchronous preload environment hydration via `process.argv` (`--poseye-api-token`, `--poseye-api-base`, `--poseye-version`), eliminating token propagation race conditions and packaged 401 Unauthorized errors on initial load.
-- Process ownership and zombie port reclaiming on port 8765 to prevent mismatched session tokens from causing persistent 401s.
+- Process-verified port reclaiming on port 8765 to safely terminate only verified stale posEye orchestrator processes while refusing to kill foreign processes.
 - Automatic child process tree termination on Windows during `app.on("before-quit")`.
-- Global loopback network request authorization interceptor in Electron ensuring all backend and Three.js asset requests carry `Authorization: Bearer <token>`.
-- Authenticated WebSocket events using `sec-websocket-protocol` (`poseye-auth.<token>`) and in-band handshake, completely removing query-string tokens.
-- Geospatial accuracy calculation engine (`apps/orchestrator/src/orchestrator/accuracy.py`) computing unrounded residuals and enforcing $\text{RMS}_{3D} = \sqrt{\text{RMS}_X^2 + \text{RMS}_Y^2 + \text{RMS}_Z^2}$ with clear GCP control vs checkpoint separation.
-- Timestamp provenance model tracking video creation time, telemetry timestamps, capture start/end, and generation time without date fabrication.
-- 8-stage NVIDIA GPU integration with strict image pinning (`opendronemap/nodeodm:3.6.2` for CPU, `opendronemap/nodeodm:3.6.2-gpu` for CUDA) and reliable CPU fallback.
-- First-launch diagnostics modal (`DiagnosticsModal.tsx`) and `GET /system/diagnostics` endpoint with sanitized, exportable report (secrets redacted).
-- WebODM-inspired 3-viewer domain separation architecture documentation (`Docs/VIEWER_ARCHITECTURE_v0.1.6.md`) and UI mode tabs in 3D Viewer.
+- Confined loopback network authorization interceptor in Electron restricted strictly to `http://127.0.0.1:8765` and `http://localhost:8765` on recognized API paths (`/jobs`, `/system`, `/health`, `/docs`, `/openapi.json`).
+- Authenticated WebSocket events using documented subprotocol `poseye-auth.<token>`, removing duplicate in-band token handshakes and query-string secrets.
+- Geospatial accuracy calculation engine (`apps/orchestrator/src/orchestrator/accuracy.py`) strictly rejecting incomplete or non-finite GCP residual records, distinguishing checkpoint vs. control point roles, preserving parse error diagnostics, and enforcing $\text{RMS}_{3D} = \sqrt{\text{RMS}_X^2 + \text{RMS}_Y^2 + \text{RMS}_Z^2}$.
+- Timestamp provenance model tracking video creation time, telemetry timestamps, capture start/end, and generation time without date fabrication or ambiguous UTC fields.
+- SRT telemetry coverage validation rejecting pre-flight video frames outside telemetry bounds rather than assigning fabricated coordinates.
+- 8-stage NVIDIA GPU integration with exact image pinning (`opendronemap/nodeodm:3.6.2-gpu`), container CUDA execution verification (`nvidia-smi -L` inside container), and explicit separation between GPU hardware, container CUDA capability, and confirmed active GPU processing.
+- First-launch diagnostics modal (`DiagnosticsModal.tsx`) and `GET /system/diagnostics` endpoint with whitelisted posEye environment variables and sanitized, exportable report (secrets redacted).
+- Dedicated export panels in 3D Viewer for Point Clouds and Orthophotos with explicit disclaimers indicating interactive Potree and OpenLayers rendering are not implemented in this version.
 
 ### Fixed
 - Fixed 3D viewer WebGL initialization error handling, ResizeObserver dimensions, and resource disposal (`OrbitControls.dispose()`).
