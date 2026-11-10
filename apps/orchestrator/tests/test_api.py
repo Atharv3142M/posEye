@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from fastapi.testclient import TestClient
 
-from orchestrator.main import app, store
+from orchestrator.main import app, store, ORCHESTRATOR_VERSION
 
 
 def test_health():
@@ -14,7 +14,7 @@ def test_health():
     assert data["serviceId"] == "poseye-orchestrator"
     assert data["product"] == "posEye"
     assert data["component"] == "Orchestrator"
-    assert data["orchestratorVersion"] == "0.1.7"
+    assert data["orchestratorVersion"] == ORCHESTRATOR_VERSION
     assert "docker" in data
     assert "nodeodm" in data
     assert "ffmpeg" in data

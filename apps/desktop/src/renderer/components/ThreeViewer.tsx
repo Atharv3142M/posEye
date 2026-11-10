@@ -54,6 +54,7 @@ export type ModelLoadPhase =
   | "initializing"
   | "fetching"
   | "parsing"
+  | "decoding"
   | "uploading"
   | "framing"
   | "rendering"
@@ -702,17 +703,27 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
 
         clearTimeout(loadTimer);
         onLoadPhase?.("framing");
-        // Defer compile() off the main-thread micro-task to avoid blocking UI on large meshes
+        // Frame camera to actual model bounds BEFORE initial render
+        doResetCamera();
+        // Defer shader compilation and rendering to next frame so UI can paint framing state
         requestAnimationFrame(() => {
           if (currentLoadId !== loadIdRef.current) return;
-          if (rendererRef.current && sceneRef.current && cameraRef.current) {
-            rendererRef.current.compile(sceneRef.current, cameraRef.current);
-            rendererRef.current.render(sceneRef.current, cameraRef.current);
-          }
           onLoadPhase?.("rendering");
-          doResetCamera();
-          onLoadPhase?.("loaded");
-          onLoadSuccess?.();
+          if (rendererRef.current && sceneRef.current && cameraRef.current) {
+            try {
+              rendererRef.current.compile(sceneRef.current, cameraRef.current);
+              rendererRef.current.render(sceneRef.current, cameraRef.current);
+              onLoadPhase?.("loaded");
+              onLoadSuccess?.();
+            } catch (renderErr: any) {
+              const errMsg = renderErr?.message || "Shader compilation or WebGL render failed.";
+              onLoadPhase?.("failed", { message: errMsg });
+              onLoadError?.(errMsg);
+            }
+          } else {
+            onLoadPhase?.("loaded");
+            onLoadSuccess?.();
+          }
         });
       },
       (xhr) => {

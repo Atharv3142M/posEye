@@ -109,3 +109,17 @@ def test_obj_conversion_missing_mtl_rejected(tmp_path: Path):
     dest_glb = tmp_path / "out.glb"
     with pytest.raises(ConvertError, match="missing material file"):
         convert_textured_model(obj_file, dest_glb)
+
+
+def test_validate_draco_glb():
+    draco_fixture = Path(__file__).resolve().parents[3] / "apps" / "desktop" / "tests" / "fixtures" / "box_draco.glb"
+    assert draco_fixture.exists(), f"Draco fixture missing at {draco_fixture}"
+    res = validate_glb(draco_fixture)
+    assert res["valid"] is True
+    assert res["vertexCount"] == 24
+    assert res["triangleCount"] == 12
+    assert "bounds" in res
+    dim = res["bounds"]["dimensions"]
+    assert len(dim) == 3
+    for d in dim:
+        assert round(d, 3) == 1.001

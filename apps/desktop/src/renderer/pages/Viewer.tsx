@@ -428,10 +428,12 @@ export default function Viewer() {
                     <div style={{ fontWeight: 600 }}>
                       {modelPhase === "fetching"
                         ? `Fetching 3D mesh… ${loadProgress ? `(${loadProgress}%)` : ""}`
-                        : modelPhase === "parsing"
+                        : modelPhase === "parsing" || modelPhase === "decoding"
                         ? "Decompressing Draco geometry…"
                         : modelPhase === "uploading"
                         ? "Uploading geometry & textures to GPU…"
+                        : modelPhase === "framing"
+                        ? "Framing camera to model bounds…"
                         : modelPhase === "rendering"
                         ? "Rendering first frame…"
                         : "Initializing 3D viewport…"}

@@ -23,6 +23,7 @@ apps/pipeline/tests/fixtures/*.mp4
 # Runtime / jobs
 .jobs/
 *.glb
+!apps/desktop/tests/fixtures/*.glb
 *.laz
 *.tif
 
