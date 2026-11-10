@@ -35,7 +35,13 @@ const crypto = require("node:crypto");
 const API_PORT = parseInt(process.env.DT_PORT || "8765", 10);
 const API_BASE = process.env.DT_API || `http://127.0.0.1:${API_PORT}`;
 const API_TOKEN = process.env.DT_API_TOKEN || crypto.randomBytes(16).toString("hex");
-const APP_VERSION = "0.1.7";
+const APP_VERSION = (() => {
+  try {
+    return require("../package.json").version || "0.1.8";
+  } catch {
+    return "0.1.8";
+  }
+})();
 const NODEODM_URL = process.env.NODEODM_URL || "http://127.0.0.1:3000";
 const STARTUP_TIMEOUT_MS = 30000;      // orchestrator
 const NODEODM_TIMEOUT_MS = 120000;     // NodeODM container start
@@ -489,9 +495,16 @@ function resolveAppAssetPath(reqUrl, distDir) {
     const remappedFile = path.resolve(resolvedDist, dracoRelative);
     const remappedRel = path.relative(resolvedDist, remappedFile);
     if (!remappedRel.startsWith('..') && !path.isAbsolute(remappedRel) && remappedRel !== '' && fs.existsSync(remappedFile)) {
-      const realRemapped = fs.realpathSync(remappedFile);
-      const realRemappedRel = path.relative(resolvedDist, realRemapped);
-      if (!realRemappedRel.startsWith('..') && !path.isAbsolute(realRemappedRel)) {
+      let realDist;
+      let realRemapped;
+      try {
+        realDist = fs.existsSync(resolvedDist) ? fs.realpathSync(resolvedDist) : resolvedDist;
+        realRemapped = fs.realpathSync(remappedFile);
+      } catch {
+        return { error: "Forbidden: cannot resolve real path", status: 403 };
+      }
+      const realRemappedRel = path.relative(realDist, realRemapped);
+      if (!realRemappedRel.startsWith('..') && !path.isAbsolute(realRemappedRel) && realRemappedRel !== '') {
         return { filePath: realRemapped, isSpaFallback: false };
       }
     }
