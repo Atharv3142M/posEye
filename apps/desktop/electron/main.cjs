@@ -479,7 +479,33 @@ function resolveAppAssetPath(reqUrl, distDir) {
     }
   }
 
-  // 7. Normal SPA fallback for client-side routing (e.g. /projects, /viewer/123)
+  // 6b. Draco nested-route remap: when any sub-path includes "/draco/", rewrite
+  //     to the canonical top-level dist/draco/ location. Handles requests from
+  //     nested routes like /viewer/job-123 where relative paths would point to
+  //     viewer/job-123/draco/ instead of the bundled draco/ at the dist root.
+  if (cleanPath.includes('draco/')) {
+    const dracoIdx = cleanPath.indexOf('draco/');
+    const dracoRelative = cleanPath.slice(dracoIdx);
+    const remappedFile = path.resolve(resolvedDist, dracoRelative);
+    const remappedRel = path.relative(resolvedDist, remappedFile);
+    if (!remappedRel.startsWith('..') && !path.isAbsolute(remappedRel) && remappedRel !== '' && fs.existsSync(remappedFile)) {
+      const realRemapped = fs.realpathSync(remappedFile);
+      const realRemappedRel = path.relative(resolvedDist, realRemapped);
+      if (!realRemappedRel.startsWith('..') && !path.isAbsolute(realRemappedRel)) {
+        return { filePath: realRemapped, isSpaFallback: false };
+      }
+    }
+  }
+
+  // 7. Static-asset guard: binary/static extensions MUST NOT fall back to index.html
+  // If the file doesn't exist, return 404. Only extensionless or .html paths get SPA fallback.
+  const STATIC_EXTENSIONS = /\.(wasm|js|mjs|cjs|css|map|png|jpg|jpeg|gif|svg|ico|webp|ttf|woff|woff2|otf|glb|gltf|json|txt|xml)$/i;
+  const lastSeg = cleanPath.split("/").pop() || "";
+  if (STATIC_EXTENSIONS.test(lastSeg)) {
+    return { error: "Not Found", status: 404 };
+  }
+
+  // 8. Normal SPA fallback for client-side routing (e.g. /projects, /viewer/123)
   const indexPath = path.join(resolvedDist, "index.html");
   if (fs.existsSync(indexPath)) {
     return { filePath: indexPath, isSpaFallback: true };
@@ -1578,6 +1604,36 @@ app.on("activate", () => {
 });
 }
 
+// ── Crash Telemetry ──────────────────────────────────────────────────────────
+/**
+ * Returns the path to the crash log file. Falls back to os.tmpdir() when
+ * running outside Electron (e.g. unit tests).
+ */
+function getCrashLogPath() {
+  try {
+    const { app } = require('electron');
+    return require('node:path').join(app.getPath('userData'), 'crash.log');
+  } catch {
+    return require('node:path').join(require('node:os').tmpdir(), 'poseye-crash.log');
+  }
+}
+
+/**
+ * Writes a crash entry to the crash log. Redacts Bearer tokens before writing
+ * to prevent credential leakage in log files.
+ */
+function writeCrashDump(source, message) {
+  try {
+    const sanitized = String(message).replace(/Bearer [A-Za-z0-9._~+/\\-]+=*/g, 'Bearer [REDACTED]');
+    const entry = `[CRASH:${source}] ${new Date().toISOString()} ${sanitized}\n`;
+    require('node:fs').appendFileSync(getCrashLogPath(), entry, 'utf8');
+    console.error(`[posEye:ERROR] Crash intercepted (${source}): ${sanitized}`);
+  } catch {
+    // Best-effort: never throw from crash handler
+  }
+}
+
+
 module.exports = {
   PINNED_NODEODM_VERSION,
   PINNED_CPU_IMAGE,
@@ -1594,4 +1650,6 @@ module.exports = {
   ensureNodeOdm,
   shouldAuthorizeLoopbackRequest,
   isPosEyeProcess,
+  writeCrashDump,
+  getCrashLogPath,
 };
