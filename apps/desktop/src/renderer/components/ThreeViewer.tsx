@@ -29,6 +29,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { apiTokenSync } from "../api";
+import { resolveDracoDecoderPath } from "../utils/draco";
 
 export type MeasureResult = {
   distance: number;
@@ -54,6 +55,7 @@ export type ModelLoadPhase =
   | "fetching"
   | "parsing"
   | "uploading"
+  | "framing"
   | "rendering"
   | "loaded"
   | "failed";
@@ -601,10 +603,20 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     onLoadStart?.();
     onLoadPhase?.("initializing");
 
+    // 45-second timeout guard: prevents infinite spinner if network or decoder stalls
+    const loadTimeoutMs = 45_000;
+    const loadTimer = setTimeout(() => {
+      if (currentLoadId !== loadIdRef.current) return;
+      const err = "Model load timed out after 45 seconds. The file may be too large, the decoder stalled, or the API is unreachable.";
+      onLoadPhase?.("failed", { message: err });
+      onLoadError?.(err);
+    }, loadTimeoutMs);
+
     // Initialize GLTFLoader and local offline DRACOLoader
     const loader = new GLTFLoader();
     const dracoLoader = new DRACOLoader();
-    dracoLoader.setDecoderPath("draco/");
+    // Use resolver: avoids relative-path breakage under nested routes like /viewer/job-123
+    dracoLoader.setDecoderPath(resolveDracoDecoderPath());
     dracoLoaderRef.current = dracoLoader;
     loader.setDRACOLoader(dracoLoader);
 
@@ -655,6 +667,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
         if (totalVerts === 0 || totalTriangles === 0) {
           disposeObjectTree(gltf.scene);
           dracoLoader.dispose();
+          clearTimeout(loadTimer);
           onStats?.({ vertices: 0, triangles: 0 });
           const err = "Model contains no usable polygon geometry.";
           onLoadPhase?.("failed", { message: err });
@@ -687,15 +700,20 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
           });
         }
 
-        onLoadPhase?.("rendering");
-        if (rendererRef.current && sceneRef.current && cameraRef.current) {
-          rendererRef.current.compile(sceneRef.current, cameraRef.current);
-          rendererRef.current.render(sceneRef.current, cameraRef.current);
-        }
-
-        onLoadPhase?.("loaded");
-        onLoadSuccess?.();
-        setTimeout(doResetCamera, 50);
+        clearTimeout(loadTimer);
+        onLoadPhase?.("framing");
+        // Defer compile() off the main-thread micro-task to avoid blocking UI on large meshes
+        requestAnimationFrame(() => {
+          if (currentLoadId !== loadIdRef.current) return;
+          if (rendererRef.current && sceneRef.current && cameraRef.current) {
+            rendererRef.current.compile(sceneRef.current, cameraRef.current);
+            rendererRef.current.render(sceneRef.current, cameraRef.current);
+          }
+          onLoadPhase?.("rendering");
+          doResetCamera();
+          onLoadPhase?.("loaded");
+          onLoadSuccess?.();
+        });
       },
       (xhr) => {
         if (currentLoadId !== loadIdRef.current) return;
@@ -718,6 +736,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
         if (err?.target?.status === 401 || String(errorMsg).includes("401")) {
           errorMsg = "Authentication failed (401 Unauthorized) retrieving model asset.";
         }
+        clearTimeout(loadTimer);
         onLoadPhase?.("failed", { message: errorMsg });
         onLoadError?.(errorMsg);
       }
