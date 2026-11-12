@@ -24,6 +24,7 @@ export default function Viewer() {
 
   const [modelStatus, setModelStatus] = useState<"idle" | "loading" | "ready" | "error" | "no_model">("idle");
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const [sidebarWidth, setSidebarWidth] = useState(300);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -115,7 +116,7 @@ export default function Viewer() {
       <div className="toolbar">
         <BrandLogo size={22} showWordmark={true} style={{ marginRight: 8 }} />
         <div className="toolbar-sep" />
-        <Button onClick={() => nav("/projects")}>← Projects</Button>
+        <Button onClick={() => nav("/projects")}>Projects</Button>
         <div className="toolbar-sep" />
         <Button
           variant="ghost"
@@ -123,7 +124,7 @@ export default function Viewer() {
           onClick={() => setIsCollapsed(!isCollapsed)}
           title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
         >
-          {isCollapsed ? "☰ Show Panel" : "◀ Hide Panel"}
+          {isCollapsed ? "Show Panel" : "Hide Panel"}
         </Button>
         <div className="toolbar-sep" />
         <strong style={{ fontSize: 13, color: "var(--text-primary)" }}>{job?.name || id}</strong>
@@ -166,7 +167,7 @@ export default function Viewer() {
               onClick={() => setWireframe(!wireframe)}
               title="Toggle wireframe (W)"
             >
-              ⬡ Wire
+              Wireframe
             </Button>
             <div className="toolbar-sep" />
             <Button onClick={resetCamera} title="Reset camera (R)">Reset View (R)</Button>
@@ -176,36 +177,36 @@ export default function Viewer() {
         {id && job?.hasModel && (
           <>
             <Button variant="secondary" onClick={() => handleExport("model.glb", `${job?.name || "model"}.glb`)}>
-              ↓ GLB
+              Export GLB
             </Button>
             {job.assets?.laz && (
               <Button variant="secondary" onClick={() => handleExport("model.laz", `${job?.name || "model"}.laz`)}>
-                ↓ LAZ
+                LAZ
               </Button>
             )}
             {job.assets?.orthophoto && (
               <Button variant="secondary" onClick={() => handleExport("orthophoto.tif", `${job?.name || "model"}_orthophoto.tif`)}>
-                ↓ GeoTIFF
+                GeoTIFF
               </Button>
             )}
             {job.assets?.dsm && (
               <Button variant="secondary" onClick={() => handleExport("dsm.tif", `${job?.name || "model"}_dsm.tif`)}>
-                ↓ DSM
+                DSM
               </Button>
             )}
             {job.assets?.dtm && (
               <Button variant="secondary" onClick={() => handleExport("dtm.tif", `${job?.name || "model"}_dtm.tif`)}>
-                ↓ DTM
+                DTM
               </Button>
             )}
             {job.assets?.report && (
               <Button variant="secondary" onClick={() => handleExport("report.pdf", `${job?.name || "model"}_report.pdf`)}>
-                ↓ Report
+                Report
               </Button>
             )}
           </>
         )}
-        <Button onClick={screenshot} title="Save screenshot">📷 Screenshot</Button>
+        <Button onClick={screenshot} title="Save screenshot">Screenshot</Button>
       </div>
 
       {/* Main 3D Viewport Layout */}
@@ -303,7 +304,7 @@ export default function Viewer() {
                     Processing Duration
                   </div>
                   <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "#18bc9c", fontWeight: 600 }}>
-                    ⏱ {formatDuration(job.durationSeconds)}
+                    {formatDuration(job.durationSeconds)}
                   </div>
                 </div>
               )}
@@ -362,7 +363,11 @@ export default function Viewer() {
               <ThreeViewer
                 ref={viewerRef}
                 modelUrl={modelUrl}
+                reloadKey={reloadKey}
+                modelTransform={job?.georeferencing?.modelTransform ?? null}
                 meshVisible={layers.mesh}
+                cloudUrl={layers.cloud && job?.assets?.laz ? assetUrl("cloud.json") : null}
+                cloudVisible={layers.cloud}
                 measuring={tool === "distance"}
                 wireframe={wireframe}
                 onLoadPhase={(phase, detail) => {
@@ -467,11 +472,14 @@ export default function Viewer() {
                   alignItems: "center",
                   gap: 12,
                 }}>
-                  <span>⚠ {loadError || "Could not load 3D model."}</span>
+                  <span>{loadError || "Could not load 3D model."}</span>
                   <Button
                     variant="secondary"
                     style={{ fontSize: 11, padding: "2px 8px" }}
-                    onClick={() => void refresh()}
+                    onClick={() => {
+                      setReloadKey((k) => k + 1);
+                      void refresh();
+                    }}
                   >
                     Retry
                   </Button>
@@ -492,7 +500,13 @@ export default function Viewer() {
                   textAlign: "center",
                   boxShadow: "var(--shadow-md)",
                 }}>
-                  <div style={{ fontSize: 28, marginBottom: 8 }}>📐</div>
+                  <div style={{ marginBottom: 10, display: "flex", justifyContent: "center" }}>
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#18bc9c" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M12 2l9 5v10l-9 5-9-5V7l9-5z" />
+                      <path d="M12 22V12" />
+                      <path d="M21 7l-9 5-9-5" />
+                    </svg>
+                  </div>
                   <h3 style={{ margin: "0 0 6px 0" }}>No 3D Model Generated</h3>
                   <p style={{ color: "var(--text-muted)", fontSize: 12, maxWidth: 320, margin: "0 0 16px 0" }}>
                     This project has not completed photogrammetry reconstruction or the GLB asset was not created.
@@ -558,7 +572,7 @@ export default function Viewer() {
                     }}
                     title="Clear measurements (Esc)"
                   >
-                    ✕ Clear
+                    Clear
                   </button>
                 </div>
               )}
@@ -595,7 +609,7 @@ export default function Viewer() {
                 </div>
                 {job?.assets?.laz && id && (
                   <Button variant="primary" onClick={() => handleExport("model.laz", `${job?.name || "model"}.laz`)}>
-                    ↓ Download LAZ Point Cloud
+                    Download LAZ Point Cloud
                   </Button>
                 )}
               </div>
@@ -604,7 +618,7 @@ export default function Viewer() {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 12, color: "var(--text-secondary)", textTransform: "uppercase", marginBottom: 6 }}>Asset Status</div>
-                    <div>{job?.assets?.laz ? "✓ LAZ Point Cloud Generated" : "⏳ Processing / Unavailable"}</div>
+                    <div>{job?.assets?.laz ? "LAZ Point Cloud Generated" : "Processing / Unavailable"}</div>
                   </div>
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 12, color: "var(--text-secondary)", textTransform: "uppercase", marginBottom: 6 }}>Coordinate System</div>
@@ -622,7 +636,7 @@ export default function Viewer() {
               </div>
 
               <div style={{ background: "rgba(234, 179, 8, 0.1)", border: "1px solid rgba(234, 179, 8, 0.3)", borderRadius: "var(--radius)", padding: 12, marginBottom: 16, fontSize: 12, color: "#eab308" }}>
-                <strong>Viewer Status:</strong> Interactive point cloud rendering is unavailable in this version. Download the LAZ file below to inspect full-resolution points in Potree, CloudCompare, or QGIS.
+                <strong>Viewer Status:</strong> Full-resolution LAZ streaming is unavailable in this tab. Enable Point preview in the 3D Mesh sidebar or download the LAZ file for Potree, CloudCompare, or QGIS.
               </div>
 
               <div style={{ background: "var(--bg-panel-header)", border: "1px solid var(--border-light)", borderRadius: "var(--radius)", padding: 16, fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.6 }}>
@@ -640,7 +654,7 @@ export default function Viewer() {
                 </div>
                 {job?.assets?.orthophoto && id && (
                   <Button variant="primary" onClick={() => handleExport("orthophoto.tif", `${job?.name || "model"}_orthophoto.tif`)}>
-                    ↓ Download GeoTIFF Orthophoto
+                    Download GeoTIFF Orthophoto
                   </Button>
                 )}
               </div>
@@ -649,28 +663,28 @@ export default function Viewer() {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 12, color: "var(--text-secondary)", textTransform: "uppercase", marginBottom: 6 }}>Orthophoto GeoTIFF</div>
-                    <div>{job?.assets?.orthophoto ? "✓ Ready for GIS import (QGIS, ArcGIS)" : "⏳ Unavailable"}</div>
+                    <div>{job?.assets?.orthophoto ? "Ready for GIS import (QGIS, ArcGIS)" : "Unavailable"}</div>
                   </div>
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 12, color: "var(--text-secondary)", textTransform: "uppercase", marginBottom: 6 }}>Elevation Products</div>
-                    <div>{job?.assets?.dsm ? "✓ DSM Available" : "DSM N/A"} · {job?.assets?.dtm ? "✓ DTM Available" : "DTM N/A"}</div>
+                    <div>{job?.assets?.dsm ? "DSM Available" : "DSM N/A"} · {job?.assets?.dtm ? "DTM Available" : "DTM N/A"}</div>
                   </div>
                 </div>
 
                 <div style={{ display: "flex", gap: 10 }}>
                   {job?.assets?.dsm && id && (
                     <Button variant="secondary" onClick={() => handleExport("dsm.tif", `${job?.name || "model"}_dsm.tif`)}>
-                      ↓ Export DSM (.tif)
+                      Export DSM (.tif)
                     </Button>
                   )}
                   {job?.assets?.dtm && id && (
                     <Button variant="secondary" onClick={() => handleExport("dtm.tif", `${job?.name || "model"}_dtm.tif`)}>
-                      ↓ Export DTM (.tif)
+                      Export DTM (.tif)
                     </Button>
                   )}
                   {job?.assets?.report && id && (
                     <Button variant="secondary" onClick={() => handleExport("report.pdf", `${job?.name || "model"}_report.pdf`)}>
-                      ↓ Quality Report (PDF)
+                      Quality Report (PDF)
                     </Button>
                   )}
                 </div>

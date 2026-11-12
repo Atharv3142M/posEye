@@ -19,22 +19,56 @@ PINNED_CPU_IMAGE = "opendronemap/nodeodm:3.6.2"
 PINNED_GPU_IMAGE = "opendronemap/nodeodm:3.6.2-gpu"
 
 
-def _check_docker_gpu_passthrough() -> bool:
-    """Check if Docker daemon supports nvidia runtime for GPU passthrough."""
+def _docker_gpu_info() -> tuple[bool, bool, bool]:
+    """Return (docker_reachable, has_nvidia_runtime, is_linux_engine)."""
     docker_bin = shutil.which("docker")
     if not docker_bin:
-        return False
+        return False, False, False
     try:
         proc = subprocess.run(
-            ["docker", "info", "--format", "{{json .Runtimes}}"],
+            ["docker", "info", "--format", "{{json .Runtimes}}|{{.OSType}}|{{.OperatingSystem}}"],
             capture_output=True,
             text=True,
             timeout=2,
         )
-        if proc.returncode == 0 and "nvidia" in proc.stdout.lower():
-            return True
+        if proc.returncode != 0:
+            return False, False, False
+        parts = proc.stdout.strip().split("|", 2)
+        runtimes = parts[0].lower() if len(parts) > 0 else ""
+        ostype = parts[1].lower() if len(parts) > 1 else ""
+        opsys = parts[2].lower() if len(parts) > 2 else ""
+        has_nvidia_runtime = "nvidia" in runtimes
+        is_linux_engine = ("linux" in ostype) or ("docker desktop" in opsys and "windows" not in ostype)
+        return True, has_nvidia_runtime, is_linux_engine
     except Exception:
-        pass
+        return False, False, False
+
+
+def _nvidia_smi_lists_gpu() -> bool:
+    smi_path = _find_nvidia_smi()
+    if not smi_path:
+        return False
+    try:
+        proc = subprocess.run(
+            [smi_path, "-L"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        return proc.returncode == 0
+    except Exception:
+        return False
+
+
+def _check_docker_gpu_passthrough() -> bool:
+    """Check if Docker daemon supports nvidia runtime or Windows Docker Desktop WSL2 GPU passthrough."""
+    reachable, has_nvidia_runtime, is_linux_engine = _docker_gpu_info()
+    if not reachable:
+        return False
+    if has_nvidia_runtime:
+        return True
+    if os.name == "nt" and is_linux_engine and _nvidia_smi_lists_gpu():
+        return True
     return False
 
 
@@ -311,6 +345,9 @@ def _gpu() -> dict[str, Any]:
         gpu_name = display_adapter_name
 
     has_container_toolkit = bool(shutil.which("nvidia-container-cli") or shutil.which("nvidia-ctk"))
+    if not has_container_toolkit and os.name == "nt" and nvidia_smi_ok:
+        reachable, _, is_linux_engine = _docker_gpu_info()
+        has_container_toolkit = reachable and is_linux_engine
     docker_gpu_passthrough = _check_docker_gpu_passthrough() if has_nvidia else False
     gpu_image_available = _check_gpu_image_available()
     running_image, container_gpus_flag = _inspect_running_nodeodm_container()

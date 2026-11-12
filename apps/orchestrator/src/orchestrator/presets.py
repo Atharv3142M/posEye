@@ -18,7 +18,6 @@ _PRESETS: dict[str, list[dict[str, str]]] = {
         {"name": "feature-quality", "value": "lowest"},
         {"name": "pc-quality", "value": "lowest"},
         {"name": "mesh-octree-depth", "value": "8"},
-        {"name": "resize-to", "value": "1024"},
         {"name": "orthophoto-resolution", "value": "8"},
         {"name": "skip-report", "value": "true"},
     ],
@@ -26,7 +25,6 @@ _PRESETS: dict[str, list[dict[str, str]]] = {
         {"name": "feature-quality", "value": "medium"},
         {"name": "pc-quality", "value": "medium"},
         {"name": "mesh-octree-depth", "value": "10"},
-        {"name": "resize-to", "value": "2048"},
         {"name": "orthophoto-resolution", "value": "5"},
         {"name": "dsm", "value": "true"},
     ],
@@ -34,7 +32,6 @@ _PRESETS: dict[str, list[dict[str, str]]] = {
         {"name": "feature-quality", "value": "high"},
         {"name": "pc-quality", "value": "high"},
         {"name": "mesh-octree-depth", "value": "11"},
-        {"name": "resize-to", "value": "4096"},
         {"name": "orthophoto-resolution", "value": "2"},
         {"name": "dsm", "value": "true"},
         {"name": "dtm", "value": "true"},
@@ -43,7 +40,6 @@ _PRESETS: dict[str, list[dict[str, str]]] = {
         {"name": "feature-quality", "value": "ultra"},
         {"name": "pc-quality", "value": "ultra"},
         {"name": "mesh-octree-depth", "value": "12"},
-        {"name": "resize-to", "value": "4096"},
         {"name": "orthophoto-resolution", "value": "1"},
         {"name": "dsm", "value": "true"},
         {"name": "dtm", "value": "true"},
@@ -57,13 +53,12 @@ def canonical_preset(name: str) -> str:
 
 
 def preset_options(name: str, use_gpu: bool = False) -> list[dict[str, str]]:
+    # ODM 3.6.2 -gpu enables GPU automatically; feature-extract-gpu does not exist.
+    _ = use_gpu
     key = canonical_preset(name)
     if key not in _PRESETS:
         raise ValueError(f"Unknown preset {name}")
-    opts = [dict(opt) for opt in _PRESETS[key]]
-    if use_gpu:
-        opts.append({"name": "feature-extract-gpu", "value": "true"})
-    return opts
+    return [dict(opt) for opt in _PRESETS[key]]
 
 
 def detect_preset() -> PresetName:

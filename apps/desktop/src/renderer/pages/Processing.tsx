@@ -122,7 +122,7 @@ export default function Processing() {
             <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
               <span className="muted" style={{ fontSize: 13, fontWeight: 500 }}>{job?.name || id}</span>
               <span className="badge badge-active" style={{ fontSize: 11 }}>
-                ⏱ {formatDuration(elapsed)} {stage === "ready" ? "duration" : "elapsed"}
+                {formatDuration(elapsed)} {stage === "ready" ? "duration" : "elapsed"}
               </span>
               <span className="muted" style={{ fontSize: 11 }}>
                 Preset: <strong>{job?.preset || "default"}</strong>
@@ -134,7 +134,7 @@ export default function Processing() {
               <Button variant="danger" onClick={() => void cancel()}>Cancel Job</Button>
             )}
             {stage === "ready" && (
-              <Button variant="primary" onClick={() => nav(`/viewer/${id}`)}>Open 3D Viewer →</Button>
+              <Button variant="primary" onClick={() => nav(`/viewer/${id}`)}>Open 3D Viewer</Button>
             )}
             <Button onClick={() => nav("/projects")}>Projects List</Button>
           </div>
@@ -187,21 +187,39 @@ export default function Processing() {
             <ul className="timeline">
               {PIPELINE.map((s, i) => {
                 let cls = "";
-                let mark = "○";
+                let state: "pending" | "done" | "current" | "error" = "pending";
                 if (idx < 0) {
                   cls = "";
-                  mark = stage === "error" && i === Math.max(0, Math.abs(idx)) ? "✗" : "○";
+                  state = stage === "error" && i === Math.max(0, Math.abs(idx)) ? "error" : "pending";
                 } else if (i < idx || stage === "ready") {
                   cls = "done";
-                  mark = "✓";
+                  state = "done";
                 } else if (i === idx) {
                   cls = "current";
-                  mark = "◉";
+                  state = "current";
                 }
                 return (
                   <li key={s.id} className={cls} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "6px 0" }}>
-                    <span style={{ fontFamily: "var(--font-mono)", width: 18, display: "inline-block", textAlign: "center" }}>
-                      {mark}
+                    <span style={{ width: 18, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+                      {state === "done" ? (
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      ) : state === "error" ? (
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <line x1="18" y1="6" x2="6" y2="18" />
+                          <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                      ) : state === "current" ? (
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                          <circle cx="12" cy="12" r="9" />
+                          <circle cx="12" cy="12" r="3" fill="currentColor" />
+                        </svg>
+                      ) : (
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                          <circle cx="12" cy="12" r="8" />
+                        </svg>
+                      )}
                     </span>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: i === idx ? 600 : 400 }}>{s.label}</div>

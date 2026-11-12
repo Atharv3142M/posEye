@@ -1,6 +1,6 @@
 {
   "name": "poseye-desktop",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "private": true,
   "description": "posEye \u2014 Single-Pass Drone Video to Accurate 3D Model Generation System",
   "main": "electron/main.cjs",
@@ -65,11 +65,12 @@
         "nsis"
       ],
       "icon": "electron/posEye.ico",
-      "signAndEditExecutable": false
+      "signAndEditExecutable": true
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
+      "shortcutName": "posEye",
       "artifactName": "${productName}.Setup.${version}.${ext}",
       "installerIcon": "electron/posEye.ico",
       "uninstallerIcon": "electron/posEye.ico",

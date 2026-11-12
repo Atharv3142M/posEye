@@ -16,7 +16,7 @@ export default function Dashboard() {
   const [sysError, setSysError] = useState<string | null>(null);
   const [appStatus, setAppStatus] = useState<{ phase: string; message: string } | null>(null);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
-  const appVersion = window.dt?.envSync()?.version || "0.1.6";
+  const appVersion = window.dt?.envSync()?.version || "0.1.9";
 
   async function loadSys() {
     setSysLoading(true);
@@ -63,7 +63,7 @@ export default function Dashboard() {
             )}
           </div>
           <p className="muted" style={{ margin: 0 }}>
-            Drone Video → 3D Model Pipeline · local processing · no cloud
+            Drone Video to 3D Model Pipeline · local processing · no cloud
           </p>
         </div>
 
@@ -108,7 +108,7 @@ export default function Dashboard() {
                   window.dt?.openExternal?.("https://www.docker.com/products/docker-desktop");
                 }}
               >
-                Download Docker Desktop ↗
+                Download Docker Desktop
               </Button>
             )}
           </div>
@@ -116,7 +116,7 @@ export default function Dashboard() {
 
         {/* Actions */}
         <div className="actions" style={{ marginTop: 0, marginBottom: 24 }}>
-          <Button variant="primary" onClick={() => nav("/projects/new")}>＋ New Project</Button>
+          <Button variant="primary" onClick={() => nav("/projects/new")}>+ New Project</Button>
           <Button onClick={() => nav("/projects")}>View all projects</Button>
         </div>
 
@@ -156,7 +156,7 @@ export default function Dashboard() {
                     <td className="muted">{j.frameCount || "—"}</td>
                     <td className="muted">{fmtDate(j.createdAt)}</td>
                     <td className="col-actions">
-                      <span style={{ color: "var(--text-primary)", fontSize: 12 }}>→</span>
+                      <span style={{ color: "var(--text-primary)", fontSize: 12 }}>Open</span>
                     </td>
                   </tr>
                 ))}
@@ -176,7 +176,7 @@ export default function Dashboard() {
                 style={{ fontSize: 11, padding: "3px 8px" }}
                 onClick={() => setShowDiagnostics(true)}
               >
-                🔍 Diagnostics
+                Diagnostics
               </button>
               <button
                 type="button"
@@ -185,7 +185,7 @@ export default function Dashboard() {
                 onClick={() => void loadSys()}
                 disabled={sysLoading}
               >
-                {sysLoading ? "Refreshing…" : "⟳ Refresh"}
+                {sysLoading ? "Refreshing…" : "Refresh"}
               </button>
             </div>
           </div>

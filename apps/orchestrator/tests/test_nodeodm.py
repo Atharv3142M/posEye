@@ -42,9 +42,11 @@ class _MockTransport(httpx.BaseTransport):
 
 
 def test_preset_options():
-    opts = preset_options("low")
-    names = {o["name"] for o in opts}
-    assert "resize-to" in names
+    for preset in ("low", "medium", "high", "ultra"):
+        opts = preset_options(preset, use_gpu=True)
+        names = {o["name"] for o in opts}
+        assert "resize-to" not in names
+        assert "feature-extract-gpu" not in names
     assert detect_preset() in {"low", "medium", "high"}
 
 
@@ -136,3 +138,37 @@ def test_parse_odm_phase():
     assert "3D Surface Meshing" in (parse_odm_phase("ReconstructMesh model.ply") or "")
     assert "Texture Mapping" in (parse_odm_phase("Texturing 3D model") or "")
     assert parse_odm_phase("some uninformative log line") is None
+
+
+def test_wait_sets_gpu_sift_detected_from_logs(monkeypatch):
+    class _GpuLogTransport(httpx.BaseTransport):
+        def __init__(self, lines: list[str]):
+            self.lines = lines
+
+        def handle_request(self, request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if "/task/gpu-uuid/info" in url:
+                return httpx.Response(200, json={"status": {"code": 40}, "progress": 100})
+            if "/task/gpu-uuid/output" in url:
+                return httpx.Response(200, json=self.lines)
+            return httpx.Response(404)
+
+    real_client = httpx.Client
+
+    for log_line, expected in [
+        ("Using GPU for extracting SIFT features", True),
+        ("Using GPU for image matching", True),
+        ("Running CPU feature extraction", False),
+    ]:
+        transport = _GpuLogTransport([log_line])
+
+        def fake_client(*args, _t=transport, **kwargs):
+            kwargs["transport"] = _t
+            kwargs["base_url"] = "http://nodeodm.test"
+            return real_client(*args, **kwargs)
+
+        monkeypatch.setattr(httpx, "Client", fake_client)
+        client = NodeODMClient("http://nodeodm.test")
+        info = client.wait("gpu-uuid", progress=lambda s, p, m: None)
+        assert info.completed
+        assert info.gpu_sift_detected is expected

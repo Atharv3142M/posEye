@@ -6,6 +6,7 @@ import {
   Color,
   DirectionalLight,
   DoubleSide,
+  Float32BufferAttribute,
   GridHelper,
   Group,
   Line,
@@ -15,6 +16,8 @@ import {
   MeshStandardMaterial,
   PerspectiveCamera,
   PlaneGeometry,
+  Points,
+  PointsMaterial,
   Raycaster,
   RingGeometry,
   Scene,
@@ -29,6 +32,13 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { apiTokenSync } from "../api";
+import {
+  extractCesiumRtcCenter,
+  scenePointToSource,
+  shouldApplyZUpToYUp,
+  type ModelTransform,
+  type Vec3Tuple,
+} from "../utils/coords";
 import { resolveDracoDecoderPath } from "../utils/draco";
 
 export type MeasureResult = {
@@ -70,7 +80,11 @@ export interface ThreeViewerHandle {
 
 interface ThreeViewerProps {
   modelUrl: string | null;
+  reloadKey?: number;
+  modelTransform?: ModelTransform | null;
   meshVisible: boolean;
+  cloudUrl?: string | null;
+  cloudVisible?: boolean;
   measuring: boolean;
   wireframe?: boolean;
   showOrtho?: boolean;
@@ -89,7 +103,11 @@ interface ThreeViewerProps {
 const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function ThreeViewer(
   {
     modelUrl,
+    reloadKey = 0,
+    modelTransform = null,
     meshVisible,
+    cloudUrl = null,
+    cloudVisible = false,
     measuring,
     wireframe = false,
     showOrtho = false,
@@ -109,9 +127,13 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<Scene | null>(null);
   const rootRef = useRef<Group | null>(null);
+  const cloudGroupRef = useRef<Group | null>(null);
   const measuresRef = useRef<Group | null>(null);
   const hoverMarkerRef = useRef<Mesh | null>(null);
   const modelOffsetRef = useRef<Vector3>(new Vector3(0, 0, 0));
+  const modelOriginRef = useRef<Vec3Tuple | null>(null);
+  const isZUpToYUpRef = useRef<boolean>(false);
+  const zUpAppliedToSceneRef = useRef<boolean>(false);
   const cameraRef = useRef<PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const rendererRef = useRef<WebGLRenderer | null>(null);
@@ -125,6 +147,33 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
 
   const meshVisibleRef = useRef(meshVisible);
   meshVisibleRef.current = meshVisible;
+
+  const cloudVisibleRef = useRef(cloudVisible);
+  cloudVisibleRef.current = cloudVisible;
+
+  const modelTransformRef = useRef<ModelTransform | null>(modelTransform);
+  modelTransformRef.current = modelTransform;
+
+  // Store callbacks in refs so inline parent handlers never recreate WebGL or re-fetch GLBs.
+  const loadCallbacksRef = useRef({
+    onStats,
+    onLoadStart,
+    onLoadProgress,
+    onLoadPhase,
+    onLoadSuccess,
+    onLoadError,
+  });
+  loadCallbacksRef.current = {
+    onStats,
+    onLoadStart,
+    onLoadProgress,
+    onLoadPhase,
+    onLoadSuccess,
+    onLoadError,
+  };
+
+  const interactionCallbacksRef = useRef({ onCoords, onMeasure });
+  interactionCallbacksRef.current = { onCoords, onMeasure };
 
   // Multi-segment measurement: accumulate picks
   const picksRef = useRef<Vector3[]>([]);
@@ -165,6 +214,14 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     requestRenderRef.current();
   };
 
+  const toWorldVector = (scenePt: Vector3): Vector3 => {
+    const src = scenePointToSource(scenePt, modelOffsetRef.current, {
+      origin: modelOriginRef.current,
+      isZUpToYUp: isZUpToYUpRef.current,
+    });
+    return new Vector3(src.x, src.y, src.z);
+  };
+
   const doResetCamera = () => {
     const root = rootRef.current;
     const camera = cameraRef.current;
@@ -203,7 +260,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     }
     picksRef.current = [];
     totalDistRef.current = 0;
-    onMeasure(null);
+    interactionCallbacksRef.current.onMeasure(null);
     requestRenderRef.current();
   };
 
@@ -243,8 +300,8 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
       });
     } catch (e: any) {
       const msg = `WebGL initialization failed: ${e?.message || "WebGL hardware acceleration unavailable"}`;
-      onLoadPhase?.("failed", { message: msg });
-      onLoadError?.(msg);
+      loadCallbacksRef.current.onLoadPhase?.("failed", { message: msg });
+      loadCallbacksRef.current.onLoadError?.(msg);
       return;
     }
 
@@ -282,12 +339,14 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
 
     // Groups
     const root = new Group();
+    const cloudGroup = new Group();
     const measures = new Group();
     const orthoGroup = new Group();
     rootRef.current = root;
+    cloudGroupRef.current = cloudGroup;
     measuresRef.current = measures;
     orthoGroupRef.current = orthoGroup;
-    scene.add(root, measures, orthoGroup);
+    scene.add(root, cloudGroup, measures, orthoGroup);
 
     // Hover marker for measuring
     const hoverMarker = new Mesh(
@@ -351,7 +410,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
         raycaster.setFromCamera(pointer, cameraRef.current);
         const meshes = meshVisibleRef.current ? cachedMeshesRef.current : [];
         if (meshes.length === 0) {
-          onCoords("—");
+          interactionCallbacksRef.current.onCoords("—");
           if (hoverMarkerRef.current?.visible) {
             hoverMarkerRef.current.visible = false;
             requestRender();
@@ -362,7 +421,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
         // Non-recursive test against flat cached mesh array for high-FPS picking
         const hits = raycaster.intersectObjects(meshes, false);
         if (hits.length === 0) {
-          onCoords("—");
+          interactionCallbacksRef.current.onCoords("—");
           if (hoverMarkerRef.current?.visible) {
             hoverMarkerRef.current.visible = false;
             requestRender();
@@ -372,9 +431,13 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
 
         const hit = hits[0];
         const p = hit.point;
-        const worldP = p.clone().add(modelOffsetRef.current);
+        const worldP = toWorldVector(p);
 
-        onCoords(`X: ${worldP.x.toFixed(2)}  Y: ${worldP.y.toFixed(2)}  Z: ${worldP.z.toFixed(2)}`);
+        const label =
+          isZUpToYUpRef.current || modelOriginRef.current
+            ? `E: ${worldP.x.toFixed(2)}  N: ${worldP.y.toFixed(2)}  H: ${worldP.z.toFixed(2)}`
+            : `X: ${worldP.x.toFixed(2)}  Y: ${worldP.y.toFixed(2)}  Z: ${worldP.z.toFixed(2)}`;
+        interactionCallbacksRef.current.onCoords(label);
 
         if (measuringRef.current && hoverMarkerRef.current) {
           hoverMarkerRef.current.position.copy(p);
@@ -425,22 +488,21 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
         const segDist = prev.distanceTo(pt);
         totalDistRef.current += segDist;
 
-        const offset = modelOffsetRef.current;
-        onMeasure({
+        interactionCallbacksRef.current.onMeasure({
           distance: totalDistRef.current,
           a: picks[0].clone(),
           b: pt.clone(),
-          worldA: picks[0].clone().add(offset),
-          worldB: pt.clone().add(offset),
+          worldA: toWorldVector(picks[0]),
+          worldB: toWorldVector(pt),
         });
       } else {
-        const offset = modelOffsetRef.current;
-        onMeasure({
+        const worldPt = toWorldVector(pt);
+        interactionCallbacksRef.current.onMeasure({
           distance: 0,
           a: pt.clone(),
           b: pt.clone(),
-          worldA: pt.clone().add(offset),
-          worldB: pt.clone().add(offset),
+          worldA: worldPt.clone(),
+          worldB: worldPt.clone(),
         });
       }
 
@@ -463,7 +525,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     // WebGL Context Loss Handling
     const onContextLost = (e: Event) => {
       e.preventDefault();
-      onLoadError?.("WebGL graphics context lost. Restoring…");
+      loadCallbacksRef.current.onLoadError?.("WebGL graphics context lost. Restoring…");
     };
     const onContextRestored = () => {
       requestRender();
@@ -484,6 +546,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
       if (pointerRafId !== null) cancelAnimationFrame(pointerRafId);
       controls.removeEventListener("change", requestRender);
       disposeObjectTree(root);
+      disposeObjectTree(cloudGroup);
       disposeObjectTree(measures);
       disposeObjectTree(orthoGroup);
       disposeObjectTree(hoverMarker);
@@ -494,7 +557,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
       sceneRef.current = null;
       cameraRef.current = null;
     };
-  }, [onCoords, onMeasure]);
+  }, []);
 
   // Update cursor style when measuring mode changes
   useEffect(() => {
@@ -508,13 +571,21 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     }
   }, [measuring]);
 
-  // Update layer visibility
+  // Update mesh layer visibility
   useEffect(() => {
     if (rootRef.current) {
       rootRef.current.visible = meshVisible;
     }
     updateCachedMeshes();
   }, [meshVisible]);
+
+  // Update point cloud layer visibility
+  useEffect(() => {
+    if (cloudGroupRef.current) {
+      cloudGroupRef.current.visible = cloudVisible;
+    }
+    requestRenderRef.current();
+  }, [cloudVisible]);
 
   // Toggle wireframe on all meshes
   useEffect(() => {
@@ -577,6 +648,70 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     };
   }, [showOrtho, orthoUrl, modelReady]);
 
+  // Point Cloud Preview Overlay (cloud.json)
+  useEffect(() => {
+    const group = cloudGroupRef.current;
+    if (!group) return;
+    group.visible = cloudVisibleRef.current;
+    disposeObjectTree(group);
+    group.clear();
+
+    if (!cloudUrl || !modelReady) {
+      requestRenderRef.current();
+      return;
+    }
+
+    const controller = new AbortController();
+    const token = apiTokenSync();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    fetch(cloudUrl, { headers, signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((data: { positions?: number[]; colors?: number[] }) => {
+        if (controller.signal.aborted) return;
+        const pos = data?.positions;
+        if (!Array.isArray(pos) || pos.length < 3) return;
+
+        const geom = new BufferGeometry();
+        geom.setAttribute("position", new Float32BufferAttribute(pos, 3));
+
+        // Populate vertex colors from payload or synthesize cyan tint so PointsMaterial({ vertexColors: true }) stays visible.
+        let colorArr: Float32Array;
+        if (Array.isArray(data.colors) && data.colors.length === pos.length) {
+          colorArr = new Float32Array(data.colors);
+        } else {
+          colorArr = new Float32Array(pos.length);
+          for (let i = 0; i < pos.length; i += 3) {
+            colorArr[i] = 0.22;
+            colorArr[i + 1] = 0.78;
+            colorArr[i + 2] = 0.85;
+          }
+        }
+        geom.setAttribute("color", new Float32BufferAttribute(colorArr, 3));
+
+        const points = new Points(geom, new PointsMaterial({ size: 0.25, vertexColors: true }));
+        if (zUpAppliedToSceneRef.current) {
+          points.rotation.x = -Math.PI / 2;
+        }
+        points.position.sub(modelOffsetRef.current);
+
+        group.add(points);
+        group.visible = cloudVisibleRef.current;
+        requestRenderRef.current();
+      })
+      .catch(() => {
+        // Optional preview layer; ignore abort or unavailable asset
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [cloudUrl, modelReady, reloadKey]);
+
   // Model Loading with DRACOLoader and Multi-Phase Progress
   useEffect(() => {
     const root = rootRef.current;
@@ -593,25 +728,43 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
     picksRef.current = [];
     totalDistRef.current = 0;
     modelOffsetRef.current.set(0, 0, 0);
-    onStats?.({ vertices: 0, triangles: 0 });
+    modelOriginRef.current = null;
+    isZUpToYUpRef.current = false;
+    zUpAppliedToSceneRef.current = false;
+    loadCallbacksRef.current.onStats?.({ vertices: 0, triangles: 0 });
     requestRenderRef.current();
 
     if (!modelUrl) {
-      onLoadPhase?.("idle");
+      loadCallbacksRef.current.onLoadPhase?.("idle");
       return;
     }
 
-    onLoadStart?.();
-    onLoadPhase?.("initializing");
+    loadCallbacksRef.current.onLoadStart?.();
+    loadCallbacksRef.current.onLoadPhase?.("initializing");
 
-    // 45-second timeout guard: prevents infinite spinner if network or decoder stalls
+    // 45-second stall timeout guard: resets while XHR download progresses
     const loadTimeoutMs = 45_000;
-    const loadTimer = setTimeout(() => {
-      if (currentLoadId !== loadIdRef.current) return;
-      const err = "Model load timed out after 45 seconds. The file may be too large, the decoder stalled, or the API is unreachable.";
-      onLoadPhase?.("failed", { message: err });
-      onLoadError?.(err);
-    }, loadTimeoutMs);
+    let loadTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastLoaded = 0;
+
+    const clearLoadTimer = () => {
+      if (loadTimer !== null) {
+        clearTimeout(loadTimer);
+        loadTimer = null;
+      }
+    };
+
+    const resetLoadTimer = () => {
+      clearLoadTimer();
+      loadTimer = setTimeout(() => {
+        if (currentLoadId !== loadIdRef.current) return;
+        const err = "Model load timed out after 45 seconds. The file may be too large, the decoder stalled, or the API is unreachable.";
+        loadCallbacksRef.current.onLoadPhase?.("failed", { message: err });
+        loadCallbacksRef.current.onLoadError?.(err);
+      }, loadTimeoutMs);
+    };
+
+    resetLoadTimer();
 
     // Initialize GLTFLoader and local offline DRACOLoader
     const loader = new GLTFLoader();
@@ -626,7 +779,7 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
       loader.setRequestHeader({ Authorization: `Bearer ${token}` });
     }
 
-    onLoadPhase?.("fetching", { progress: 0 });
+    loadCallbacksRef.current.onLoadPhase?.("fetching", { progress: 0 });
 
     loader.load(
       modelUrl,
@@ -637,7 +790,8 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
           return;
         }
 
-        onLoadPhase?.("parsing");
+        clearLoadTimer();
+        loadCallbacksRef.current.onLoadPhase?.("parsing");
 
         let totalVerts = 0;
         let totalTriangles = 0;
@@ -668,15 +822,26 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
         if (totalVerts === 0 || totalTriangles === 0) {
           disposeObjectTree(gltf.scene);
           dracoLoader.dispose();
-          clearTimeout(loadTimer);
-          onStats?.({ vertices: 0, triangles: 0 });
+          loadCallbacksRef.current.onStats?.({ vertices: 0, triangles: 0 });
           const err = "Model contains no usable polygon geometry.";
-          onLoadPhase?.("failed", { message: err });
-          onLoadError?.(err);
+          loadCallbacksRef.current.onLoadPhase?.("failed", { message: err });
+          loadCallbacksRef.current.onLoadError?.(err);
           return;
         }
 
-        onLoadPhase?.("uploading");
+        loadCallbacksRef.current.onLoadPhase?.("uploading");
+
+        const cesiumCenter = extractCesiumRtcCenter(gltf);
+        const transform = modelTransformRef.current;
+        const applyZUp = shouldApplyZUpToYUp(transform, cesiumCenter !== null);
+        if (applyZUp) {
+          gltf.scene.rotation.x = -Math.PI / 2;
+          gltf.scene.updateMatrixWorld(true);
+        }
+
+        zUpAppliedToSceneRef.current = applyZUp;
+        isZUpToYUpRef.current = applyZUp || transform?.axisConvention === "z_up_to_y_up";
+        modelOriginRef.current = cesiumCenter ?? transform?.origin ?? null;
 
         const origBox = new Box3().setFromObject(gltf.scene);
         const center = origBox.getCenter(new Vector3());
@@ -689,49 +854,50 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
         root.visible = meshVisibleRef.current;
         updateCachedMeshes();
 
-        if (onStats) {
-          onStats({
-            vertices: Math.round(totalVerts),
-            triangles: Math.round(totalTriangles),
-            bbox: {
-              min: { x: origBox.min.x, y: origBox.min.y, z: origBox.min.z },
-              max: { x: origBox.max.x, y: origBox.max.y, z: origBox.max.z },
-              size: { x: size.x, y: size.y, z: size.z },
-            },
-          });
-        }
+        loadCallbacksRef.current.onStats?.({
+          vertices: Math.round(totalVerts),
+          triangles: Math.round(totalTriangles),
+          bbox: {
+            min: { x: origBox.min.x, y: origBox.min.y, z: origBox.min.z },
+            max: { x: origBox.max.x, y: origBox.max.y, z: origBox.max.z },
+            size: { x: size.x, y: size.y, z: size.z },
+          },
+        });
 
-        clearTimeout(loadTimer);
-        onLoadPhase?.("framing");
+        loadCallbacksRef.current.onLoadPhase?.("framing");
         // Frame camera to actual model bounds BEFORE initial render
         doResetCamera();
         // Defer shader compilation and rendering to next frame so UI can paint framing state
         requestAnimationFrame(() => {
           if (currentLoadId !== loadIdRef.current) return;
-          onLoadPhase?.("rendering");
+          loadCallbacksRef.current.onLoadPhase?.("rendering");
           if (rendererRef.current && sceneRef.current && cameraRef.current) {
             try {
               rendererRef.current.compile(sceneRef.current, cameraRef.current);
               rendererRef.current.render(sceneRef.current, cameraRef.current);
-              onLoadPhase?.("loaded");
-              onLoadSuccess?.();
+              loadCallbacksRef.current.onLoadPhase?.("loaded");
+              loadCallbacksRef.current.onLoadSuccess?.();
             } catch (renderErr: any) {
               const errMsg = renderErr?.message || "Shader compilation or WebGL render failed.";
-              onLoadPhase?.("failed", { message: errMsg });
-              onLoadError?.(errMsg);
+              loadCallbacksRef.current.onLoadPhase?.("failed", { message: errMsg });
+              loadCallbacksRef.current.onLoadError?.(errMsg);
             }
           } else {
-            onLoadPhase?.("loaded");
-            onLoadSuccess?.();
+            loadCallbacksRef.current.onLoadPhase?.("loaded");
+            loadCallbacksRef.current.onLoadSuccess?.();
           }
         });
       },
       (xhr) => {
         if (currentLoadId !== loadIdRef.current) return;
+        if (xhr.loaded > lastLoaded) {
+          lastLoaded = xhr.loaded;
+          resetLoadTimer();
+        }
         if (xhr.total && xhr.total > 0) {
           const pct = Math.round((xhr.loaded / xhr.total) * 100);
-          onLoadProgress?.(pct);
-          onLoadPhase?.("fetching", { progress: pct });
+          loadCallbacksRef.current.onLoadProgress?.(pct);
+          loadCallbacksRef.current.onLoadPhase?.("fetching", { progress: pct });
         }
       },
       (err: any) => {
@@ -747,16 +913,18 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, ThreeViewerProps>(function Thr
         if (err?.target?.status === 401 || String(errorMsg).includes("401")) {
           errorMsg = "Authentication failed (401 Unauthorized) retrieving model asset.";
         }
-        clearTimeout(loadTimer);
-        onLoadPhase?.("failed", { message: errorMsg });
-        onLoadError?.(errorMsg);
+        clearLoadTimer();
+        loadCallbacksRef.current.onLoadPhase?.("failed", { message: errorMsg });
+        loadCallbacksRef.current.onLoadError?.(errorMsg);
       }
     );
 
     return () => {
+      loadIdRef.current += 1;
+      clearLoadTimer();
       dracoLoader.dispose();
     };
-  }, [modelUrl, onStats, onLoadStart, onLoadSuccess, onLoadError, onLoadProgress, onLoadPhase]);
+  }, [modelUrl, reloadKey]);
 
   return (
     <canvas

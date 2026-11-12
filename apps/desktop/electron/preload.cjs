@@ -4,7 +4,7 @@ const { contextBridge, ipcRenderer, webUtils } = require("electron");
 const envData = {
   apiBase: "http://127.0.0.1:8765",
   apiToken: "",
-  version: "0.1.6",
+  version: "0.1.9",
   isPackaged: false,
 };
 

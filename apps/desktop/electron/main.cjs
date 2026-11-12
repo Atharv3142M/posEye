@@ -30,6 +30,7 @@ const fs = require("node:fs");
 const net = require("node:net");
 const os = require("node:os");
 const crypto = require("node:crypto");
+const { planNodeOdm, isPosEyeManaged, buildDockerRunArgs } = require("./nodeodm_plan.cjs");
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 const API_PORT = parseInt(process.env.DT_PORT || "8765", 10);
@@ -37,9 +38,9 @@ const API_BASE = process.env.DT_API || `http://127.0.0.1:${API_PORT}`;
 const API_TOKEN = process.env.DT_API_TOKEN || crypto.randomBytes(16).toString("hex");
 const APP_VERSION = (() => {
   try {
-    return require("../package.json").version || "0.1.8";
+    return require("../package.json").version || "0.1.9";
   } catch {
-    return "0.1.8";
+    return "0.1.9";
   }
 })();
 const NODEODM_URL = process.env.NODEODM_URL || "http://127.0.0.1:3000";
@@ -670,73 +671,45 @@ async function ensureNodeOdm() {
   return nodeOdmProvisionPromise;
 }
 
-async function wantGpuPassthrough() {
-  if (!readPrefs().gpu) return false;
+async function inspectDockerContainer(name) {
+  const out = await run("docker", ["inspect", "--format", "{{json .}}", name]).catch(() => "");
+  if (!out || !out.trim()) return null;
   try {
-    await runWithTimeout("nvidia-smi", ["-L"], 4000);
-    return true;
+    const data = JSON.parse(out.trim());
+    const deviceRequests = JSON.stringify(data?.HostConfig?.DeviceRequests || []);
+    const runtime = data?.HostConfig?.Runtime || "";
+    return {
+      name: (data?.Name || name).replace(/^\/+/, ""),
+      status: data?.State?.Status || "",
+      image: data?.Config?.Image || "",
+      configImage: data?.Config?.Image || "",
+      imageId: data?.Image || "",
+      labels: data?.Config?.Labels || {},
+      hasGpu: /gpu|nvidia/i.test(deviceRequests) || /nvidia/i.test(runtime),
+    };
   } catch {
-    return false;
+    return null;
   }
-}
-
-async function containerRequestsGpu(name) {
-  try {
-    const out = await runWithTimeout(
-      "docker",
-      ["inspect", "--format", "{{json .HostConfig.DeviceRequests}}", name],
-      8000,
-    );
-    return /gpu|nvidia/i.test(out);
-  } catch {
-    return false;
-  }
-}
-
-async function nodeOdmDockerArgs() {
-  const args = ["run", "-d", "--name", "poseye-nodeodm", "--restart", "unless-stopped", "-p", "3000:3000"];
-  if (!(await wantGpuPassthrough())) {
-    return { args, gpu: false, image: PINNED_CPU_IMAGE };
-  }
-
-  let hasGpuImage = false;
-  try {
-    const out = await run("docker", ["images", "-q", PINNED_GPU_IMAGE]);
-    if (out && out.trim()) hasGpuImage = true;
-  } catch {}
-
-  if (!hasGpuImage) {
-    log("info", `GPU image ${PINNED_GPU_IMAGE} not in local docker cache; running CPU image ${PINNED_CPU_IMAGE}`);
-    return { args, gpu: false, image: PINNED_CPU_IMAGE };
-  }
-
-  args.push("--gpus", "all", "-e", "NVIDIA_VISIBLE_DEVICES=all", "-e", "NVIDIA_DRIVER_CAPABILITIES=compute,utility");
-  try {
-    const runtimes = await runWithTimeout("docker", ["info", "--format", "{{json .Runtimes}}"], 4000);
-    if (/nvidia/i.test(runtimes)) args.push("--runtime", "nvidia");
-  } catch { /* Docker Desktop on Windows exposes GPUs through --gpus all */ }
-  return { args, gpu: true, image: PINNED_GPU_IMAGE };
-}
-
-async function reuseNodeOdmContainer() {
-  if (!(await wantGpuPassthrough())) return true;
-  if (await containerRequestsGpu("poseye-nodeodm")) return true;
-  log("info", "poseye-nodeodm is running without GPU passthrough — recreating with --gpus all");
-  await run("docker", ["rm", "-f", "poseye-nodeodm"]).catch(() => {});
-  return false;
 }
 
 async function _ensureNodeOdmInternal() {
-  log("info", `Checking NodeODM container (pinned: ${PINNED_IMAGE})…`);
+  log("info", `Checking NodeODM container (pinned CPU: ${PINNED_CPU_IMAGE}, GPU: ${PINNED_GPU_IMAGE})...`);
 
-  // 1. Check if NodeODM is already responding on port 3000
+  // 1. If an external or non-poseye-nodeodm instance is already responding on NODEODM_URL, reuse it
   try {
     const res = await fetch(`${NODEODM_URL}/info`, { signal: AbortSignal.timeout(3000) });
     if (res.ok) {
       const info = await res.json().catch(() => null);
       if (verifyNodeOdmInfo(info)) {
-        if (await reuseNodeOdmContainer()) {
-          log("info", `NodeODM already available and verified at ${NODEODM_URL} (version: ${info.version})`);
+        const parsed = new URL(NODEODM_URL);
+        const isLoopback = parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost";
+        if (!isLoopback) {
+          log("info", `Remote NodeODM available and verified at ${NODEODM_URL} (version: ${info.version})`);
+          return true;
+        }
+        const existingLocal = await inspectDockerContainer("poseye-nodeodm");
+        if (!existingLocal) {
+          log("info", `External NodeODM available and verified at ${NODEODM_URL} (version: ${info.version})`);
           return true;
         }
       } else {
@@ -747,174 +720,92 @@ async function _ensureNodeOdmInternal() {
 
   await ensureDocker();
 
-  // 2. Check existing container 'poseye-nodeodm'
-  let existingContainer = null;
-  try {
-    const inspectFormat = "{{.State.Status}}|{{.Config.Image}}|{{.Image}}";
-    const inspectOut = await run("docker", ["inspect", "--format", inspectFormat, "poseye-nodeodm"]).catch(() => "");
-    if (inspectOut && inspectOut.trim()) {
-      const [cStatus, cConfigImage, cImageId] = inspectOut.trim().split("|");
-      existingContainer = { name: "poseye-nodeodm", status: cStatus, configImage: cConfigImage, imageId: cImageId };
-    }
-  } catch {}
-
-  let pinnedImageId = null;
-  try {
-    const out = await run("docker", ["images", "-q", PINNED_IMAGE]).catch(() => "");
-    pinnedImageId = out ? out.trim() : null;
-  } catch {}
-
-  const compatibility = evaluateContainerCompatibility(existingContainer, {
-    pinnedImage: PINNED_IMAGE,
-    pinnedImageId,
-  });
-
-  if (existingContainer) {
-    if (!compatibility.canReuse) {
-      log("warn", `Existing container 'poseye-nodeodm' uses image '${existingContainer.configImage}', not '${PINNED_IMAGE}'.`);
-      if (existingContainer.status === "running") {
-        const errMsg = (
-          `An existing container 'poseye-nodeodm' is running incompatible image '${existingContainer.configImage}'. ` +
-          `posEye strictly requires pinned image '${PINNED_IMAGE}'. ` +
-          `Please stop or remove this container manually to allow posEye to run the supported version.`
-        );
-        updateStatus("nodeodm_error", errMsg);
-        throw new Error(errMsg);
+  let tarAttempted = false;
+  const ops = {
+    log,
+    hostGpuUsable: async () => {
+      try {
+        await runWithTimeout("nvidia-smi", ["-L"], 4000);
+        return true;
+      } catch {
+        return false;
       }
-    } else {
-      // Compatible container found
-      if (existingContainer.status === "running") {
-        try {
-          await waitForUrl(`${NODEODM_URL}/info`, 15000, "NodeODM (poseye-nodeodm)");
-          const infoRes = await fetch(`${NODEODM_URL}/info`);
-          const info = await infoRes.json().catch(() => null);
-          if (verifyNodeOdmInfo(info)) {
-            if (await reuseNodeOdmContainer()) {
-              log("info", `Verified healthy running container poseye-nodeodm (version: ${info.version})`);
-              return true;
-            }
+    },
+    inspectContainer: inspectDockerContainer,
+    imageLocal: async (image) => {
+      try {
+        const out = await run("docker", ["images", "-q", image]);
+        return Boolean(out && out.trim());
+      } catch {
+        return false;
+      }
+    },
+    loadOfflineTar: async (image) => {
+      if (tarAttempted || image !== PINNED_CPU_IMAGE) return false;
+      tarAttempted = true;
+      const tarPaths = [
+        path.join(repoRoot(), "third_party", "nodeodm.tar"),
+        app?.isPackaged ? path.join(process.resourcesPath, "nodeodm.tar") : null,
+        app?.isPackaged ? path.join(path.dirname(process.resourcesPath), "third_party", "nodeodm.tar") : null,
+      ].filter(Boolean);
+
+      for (const tar of tarPaths) {
+        if (fs.existsSync(tar)) {
+          log("info", `Loading NodeODM image from offline archive ${tar} (this may take 1-2 minutes)...`);
+          updateStatus("nodeodm_loading", "Loading NodeODM image from offline archive (this may take 1-2 minutes)...");
+          try {
+            await runWithTimeout("docker", ["load", "-i", tar], 300000);
+            log("info", "NodeODM image loaded from tar");
+            return true;
+          } catch (e) {
+            log("warn", `Failed to load NodeODM tar: ${e.message}`);
           }
-        } catch (waitErr) {
-          log("warn", `Running container poseye-nodeodm not responding on ${NODEODM_URL}: ${waitErr.message}`);
-        }
-      } else {
-        log("info", `Starting stopped pinned container: poseye-nodeodm…`);
-        updateStatus("nodeodm_starting", "Starting existing NodeODM container…");
-        try {
-          await run("docker", ["start", "poseye-nodeodm"]);
-          await waitForUrl(`${NODEODM_URL}/info`, 45000, "NodeODM (poseye-nodeodm)");
-          const infoRes = await fetch(`${NODEODM_URL}/info`);
-          const info = await infoRes.json().catch(() => null);
-          if (verifyNodeOdmInfo(info)) {
-            if (await reuseNodeOdmContainer()) {
-              log("info", `NodeODM started from existing container (version: ${info.version})`);
-              return true;
-            }
-          }
-        } catch (startErr) {
-          log("warn", `Could not start existing container: ${startErr.message}`);
         }
       }
-    }
-  }
-
-  // 3. Locate Docker image (strictly PINNED_IMAGE, no untagged fallback)
-  let imageInDocker = false;
-  try {
-    const pinnedOut = await run("docker", ["images", "-q", PINNED_IMAGE]);
-    if (pinnedOut && pinnedOut.trim()) {
-      imageInDocker = true;
-    }
-  } catch {}
-
-  // 4. If image not in Docker, check local offline archives first
-  if (!imageInDocker) {
-    const tarPaths = [
-      path.join(repoRoot(), "third_party", "nodeodm.tar"),
-      app.isPackaged ? path.join(process.resourcesPath, "nodeodm.tar") : null,
-      app.isPackaged ? path.join(path.dirname(process.resourcesPath), "third_party", "nodeodm.tar") : null,
-    ].filter(Boolean);
-
-    for (const tar of tarPaths) {
-      if (fs.existsSync(tar)) {
-        log("info", `Loading NodeODM image from offline archive ${tar} (this may take 1-2 minutes)…`);
-        updateStatus("nodeodm_loading", "Loading NodeODM image from offline archive (this may take 1-2 minutes)…");
-        try {
-          await runWithTimeout("docker", ["load", "-i", tar], 300000);
-          log("info", "NodeODM image loaded from tar");
-          imageInDocker = true;
-          break;
-        } catch (e) {
-          log("warn", `Failed to load NodeODM tar: ${e.message}`);
-        }
-      }
-    }
-  }
-
-  // 5. If image still not in Docker, attempt automatic pull (online mode)
-  if (!imageInDocker) {
-    log("info", `NodeODM image not found locally. Initiating docker pull for ${PINNED_IMAGE}…`);
-    updateStatus("nodeodm_pulling", `Downloading NodeODM image (${PINNED_IMAGE})…`);
-    try {
-      await pullDockerImage(PINNED_IMAGE, (progress) => {
+      return false;
+    },
+    pullImage: async (image) => {
+      log("info", `NodeODM image not found locally. Initiating docker pull for ${image}...`);
+      updateStatus("nodeodm_pulling", `Downloading NodeODM image (${image})...`);
+      await pullDockerImage(image, (progress) => {
         updateStatus("nodeodm_pulling", `Pulling NodeODM: ${progress}`);
       }, { timeoutMs: 600000 });
-      imageInDocker = true;
-      log("info", `Successfully pulled ${PINNED_IMAGE}`);
-    } catch (pullErr) {
-      const offlineMsg = (
-        `Offline NodeODM image not found and automatic pull failed: ${pullErr.message}. ` +
-        `Ensure network connectivity and run: docker pull ${PINNED_IMAGE}, or load an offline archive with: docker load -i <path-to-nodeodm.tar>`
-      );
-      updateStatus("nodeodm_offline", offlineMsg);
-      log("error", offlineMsg);
-      throw new Error(offlineMsg);
-    }
-  }
-
-  // 6. Run a new container if none exists
-  log("info", `Starting new NodeODM container using ${PINNED_IMAGE}…`);
-  updateStatus("nodeodm_starting", `Starting NodeODM container using ${PINNED_IMAGE}…`);
-
-  // Do not delete user-managed containers; only clean dead poseye-nodeodm if compatible
-  if (existingContainer && compatibility.canReuse && existingContainer.status !== "running") {
-    await run("docker", ["rm", "-f", "poseye-nodeodm"]).catch(() => {});
-  }
-
-  const launch = await nodeOdmDockerArgs();
-  let started = false;
-  let startErr = null;
-  try {
-    const targetImage = launch.image || PINNED_CPU_IMAGE;
-    await run("docker", [...launch.args, targetImage]);
-    started = true;
-    if (launch.gpu) log("info", `NodeODM container started with NVIDIA GPU passthrough (${targetImage})`);
-    else log("info", `NodeODM container started in CPU mode (${targetImage})`);
-  } catch (err) {
-    startErr = err;
-    const msg = String(err.message || err);
-    if (launch.gpu && /gpu|nvidia|runtime|could not select device/i.test(msg)) {
-      log("warn", `GPU container launch failed (${msg}); retrying on CPU`);
-      await run("docker", ["rm", "-f", "poseye-nodeodm"]).catch(() => {});
+      log("info", `Successfully pulled ${image}`);
+    },
+    removeContainer: async (name) => {
+      await run("docker", ["rm", "-f", name]);
+    },
+    hasNvidiaRuntime: async () => {
       try {
-        await run("docker", [
-          "run", "-d",
-          "--name", "poseye-nodeodm",
-          "--restart", "unless-stopped",
-          "-p", "3000:3000",
-          PINNED_CPU_IMAGE,
-        ]);
-        started = true;
-        startErr = null;
-      } catch (cpuErr) {
-        startErr = cpuErr;
+        const runtimes = await runWithTimeout("docker", ["info", "--format", "{{json .Runtimes}}"], 4000);
+        return /nvidia/i.test(runtimes);
+      } catch {
+        return false;
       }
+    },
+    createContainer: async ({ image, gpu, args }) => {
+      log("info", `Starting NodeODM container using ${image} (${gpu ? "GPU" : "CPU"})...`);
+      updateStatus("nodeodm_starting", `Starting NodeODM container using ${image}...`);
+      await run("docker", args);
+    },
+  };
+
+  let plan;
+  try {
+    plan = await planNodeOdm(ops, {
+      gpuPreferred: Boolean(readPrefs().gpu),
+      cpuImage: PINNED_CPU_IMAGE,
+      gpuImage: PINNED_GPU_IMAGE,
+      containerName: "poseye-nodeodm",
+    });
+  } catch (err) {
+    const msg = String(err && err.message ? err.message : err);
+    if (/not managed by posEye/i.test(msg)) {
+      updateStatus("nodeodm_error", msg);
+      throw err;
     }
-  }
-  if (!started) {
-    const msg = String(startErr && startErr.message ? startErr.message : startErr);
     if (/port is already allocated|bind|address already in use/i.test(msg)) {
-      log("warn", "Port 3000 already in use — checking if NodeODM is responding…");
+      log("warn", "Port 3000 already in use - checking if NodeODM is responding...");
       try {
         await waitForUrl(`${NODEODM_URL}/info`, 10000, "NodeODM on existing port");
         const infoRes = await fetch(`${NODEODM_URL}/info`);
@@ -929,11 +820,26 @@ async function _ensureNodeOdmInternal() {
         "Please free port 3000 or configure NODEODM_URL to point to your NodeODM instance."
       );
     }
+    if (/docker pull|not found/i.test(msg)) {
+      const offlineMsg = (
+        `Offline NodeODM image not found and automatic pull failed: ${msg}. ` +
+        `Ensure network connectivity and run: docker pull ${PINNED_CPU_IMAGE}, or load an offline archive with: docker load -i <path-to-nodeodm.tar>`
+      );
+      updateStatus("nodeodm_offline", offlineMsg);
+      log("error", offlineMsg);
+      throw new Error(offlineMsg);
+    }
     throw new Error(`Could not start NodeODM container: ${msg}`);
   }
 
-  log("info", "Waiting for NodeODM container to become ready…");
-  updateStatus("nodeodm_waiting", "Waiting for NodeODM container /info to respond…");
+  log(
+    "info",
+    `NodeODM plan result: action=${plan.action}, image=${plan.image}, gpu=${plan.gpu}` +
+    (plan.reason ? `, reason=${plan.reason}` : "")
+  );
+
+  log("info", "Waiting for NodeODM container to become ready...");
+  updateStatus("nodeodm_waiting", "Waiting for NodeODM container /info to respond...");
   await waitForUrl(`${NODEODM_URL}/info`, NODEODM_TIMEOUT_MS, "NodeODM");
   const infoRes = await fetch(`${NODEODM_URL}/info`);
   const infoData = await infoRes.json().catch(() => ({}));
@@ -1330,7 +1236,7 @@ if (process.platform === "win32" && app?.setAppUserModelId) {
   app.setAppUserModelId("org.icarus.poseye");
 }
 
-if (app?.whenReady) {
+if (app?.whenReady && !process.env.POSEYE_SKIP_AUTOSTART) {
 app.whenReady().then(async () => {
   log("info", `posEye starting — Electron ${process.versions.electron}, Node ${process.versions.node}`);
   log("info", `Platform: ${process.platform} ${process.arch}`);
@@ -1661,6 +1567,9 @@ module.exports = {
   allowedFilePaths,
   pullDockerImage,
   ensureNodeOdm,
+  planNodeOdm,
+  isPosEyeManaged,
+  buildDockerRunArgs,
   shouldAuthorizeLoopbackRequest,
   isPosEyeProcess,
   writeCrashDump,

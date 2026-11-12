@@ -60,7 +60,10 @@ export default function BrandLogo({
           }}
           title="posEye"
         >
-          ◈
+          <svg width={Math.round(size * 0.6)} height={Math.round(size * 0.6)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+            <polygon points="12 3 21 12 12 21 3 12 12 3" />
+            <circle cx="12" cy="12" r="2.5" fill="currentColor" />
+          </svg>
         </div>
       )}
       {showWordmark && (

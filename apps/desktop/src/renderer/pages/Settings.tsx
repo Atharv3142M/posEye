@@ -14,7 +14,7 @@ export default function Settings() {
   const [sys, setSys] = useState<SystemStatus | null>(null);
   const [gpuOn, setGpuOn] = useState(true);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
-  const appVersion = window.dt?.envSync()?.version || "0.1.6";
+  const appVersion = window.dt?.envSync()?.version || "0.1.9";
 
   useEffect(() => {
     localStorage.setItem("dt-preset", preset);
@@ -116,7 +116,7 @@ export default function Settings() {
           </div>
           {!sys?.docker?.ok && sys?.docker?.recovery && (
             <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "2px 0 6px 0" }}>
-              💡 {sys.docker.recovery}
+              Tip: {sys.docker.recovery}
             </div>
           )}
           <div className="stat-row">
@@ -127,7 +127,7 @@ export default function Settings() {
           </div>
           {!sys?.nodeodm?.ok && sys?.nodeodm?.recovery && (
             <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "2px 0 6px 0" }}>
-              💡 {sys.nodeodm.recovery}
+              Tip: {sys.nodeodm.recovery}
             </div>
           )}
           <div className="stat-row">
@@ -150,7 +150,7 @@ export default function Settings() {
           <p className="muted">Local processing only. Imagery never leaves this machine.</p>
           <div className="actions" style={{ marginTop: 8 }}>
             <Button variant="secondary" onClick={() => setShowDiagnostics(true)}>
-              🔍 Open Diagnostics
+              Open Diagnostics
             </Button>
             <Button onClick={() => void window.dt?.openExternal("https://docs.opendronemap.org")}>
               OpenDroneMap docs

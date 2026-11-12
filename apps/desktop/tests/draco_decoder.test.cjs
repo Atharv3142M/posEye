@@ -130,12 +130,67 @@ test("Draco Decompression - Genuine Draco Compressed GLB Integration", () => {
   }
   if (fs.existsSync(electronBin)) {
     const runnerScript = path.resolve(__dirname, "fixtures", "run_electron_draco.cjs");
+    const mainCjsPath = path.resolve(__dirname, "..", "electron", "main.cjs").replace(/\\/g, "/");
     const testCode = `
-      const { app, BrowserWindow } = require('electron');
+      process.env.POSEYE_SKIP_AUTOSTART = '1';
+      const { app, BrowserWindow, protocol, net: electronNet } = require('electron');
       const path = require('path');
       const fs = require('fs');
+      const os = require('os');
+      const assert = require('assert');
+      const { pathToFileURL } = require('url');
+      const { resolveAppAssetPath } = require('${mainCjsPath}');
 
       app.whenReady().then(async () => {
+        const protoTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'poseye-proto-live-'));
+        const protoDist = path.join(protoTmp, 'dist');
+        const protoDraco = path.join(protoDist, 'draco');
+        fs.mkdirSync(protoDraco, { recursive: true });
+        fs.writeFileSync(path.join(protoTmp, 'secret.txt'), 'TOP_SECRET');
+        fs.writeFileSync(path.join(protoDist, 'index.html'), '<!DOCTYPE html><html><body>posEye</body></html>');
+        const realDracoDir = path.resolve(__dirname, '..', '..', 'public', 'draco');
+        fs.copyFileSync(path.join(realDracoDir, 'draco_decoder.wasm'), path.join(protoDraco, 'draco_decoder.wasm'));
+        fs.copyFileSync(path.join(realDracoDir, 'draco_wasm_wrapper.js'), path.join(protoDraco, 'draco_wasm_wrapper.js'));
+
+        protocol.handle('poseye', (request) => {
+          const result = resolveAppAssetPath(request.url, protoDist);
+          if (result.error) {
+            return new Response(result.error, { status: result.status || 403 });
+          }
+          return electronNet.fetch(pathToFileURL(result.filePath).toString());
+        });
+
+        try {
+          const wasmRes = await electronNet.fetch('poseye://app/draco/draco_decoder.wasm');
+          assert.strictEqual(wasmRes.status, 200);
+          const wasmCt = (wasmRes.headers.get('content-type') || '').toLowerCase();
+          assert.ok(wasmCt.includes('wasm'), 'Expected wasm content-type, got: ' + wasmCt);
+          const wasmBuf = Buffer.from(await wasmRes.arrayBuffer());
+          assert.strictEqual(wasmBuf.slice(0, 4).toString('binary'), '\\x00asm');
+
+          const jsRes = await electronNet.fetch('poseye://app/viewer/job-123/draco/draco_wasm_wrapper.js');
+          assert.strictEqual(jsRes.status, 200);
+          const jsCt = (jsRes.headers.get('content-type') || '').toLowerCase();
+          assert.ok(jsCt.includes('javascript'), 'Expected javascript content-type, got: ' + jsCt);
+
+          const missingRes = await electronNet.fetch('poseye://app/draco/missing.wasm');
+          assert.strictEqual(missingRes.status, 404);
+
+          const badHostRes = await electronNet.fetch('poseye://otherhost/index.html');
+          assert.strictEqual(badHostRes.status, 403);
+
+          const traversalRes = await electronNet.fetch('poseye://app/%2e%2e/secret.txt');
+          assert.ok(traversalRes.status === 403 || traversalRes.status === 404);
+
+          const normalizedTraversalRes = await electronNet.fetch('poseye://app/../secret.txt');
+          assert.ok(normalizedTraversalRes.status === 403 || normalizedTraversalRes.status === 404);
+        } catch (protoErr) {
+          console.error('Protocol check failed:', protoErr);
+          try { fs.rmSync(protoTmp, { recursive: true, force: true }); } catch {}
+          app.exit(3);
+          return;
+        }
+
         const win = new BrowserWindow({
           show: false,
           webPreferences: { nodeIntegration: true, contextIsolation: false }
@@ -195,19 +250,27 @@ test("Draco Decompression - Genuine Draco Compressed GLB Integration", () => {
             const res = await win.webContents.executeJavaScript('window.__dracoResult');
             if (res) {
               clearInterval(checkInterval);
+              try { fs.rmSync(protoTmp, { recursive: true, force: true }); } catch {}
               app.exit(res.ok ? 0 : 1);
             }
           } catch(e) {}
         }, 100);
 
-        setTimeout(() => app.exit(2), 15000);
+        setTimeout(() => {
+          try { fs.rmSync(protoTmp, { recursive: true, force: true }); } catch {}
+          app.exit(2);
+        }, 15000);
       });
     `;
     try {
       fs.writeFileSync(runnerScript, testCode, "utf-8");
 
+      const childEnv = { ...process.env };
+      delete childEnv.ELECTRON_RUN_AS_NODE;
+
       const res = spawnSync(electronBin, [runnerScript], {
         cwd: path.resolve(__dirname, ".."),
+        env: childEnv,
         encoding: "utf-8",
         timeout: 25000,
         shell: Boolean(process.platform === "win32" && electronBin.endsWith(".cmd")),
@@ -215,7 +278,7 @@ test("Draco Decompression - Genuine Draco Compressed GLB Integration", () => {
       assert.equal(res.status, 0, `Electron Draco decompression must succeed with code 0 (stderr: ${res.stderr})`);
     } finally {
       try { fs.unlinkSync(runnerScript); } catch {}
-      try { fs.unlinkSync(path.resolve(__dirname, "draco_runner.html")); } catch {}
+      try { fs.unlinkSync(path.resolve(__dirname, "fixtures", "draco_runner.html")); } catch {}
     }
   }
 });

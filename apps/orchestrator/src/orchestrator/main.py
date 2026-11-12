@@ -44,7 +44,7 @@ from orchestrator.system import system_diagnostics_report, system_status
 
 
 
-ORCHESTRATOR_VERSION = "0.1.8"
+ORCHESTRATOR_VERSION = "0.1.9"
 
 
 

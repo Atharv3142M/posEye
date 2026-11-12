@@ -146,17 +146,18 @@ export default function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalPr
           <button
             type="button"
             className="btn btn-ghost"
-            style={{ fontSize: 16, padding: "4px 8px" }}
+            style={{ fontSize: 12, padding: "4px 10px" }}
             onClick={onClose}
+            aria-label="Close diagnostics"
           >
-            ✕
+            Close
           </button>
         </div>
 
         {/* Content */}
         <div style={{ padding: 20, overflowY: "auto", flex: 1, fontSize: 13 }}>
           {loading && <p className="muted">Gathering system diagnostics…</p>}
-          {error && <p style={{ color: "var(--text-danger)" }}>⚠ {error}</p>}
+          {error && <p style={{ color: "var(--text-danger)" }}>Error: {error}</p>}
           {data && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               {/* Host Platform */}
@@ -180,19 +181,19 @@ export default function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalPr
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <span><strong>Docker Desktop:</strong> {data.systemStatus.docker?.status} ({data.systemStatus.docker?.version || "unknown"})</span>
                     <span style={{ color: data.systemStatus.docker?.ok ? "var(--text-success)" : "var(--text-danger)" }}>
-                      {data.systemStatus.docker?.ok ? "✓ Operational" : "✗ Offline"}
+                      {data.systemStatus.docker?.ok ? "Operational" : "Offline"}
                     </span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <span><strong>NodeODM Container:</strong> {data.systemStatus.nodeodm?.status} ({data.systemStatus.nodeodm?.version || "pinned 3.6.2"})</span>
                     <span style={{ color: data.systemStatus.nodeodm?.ok ? "var(--text-success)" : "var(--text-danger)" }}>
-                      {data.systemStatus.nodeodm?.ok ? "✓ Connected" : "✗ Offline"}
+                      {data.systemStatus.nodeodm?.ok ? "Connected" : "Offline"}
                     </span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <span><strong>FFmpeg Binary:</strong> {data.systemStatus.ffmpeg?.path || "bundled"}</span>
                     <span style={{ color: data.systemStatus.ffmpeg?.detected ? "var(--text-success)" : "var(--text-danger)" }}>
-                      {data.systemStatus.ffmpeg?.detected ? "✓ Detected" : "✗ Missing"}
+                      {data.systemStatus.ffmpeg?.detected ? "Detected" : "Missing"}
                     </span>
                   </div>
                 </div>
@@ -250,7 +251,7 @@ export default function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalPr
           }}
         >
           <Button variant="secondary" onClick={handleExport} disabled={!data}>
-            ↓ Export Diagnostics Report (.json)
+            Export Diagnostics Report (.json)
           </Button>
           <Button variant="primary" onClick={onClose}>
             Close

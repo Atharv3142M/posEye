@@ -27,4 +27,4 @@ while ((Get-Date) -lt $deadline) {
 
 docker load -i $NodeOdmTar
 docker rm -f poseye-nodeodm digitaltwin-nodeodm 2>$null
-docker run -d --name poseye-nodeodm -p 3000:3000 opendronemap/nodeodm
+docker run -d --name poseye-nodeodm --label org.posEye.managed=true --restart unless-stopped -p 3000:3000 opendronemap/nodeodm:3.6.2

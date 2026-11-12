@@ -10,28 +10,28 @@ const PRESETS = [
     label: "Fast",
     hint: "5–8 min",
     quality: "Lower point density, rapid draft mesh",
-    params: "feature-quality: lowest, octree-depth: 8, resize-to: 1024",
+    params: "feature-quality: lowest, octree-depth: 8",
   },
   {
     id: "balanced",
     label: "Balanced",
     hint: "8–12 min",
     quality: "Good quality surface mesh and DSM elevation",
-    params: "feature-quality: medium, octree-depth: 10, resize-to: 2048, dsm: true",
+    params: "feature-quality: medium, octree-depth: 10, dsm: true",
   },
   {
     id: "high",
     label: "High",
     hint: "15–30 min",
     quality: "Dense point cloud, high-res mesh, DSM & DTM elevation",
-    params: "feature-quality: high, octree-depth: 11, resize-to: 4096, dsm: true, dtm: true",
+    params: "feature-quality: high, octree-depth: 11, dsm: true, dtm: true",
   },
   {
     id: "ultra",
     label: "Ultra",
     hint: "30+ min",
-    quality: "Maximum photogrammetry detail (requires ≥16 GB RAM)",
-    params: "feature-quality: ultra, octree-depth: 12, resize-to: 4096, dsm: true, dtm: true",
+    quality: "Maximum photogrammetry detail (requires 16+ GB RAM)",
+    params: "feature-quality: ultra, octree-depth: 12, dsm: true, dtm: true",
   },
 ];
 
@@ -52,7 +52,7 @@ export default function NewProject() {
   const [videoPath, setVideoPath] = useState("");
   const [srtPath, setSrtPath] = useState("");
   const [preset, setPreset] = useState(localStorage.getItem("dt-preset") || "balanced");
-  const [masks, setMasks] = useState(true);
+  const [masks, setMasks] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [probe, setProbe] = useState<ProbeResult | null>(null);
@@ -190,7 +190,12 @@ export default function NewProject() {
             onDrop={(e) => void onDrop(e)}
             onClick={() => void pickVideo()}
           >
-            <div className="drop-zone-icon">🎬</div>
+            <div className="drop-zone-icon" style={{ display: "flex", justifyContent: "center" }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="2" y="4" width="20" height="16" rx="2" />
+                <polygon points="10 9 16 12 10 15 10 9" />
+              </svg>
+            </div>
             <div className="drop-zone-label">
               {videoPath ? <strong>{videoPath.split(/[\\/]/).pop()}</strong> : "Drag & drop video here, or click to browse"}
             </div>
@@ -250,7 +255,7 @@ export default function NewProject() {
               <Button onClick={() => void pickSrt()}>Browse</Button>
             </div>
             <span style={{ color: "var(--text-muted)", fontSize: 11, marginTop: 2 }}>
-              ℹ SRT provides GPS coordinates for georeferencing. Without it, distances are in model units only (not meters).
+              Note: SRT provides GPS coordinates for georeferencing. Without it, distances are in model units only (not meters).
             </span>
           </label>
         </Card>
@@ -287,7 +292,7 @@ export default function NewProject() {
         <Card>
           <details onToggle={(e) => setShowAdvanced((e.target as HTMLDetailsElement).open)}>
             <summary style={{ fontWeight: 600, fontSize: 13 }}>
-              Advanced Options {showAdvanced ? "▲" : "▼"}
+              Advanced Options ({showAdvanced ? "Hide" : "Show"})
             </summary>
             <div className="stack" style={{ marginTop: 14 }}>
               <label className="field">

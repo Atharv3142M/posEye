@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { ModelTransform } from "./utils/coords";
 
 export type Job = {
   id: string;
@@ -14,6 +15,12 @@ export type Job = {
   preset: string;
   hasModel: boolean;
   isGeoreferenced?: boolean;
+  georeferencing?: {
+    odmGeoreferencingOutputAvailable?: boolean;
+    gpuSiftUsed?: boolean;
+    modelTransform?: ModelTransform | null;
+    [key: string]: any;
+  };
   captureStart?: string | null;
   captureEnd?: string | null;
   accuracy?: Record<string, any>;

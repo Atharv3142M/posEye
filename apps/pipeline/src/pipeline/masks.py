@@ -5,6 +5,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from pipeline.errors import MaskingFailed
+
 MOVING_CLASSES = {
     "person",
     "bicycle",
@@ -40,7 +42,12 @@ def generate_moving_object_masks(
     except ImportError as exc:
         raise RuntimeError("ultralytics is required for moving-object masks") from exc
 
-    model = YOLO(model_name)
+    try:
+        model = YOLO(model_name)
+    except Exception as exc:
+        raise MaskingFailed(
+            f"YOLO weights '{model_name}' could not be loaded offline; place '{model_name}' locally or disable moving-object masks: {exc}"
+        ) from exc
     names = model.names
     out: list[Path] = []
     for frame in frames:

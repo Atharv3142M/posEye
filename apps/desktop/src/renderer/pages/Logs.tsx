@@ -74,7 +74,7 @@ export default function Logs() {
         <div className="row" style={{ justifyContent: "space-between", marginBottom: 16 }}>
           <h1 style={{ marginBottom: 0 }}>Logs</h1>
           <Button onClick={() => tab === "app" ? void loadAppLogs() : id && void loadJobLogs(id)}>
-            ↻ Refresh
+            Refresh
           </Button>
         </div>
 

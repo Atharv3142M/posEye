@@ -173,3 +173,66 @@ def test_cpu_fallback_when_docker_lacks_toolkit():
     assert state["cudaAvailable"] is False
     assert state["cpuFallbackActive"] is True
     assert "CPU processing" in state["nodeodmAcceleration"]
+
+
+def test_windows_docker_desktop_wsl2_gpu_detection(monkeypatch):
+    import subprocess
+    from orchestrator import system
+
+    monkeypatch.setattr(system.os, "name", "nt")
+    monkeypatch.setattr(system, "_find_nvidia_smi", lambda: r"C:\Windows\System32\nvidia-smi.exe")
+    monkeypatch.setattr(
+        system.shutil,
+        "which",
+        lambda name: r"C:\Program Files\Docker\Docker\resources\bin\docker.exe" if name == "docker" else None,
+    )
+
+    def fake_run(cmd, *args, **kwargs):
+        if cmd[:2] == ["docker", "info"]:
+            return subprocess.CompletedProcess(
+                cmd,
+                0,
+                stdout='{"io.containerd.runc.v2":{"path":"runc"},"runc":{"path":"runc"}}|linux|Docker Desktop\n',
+                stderr="",
+            )
+        if "-L" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, stdout="GPU 0: NVIDIA GeForce RTX 4070\n", stderr="")
+        if "--query-gpu=name,driver_version,utilization.gpu,memory.used,memory.total,temperature.gpu" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, stdout="NVIDIA GeForce RTX 4070, 550.54, 5, 512, 12288, 42\n", stderr="")
+        if cmd[:2] == ["docker", "images"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="abc123\n", stderr="")
+        if cmd[:2] == ["docker", "inspect"]:
+            return subprocess.CompletedProcess(
+                cmd,
+                0,
+                stdout=f"{PINNED_GPU_IMAGE}|[{{\"Driver\":\"\",\"Count\":-1,\"Capabilities\":[[\"gpu\"]]}}]\n",
+                stderr="",
+            )
+        if cmd[:2] == ["docker", "exec"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="GPU 0: NVIDIA GeForce RTX 4070\n", stderr="")
+        if cmd[0] == "powershell":
+            return subprocess.CompletedProcess(cmd, 0, stdout='{"Name":"NVIDIA GeForce RTX 4070","AdapterRAM":4293918720}', stderr="")
+        return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="")
+
+    monkeypatch.setattr(system.subprocess, "run", fake_run)
+
+    assert system._check_docker_gpu_passthrough() is True
+    gpu_state = system._gpu()
+    assert gpu_state["dockerGpuPassthrough"] is True
+    assert gpu_state["nvidiaContainerToolkitAvailable"] is True
+    assert gpu_state["containerCudaCapable"] is True
+
+
+def test_windows_docker_info_failure_disables_passthrough(monkeypatch):
+    import subprocess
+    from orchestrator import system
+
+    monkeypatch.setattr(system.os, "name", "nt")
+    monkeypatch.setattr(system, "_find_nvidia_smi", lambda: r"C:\Windows\System32\nvidia-smi.exe")
+    monkeypatch.setattr(system.shutil, "which", lambda name: "docker.exe" if name == "docker" else None)
+
+    def fake_run(cmd, *args, **kwargs):
+        return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="Cannot connect to the Docker daemon")
+
+    monkeypatch.setattr(system.subprocess, "run", fake_run)
+    assert system._check_docker_gpu_passthrough() is False

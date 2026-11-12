@@ -267,6 +267,13 @@ class NodeODMClient:
             new_lines = self.task_output(uuid, line=last_line)
             if new_lines:
                 last_line += len(new_lines)
+                for line in new_lines:
+                    lower_line = line.lower()
+                    if (
+                        "using gpu for extracting sift features" in lower_line
+                        or "using gpu for image matching" in lower_line
+                    ):
+                        gpu_sift_detected = True
 
             if progress:
                 # NodeODM 0-100% maps to orchestrator 42-88%
@@ -278,8 +285,6 @@ class NodeODMClient:
                             phase = parse_odm_phase(clean_line)
                             if phase:
                                 current_phase = phase
-                            if "using gpu for extracting sift features" in clean_line.lower():
-                                gpu_sift_detected = True
                             progress("reconstructing", pct, clean_line)
                             last_emitted_pct = pct
                             last_emitted_msg = clean_line
@@ -292,6 +297,7 @@ class NodeODMClient:
                         last_emitted_msg = fallback_msg
 
             if info.completed:
+                info.gpu_sift_detected = gpu_sift_detected
                 return info
             if info.failed or info.canceled:
                 raise NodeODMError(info.message or f"NodeODM task {uuid} failed ({info.status_code})")

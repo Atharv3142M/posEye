@@ -10,6 +10,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import trimesh
 
 
@@ -227,44 +228,167 @@ def validate_glb(path: Path) -> dict[str, Any]:
     }
 
 
-def convert_textured_model(archive: Path, dest_glb: Path) -> Path:
+def extract_glb_rtc_center(glb_path: Path) -> list[float] | None:
+    """Read GLB 2.0 JSON chunk header and extract extensions.CESIUM_RTC.center if present."""
+    path = Path(glb_path)
+    if not path.is_file():
+        return None
+    try:
+        if path.stat().st_size < 20:
+            return None
+        with path.open("rb") as f:
+            header = f.read(12)
+            if len(header) < 12:
+                return None
+            magic, version, _length = struct.unpack("<4sII", header)
+            if magic != b"glTF" or version != 2:
+                return None
+            chunk_header = f.read(8)
+            if len(chunk_header) < 8:
+                return None
+            chunk_len, chunk_type = struct.unpack("<II", chunk_header)
+            if chunk_type != 0x4E4F534A:
+                return None
+            json_bytes = f.read(chunk_len)
+            if len(json_bytes) < chunk_len:
+                return None
+        data = json.loads(json_bytes.decode("utf-8"))
+        extensions = data.get("extensions")
+        if not isinstance(extensions, dict):
+            return None
+        rtc = extensions.get("CESIUM_RTC")
+        if not isinstance(rtc, dict):
+            return None
+        center = rtc.get("center")
+        if isinstance(center, (list, tuple)) and len(center) == 3:
+            vals = [float(v) for v in center]
+            if all(math.isfinite(v) for v in vals):
+                return vals
+    except Exception:
+        return None
+    return None
+
+
+def _copy_and_validate_glb(
+    src_glb: Path,
+    dest_glb: Path,
+    transform_out: dict[str, Any] | None,
+) -> Path:
+    validate_glb(src_glb)
+    dest_glb.write_bytes(src_glb.read_bytes())
+    validate_glb(dest_glb)
+    if transform_out is not None:
+        rtc = extract_glb_rtc_center(src_glb)
+        transform_out.update({
+            "origin": rtc or [0.0, 0.0, 0.0],
+            "axisConvention": "z_up",
+            "hasCesiumRtc": rtc is not None,
+        })
+    return dest_glb
+
+
+def _recenter_and_export_scene(loaded: Any, dest_glb: Path) -> list[float]:
+    """Bake node transforms, subtract bounds center in float64, rotate Z-up -> Y-up, and export GLB."""
+    if not isinstance(loaded, trimesh.Scene):
+        loaded = trimesh.Scene(loaded)
+
+    if loaded.bounds is None or not loaded.geometry:
+        raise ConvertError("Loaded model contains empty geometry")
+
+    bounds = np.asarray(loaded.bounds, dtype=np.float64)
+    if not np.isfinite(bounds).all():
+        raise ConvertError("Model contains non-finite bounding coordinates")
+
+    origin_arr = bounds.mean(axis=0)
+    origin = [float(v) for v in origin_arr]
+
+    dumped = loaded.dump(concatenate=False)
+    if not dumped:
+        raise ConvertError("Loaded model contains no mesh instances")
+
+    # Rotate -90 deg around X: (x, y, z) -> (x, z, -y)
+    rot_x_neg90 = np.array(
+        [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, -1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+
+    recentered_scene = trimesh.Scene()
+    has_vertices = False
+    for idx, geom in enumerate(dumped):
+        verts = getattr(geom, "vertices", None)
+        if verts is not None and len(verts) > 0:
+            if not np.isfinite(verts).all():
+                raise ConvertError("Model contains non-finite vertex coordinates")
+            has_vertices = True
+            geom.vertices = np.asarray(verts, dtype=np.float64) - origin_arr
+            geom.apply_transform(rot_x_neg90)
+        base_name = "mesh"
+        if hasattr(geom, "metadata") and isinstance(geom.metadata, dict):
+            base_name = str(geom.metadata.get("node") or geom.metadata.get("name") or "mesh")
+        unique_name = f"{base_name}_{idx}"
+        recentered_scene.add_geometry(geom, geom_name=unique_name, node_name=unique_name)
+
+    if not has_vertices:
+        raise ConvertError("Loaded model contains empty geometry")
+
+    recentered_scene.export(str(dest_glb))
+    if not dest_glb.is_file() or dest_glb.stat().st_size == 0:
+        raise ConvertError("GLB export failed or generated empty 0-byte file")
+    return origin
+
+
+def convert_textured_model(
+    archive: Path,
+    dest_glb: Path,
+    *,
+    transform_out: dict[str, Any] | None = None,
+) -> Path:
     """Turn NodeODM textured_model.zip (or a folder / OBJ / GLB) into a validated web-ready GLB."""
+    archive = Path(archive)
     dest_glb = Path(dest_glb).resolve()
     dest_glb.parent.mkdir(parents=True, exist_ok=True)
 
     # 1. Direct GLB input: validate first, do NOT blindly copy!
     if archive.is_file() and archive.suffix.lower() == ".glb":
-        validate_glb(archive)
-        dest_glb.write_bytes(archive.read_bytes())
-        validate_glb(dest_glb)
-        return dest_glb
+        return _copy_and_validate_glb(archive, dest_glb, transform_out)
 
-    work = dest_glb.parent / "_mesh"
-    work.mkdir(parents=True, exist_ok=True)
-    source_dir = archive
-    if archive.is_file() and archive.suffix.lower() == ".zip":
-        safe_extract_zip(archive, work)
-        source_dir = work
-    elif archive.is_file():
-        source_dir = archive.parent
+    obj: Path | None = None
+    gltf: Path | None = None
 
-    obj = _first(source_dir, {".obj"}) if source_dir.is_dir() else None
-    gltf = _first(source_dir, {".glb", ".gltf"}) if source_dir.is_dir() else None
-    if archive.suffix.lower() == ".obj":
-        obj = archive
-    if archive.suffix.lower() in {".gltf", ".glb"}:
-        gltf = archive
+    if archive.is_file():
+        suffix = archive.suffix.lower()
+        if suffix == ".zip":
+            work = dest_glb.parent / "_mesh"
+            work.mkdir(parents=True, exist_ok=True)
+            safe_extract_zip(archive, work)
+            obj = _first(work, {".obj"})
+            gltf = _first(work, {".glb", ".gltf"})
+        elif suffix == ".obj":
+            obj = archive
+        elif suffix == ".gltf":
+            gltf = archive
+    elif archive.is_dir():
+        obj = _first(archive, {".obj"})
+        gltf = _first(archive, {".glb", ".gltf"})
 
     if gltf and gltf.suffix.lower() == ".glb":
-        validate_glb(gltf)
-        dest_glb.write_bytes(gltf.read_bytes())
-        validate_glb(dest_glb)
-        return dest_glb
+        return _copy_and_validate_glb(gltf, dest_glb, transform_out)
 
     if gltf and gltf.suffix.lower() == ".gltf":
-        scene = trimesh.load(str(gltf), force="scene")
-        scene.export(str(dest_glb))
+        loaded = trimesh.load(str(gltf), force="scene")
+        origin = _recenter_and_export_scene(loaded, dest_glb)
         validate_glb(dest_glb)
+        if transform_out is not None:
+            transform_out.update({
+                "origin": origin,
+                "axisConvention": "z_up_to_y_up",
+                "hasCesiumRtc": False,
+            })
         return dest_glb
 
     if not obj:
@@ -290,12 +414,16 @@ def convert_textured_model(archive: Path, dest_glb: Path) -> Path:
                         raise ConvertError(f"Material '{mtl_name}' references texture '{tex_file_name}' which does not exist")
 
     loaded = trimesh.load(str(obj), force="scene")
-    loaded.export(str(dest_glb))
-    if not dest_glb.is_file() or dest_glb.stat().st_size == 0:
-        raise ConvertError("GLB export failed or generated empty 0-byte file")
+    origin = _recenter_and_export_scene(loaded, dest_glb)
 
     # Validate output geometry and structure
     validate_glb(dest_glb)
+    if transform_out is not None:
+        transform_out.update({
+            "origin": origin,
+            "axisConvention": "z_up_to_y_up",
+            "hasCesiumRtc": False,
+        })
     return dest_glb
 
 

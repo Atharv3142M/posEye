@@ -37,7 +37,7 @@ export default function ProjectsList() {
       <div className="container">
         <div className="row" style={{ justifyContent: "space-between", marginBottom: 16 }}>
           <h1 style={{ marginBottom: 0 }}>Projects</h1>
-          <Button variant="primary" onClick={() => nav("/projects/new")}>＋ New project</Button>
+          <Button variant="primary" onClick={() => nav("/projects/new")}>+ New Project</Button>
         </div>
 
         <div className="row" style={{ marginBottom: 16 }}>
