@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { initChrome, isWebGLAvailable, showWebGLFallback } from '../lib/ui.js';
-import { addTacticalLights, createRenderer } from '../lib/terrain.js';
+import { initSiteChrome, isWebGLAvailable, showWebGLFallback } from '../lib/core.js';
+import { addTacticalLights, createRenderer } from '../lib/scene3d.js';
 
-const { reduced } = initChrome();
+const { reduced } = initSiteChrome();
 
 function initEngineCore3D() {
   const canvas = document.querySelector('#download-canvas');
@@ -86,24 +86,4 @@ function initEngineCore3D() {
   });
 }
 
-function initCopyButtons() {
-  document.querySelectorAll('[data-copy-target]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const target = document.querySelector(btn.dataset.copyTarget);
-      if (!target) return;
-      try {
-        await navigator.clipboard.writeText(target.textContent.trim());
-        const prev = btn.textContent;
-        btn.textContent = 'COPIED TO CLIPBOARD';
-        setTimeout(() => {
-          btn.textContent = prev;
-        }, 1600);
-      } catch {
-        // clipboard fallback ignored
-      }
-    });
-  });
-}
-
 initEngineCore3D();
-initCopyButtons();

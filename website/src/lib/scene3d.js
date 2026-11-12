@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 
-/** Deterministic PRNG (Mulberry32) so 3D scenes are reproducible frame-to-frame */
-export function createSeededRng(seed = 1337) {
+export function createSeededRng(seed = 2026) {
   let s = seed >>> 0;
   return () => {
     s += 0x6d2b79f5;
@@ -11,31 +10,29 @@ export function createSeededRng(seed = 1337) {
   };
 }
 
-/** Multi-octave elevation profile presets for different terrain sites */
 export function sampleElevation(x, z, site = 'coastal') {
   if (site === 'substation') {
-    const pad1 = Math.exp(-((x - 1.5) ** 2 + (z + 1.0) ** 2) * 0.25) * 1.4;
-    const pad2 = Math.exp(-((x + 2.4) ** 2 + (z - 1.8) ** 2) * 0.35) * 1.1;
-    const ridge = Math.sin(x * 0.4) * Math.cos(z * 0.35) * 0.35;
-    const step = (Math.abs(x) < 4.5 && Math.abs(z) < 4.5 ? 0.2 : 0) + pad1 + pad2;
-    return ridge + step * 0.75;
+    const padA = Math.exp(-((x - 1.6) ** 2 + (z + 1.1) ** 2) * 0.3) * 1.45;
+    const padB = Math.exp(-((x + 2.2) ** 2 + (z - 1.6) ** 2) * 0.4) * 1.15;
+    const plinth = Math.abs(x) < 4.2 && Math.abs(z) < 4.2 ? 0.25 : 0;
+    const detail = Math.sin(x * 0.5) * Math.cos(z * 0.45) * 0.25;
+    return plinth + padA + padB + detail;
   }
   if (site === 'canyon') {
-    const channel = Math.exp(-(x * x) * 0.16) * -1.45;
-    const walls = (Math.abs(x) * 0.24) + Math.sin(z * 0.45) * 0.35;
-    const detail = Math.cos(x * 1.1 + z * 0.7) * 0.16;
-    return channel + walls * 0.65 + detail;
+    const gorge = Math.exp(-(x * x) * 0.18) * -1.65;
+    const walls = Math.abs(x) * 0.26 + Math.sin(z * 0.42) * 0.34;
+    const strata = Math.cos(x * 1.15 + z * 0.7) * 0.16;
+    return gorge + walls * 0.7 + strata;
   }
-  // default: 'coastal' photogrammetry ridge
   return (
-    Math.sin(x * 0.46) * Math.cos(z * 0.36) * 0.72 +
-    Math.sin((x + z) * 0.23) * 0.46 +
-    Math.cos(z * 0.85 + x * 0.18) * 0.2 +
-    Math.exp(-((x - 1.2) ** 2 + (z - 0.6) ** 2) * 0.12) * 0.95
+    Math.sin(x * 0.45) * Math.cos(z * 0.35) * 0.78 +
+    Math.sin((x + z) * 0.22) * 0.48 +
+    Math.cos(z * 0.85 + x * 0.18) * 0.22 +
+    Math.exp(-((x - 1.4) ** 2 + (z - 0.5) ** 2) * 0.12) * 1.05
   );
 }
 
-export function buildTerrainGeometry(size = 20, segments = 96, site = 'coastal') {
+export function buildTerrainGeometry(size = 20, segments = 100, site = 'coastal') {
   const geo = new THREE.PlaneGeometry(size, size, segments, segments);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
@@ -51,23 +48,23 @@ export function buildTerrainGeometry(size = 20, segments = 96, site = 'coastal')
   return { geo, minY, maxY };
 }
 
-export function buildPointCloudFromTerrain(size = 20, count = 3200, site = 'coastal', seed = 404) {
+export function buildPointCloudFromTerrain(size = 20, count = 4200, site = 'coastal', seed = 404) {
   const rng = createSeededRng(seed);
   const positions = new Float32Array(count * 3);
   const colors = new Float32Array(count * 3);
   const cLow = new THREE.Color(0x5cc4ff);
-  const cMid = new THREE.Color(0xf1f0ed);
+  const cMid = new THREE.Color(0xe2e8f0);
   const cHigh = new THREE.Color(0xff4b0b);
 
   for (let i = 0; i < count; i++) {
     const x = (rng() - 0.5) * size;
     const z = (rng() - 0.5) * size;
-    const y = sampleElevation(x, z, site) + 0.03;
+    const y = sampleElevation(x, z, site) + 0.035;
     positions[i * 3] = x;
     positions[i * 3 + 1] = y;
     positions[i * 3 + 2] = z;
 
-    const h = THREE.MathUtils.clamp((y + 1.2) / 2.8, 0, 1);
+    const h = THREE.MathUtils.clamp((y + 1.3) / 3.0, 0, 1);
     const col = h < 0.5
       ? cLow.clone().lerp(cMid, h * 2)
       : cMid.clone().lerp(cHigh, (h - 0.5) * 2);
@@ -82,8 +79,7 @@ export function buildPointCloudFromTerrain(size = 20, count = 3200, site = 'coas
   return geo;
 }
 
-/** Custom GLSL topo elevation + contour + sweep shader */
-export function createTopoShaderMaterial(minY = -1.2, maxY = 1.8) {
+export function createTopoShaderMaterial(minY = -1.4, maxY = 2.0) {
   const span = Math.max(0.001, maxY - minY);
   return new THREE.ShaderMaterial({
     uniforms: {
@@ -92,6 +88,7 @@ export function createTopoShaderMaterial(minY = -1.2, maxY = 1.8) {
       uMinY: { value: minY },
       uSpan: { value: span },
       uHeatmap: { value: 0 },
+      uSliceY: { value: 99.0 },
     },
     vertexShader: `
       varying vec3 vWorld;
@@ -109,14 +106,17 @@ export function createTopoShaderMaterial(minY = -1.2, maxY = 1.8) {
       uniform float uMinY;
       uniform float uSpan;
       uniform float uHeatmap;
+      uniform float uSliceY;
       varying vec3 vWorld;
       varying vec3 vNorm;
 
       void main() {
+        if (vWorld.y > uSliceY) discard;
+
         float h = clamp((vWorld.y - uMinY) / uSpan, 0.0, 1.0);
-        vec3 baseDark = vec3(0.06, 0.075, 0.10);
-        vec3 midSlate = vec3(0.14, 0.17, 0.22);
-        vec3 peakWarm = vec3(1.0, 0.30, 0.05);
+        vec3 baseDark = vec3(0.055, 0.07, 0.095);
+        vec3 midSlate = vec3(0.15, 0.19, 0.25);
+        vec3 peakWarm = vec3(1.0, 0.294, 0.043);
         vec3 cyanRim = vec3(0.36, 0.77, 1.0);
 
         vec3 lightDir = normalize(vec3(-0.5, 0.85, 0.4));
@@ -124,22 +124,26 @@ export function createTopoShaderMaterial(minY = -1.2, maxY = 1.8) {
 
         vec3 albedo = mix(baseDark, midSlate, h);
         if (uHeatmap > 0.5) {
-          albedo = mix(cyanRim * 0.45, peakWarm, smoothstep(0.15, 0.92, h));
+          albedo = mix(cyanRim * 0.45, peakWarm, smoothstep(0.12, 0.92, h));
         }
-        albedo *= (0.55 + diff * 0.75);
+        albedo *= (0.58 + diff * 0.78);
 
-        // Topographic contour isolines
+        // Topographic isolines
         float contour = abs(fract(vWorld.y * 4.5) - 0.5);
-        float line = 1.0 - smoothstep(0.02, 0.06, contour);
-        albedo = mix(albedo, peakWarm, line * (uHeatmap > 0.5 ? 0.55 : 0.35));
+        float line = 1.0 - smoothstep(0.02, 0.055, contour);
+        albedo = mix(albedo, peakWarm, line * (uHeatmap > 0.5 ? 0.5 : 0.34));
 
-        // Scanning drone beam ring
+        // Cross-section slice glow rim
+        float sliceEdge = smoothstep(0.08, 0.0, abs(vWorld.y - uSliceY));
+        albedo += cyanRim * sliceEdge * 0.9;
+
+        // Drone scanner pulse ring
         float d = length(vWorld.xz - uScanPos);
-        float pulse = smoothstep(2.6, 0.0, abs(d - mod(uTime * 2.2, 6.0))) * 0.45;
-        float spot = exp(-d * d * 0.22) * 0.38;
+        float pulse = smoothstep(2.4, 0.0, abs(d - mod(uTime * 2.1, 6.2))) * 0.45;
+        float spot = exp(-d * d * 0.2) * 0.38;
         albedo += peakWarm * (pulse + spot);
 
-        gl_FragColor = vec4(albedo, 0.94);
+        gl_FragColor = vec4(albedo, 0.95);
       }
     `,
     transparent: true,
@@ -147,12 +151,10 @@ export function createTopoShaderMaterial(minY = -1.2, maxY = 1.8) {
   });
 }
 
-/** Builds a clean tactical drone + scanning frustum group */
 export function createDroneRig() {
   const group = new THREE.Group();
-
   const bodyMat = new THREE.MeshStandardMaterial({
-    color: 0x1b2029,
+    color: 0x1a202c,
     metalness: 0.65,
     roughness: 0.45,
   });
@@ -160,54 +162,50 @@ export function createDroneRig() {
   const rotorMat = new THREE.MeshBasicMaterial({
     color: 0x5cc4ff,
     transparent: true,
-    opacity: 0.55,
+    opacity: 0.58,
   });
 
-  const chassis = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.12, 0.56), bodyMat);
-  group.add(chassis);
+  group.add(new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.13, 0.62), bodyMat));
 
-  const armOffsets = [
-    [-0.36, 0.04, -0.36],
-    [0.36, 0.04, -0.36],
-    [-0.36, 0.04, 0.36],
-    [0.36, 0.04, 0.36],
+  const arms = [
+    [-0.4, 0.04, -0.4],
+    [0.4, 0.04, -0.4],
+    [-0.4, 0.04, 0.4],
+    [0.4, 0.04, 0.4],
   ];
-  for (const [ax, ay, az] of armOffsets) {
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.04, 0.45), bodyMat);
+  for (const [ax, ay, az] of arms) {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.04, 0.52), bodyMat);
     arm.position.set(ax * 0.5, ay * 0.5, az * 0.5);
     arm.lookAt(ax, ay, az);
     group.add(arm);
 
-    const ring = new THREE.Mesh(new THREE.RingGeometry(0.14, 0.18, 24), rotorMat);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.15, 0.2, 24), rotorMat);
     ring.rotation.x = -Math.PI / 2;
     ring.position.set(ax, ay + 0.03, az);
     group.add(ring);
   }
 
-  const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 12), accentMat);
-  beacon.position.set(0, 0.09, 0.16);
+  const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 12), accentMat);
+  beacon.position.set(0, 0.1, 0.18);
   group.add(beacon);
 
-  // Camera frustum cone pointing down
-  const frustumGeo = new THREE.ConeGeometry(1.35, 2.8, 4, 1, true);
+  const frustumGeo = new THREE.ConeGeometry(1.5, 3.1, 4, 1, true);
   frustumGeo.rotateY(Math.PI / 4);
-  const frustumEdges = new THREE.EdgesGeometry(frustumGeo);
   const frustum = new THREE.LineSegments(
-    frustumEdges,
-    new THREE.LineBasicMaterial({ color: 0xff4b0b, transparent: true, opacity: 0.42 })
+    new THREE.EdgesGeometry(frustumGeo),
+    new THREE.LineBasicMaterial({ color: 0xff4b0b, transparent: true, opacity: 0.45 })
   );
-  frustum.position.y = -1.45;
+  frustum.position.y = -1.6;
   group.add(frustum);
 
   return group;
 }
 
-/** Warm key + cool rim lighting per 3D scene craft guidelines */
 export function addTacticalLights(scene) {
-  const hemi = new THREE.HemisphereLight(0x88b8e6, 0x100c14, 1.35);
-  const key = new THREE.DirectionalLight(0xff6b35, 2.1);
-  key.position.set(-6, 9, 5);
-  const rim = new THREE.DirectionalLight(0x5cc4ff, 1.25);
+  const hemi = new THREE.HemisphereLight(0x88b8e6, 0x0f0c14, 1.35);
+  const key = new THREE.DirectionalLight(0xff6b35, 2.2);
+  key.position.set(-6, 10, 5);
+  const rim = new THREE.DirectionalLight(0x5cc4ff, 1.35);
   rim.position.set(7, 4, -6);
   scene.add(hemi, key, rim);
 }

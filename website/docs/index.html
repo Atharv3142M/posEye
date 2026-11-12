@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#060709">
+  <meta name="description" content="posEye technical reference: supported drone SRT telemetry formats, deliverable specs, and operator FAQ.">
+  <title>Documentation &amp; FAQ — posEye</title>
+  <link rel="icon" type="image/png" href="../posEye.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../src/styles/system.css">
+  <link rel="stylesheet" href="../src/styles/sections.css">
+</head>
+<body class="loading">
+  <div class="loader" aria-hidden="true"><img src="../posEye.png" alt=""><span>LOADING DOCS</span><i></i></div>
+  <div class="route-curtain" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <a class="brand" href="../" data-nav aria-label="posEye home">
+      <img src="../posEye.png" alt="posEye logo">
+      <span>pos<span class="signal">Eye</span></span>
+      <span class="brand-ver">v0.1.9</span>
+    </a>
+    <nav class="navlinks" aria-label="Primary navigation">
+      <a href="../" data-nav>PRODUCT</a>
+      <a href="../pipeline/" data-nav>PIPELINE</a>
+      <a href="../viewer/" data-nav>3D LAB</a>
+      <a href="../architecture/" data-nav>ARCHITECTURE</a>
+      <a href="../docs/" class="active" data-nav>DOCS</a>
+      <a href="../contact/" data-nav>CONTACT</a>
+    </nav>
+    <a class="nav-cta" href="../download/" data-nav>GET v0.1.9 <span>↓</span></a>
+    <button class="menu-btn" aria-label="Open navigation" aria-expanded="false"><span></span><span></span></button>
+  </header>
+
+  <main>
+    <section class="page-head">
+      <div class="wrap">
+        <div class="kicker"><span class="tag">OPERATOR MANUAL &amp; SPECS</span><span>TELEMETRY · OUTPUTS · FAQ</span></div>
+        <h1 class="hero-reveal">Technical<br><span class="signal">Reference.</span></h1>
+        <p class="hero-reveal">Supported drone telemetry formats, deliverable specifications, and answers to common deployment questions.</p>
+      </div>
+    </section>
+
+    <section class="band">
+      <div class="wrap">
+        <div class="kicker"><span class="tag">01 / SUPPORTED TELEMETRY FORMATS</span><span>.SRT EXIF INJECTION</span></div>
+
+        <div class="arch-grid">
+          <div>
+            <h2 class="h2-xl" style="font-size: clamp(28px, 3.4vw, 44px); margin-bottom: 14px;">Automatic SRT Cue Parsing</h2>
+            <p class="muted" style="margin-bottom: 20px;">
+              posEye parses DJI and Autel subtitle telemetry streams, aligns each extracted frame via nearest-neighbor search (≤ 1.5s tolerance), and writes WGS 84 DMS coordinates plus AMSL altitude into JPEG EXIF headers. Pre-flight frames outside telemetry bounds are rejected cleanly.
+            </p>
+            <div class="btn-group">
+              <button class="cad-btn active" type="button" data-srt-fmt="parenthesized">DJI PARENTHESIZED</button>
+              <button class="cad-btn" type="button" data-srt-fmt="csv">DJI CSV</button>
+              <button class="cad-btn" type="button" data-srt-fmt="kv">KEY-VALUE</button>
+            </div>
+          </div>
+
+          <pre id="srt-sample" class="code-block">1
+00:00:00,000 --&gt; 00:00:01,000
+GPS(19.076090, 72.877426, 118.4)</pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="band">
+      <div class="wrap">
+        <div class="kicker"><span class="tag">02 / DELIVERABLE FORMATS</span><span>STANDARD GIS &amp; 3D OUTPUTS</span></div>
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ARTIFACT</th>
+                <th>FILENAME</th>
+                <th>FORMAT / STANDARD</th>
+                <th>PRIMARY USE</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Textured 3D Surface Mesh</strong></td>
+                <td><code>model.glb</code></td>
+                <td>Draco-Compressed Binary glTF 2.0</td>
+                <td>Interactive inspection &amp; measurement inside posEye</td>
+              </tr>
+              <tr>
+                <td><strong>Dense Point Cloud</strong></td>
+                <td><code>point_cloud.laz</code></td>
+                <td>ASPRS LiDAR 1.4 Compressed</td>
+                <td>External GIS analysis (Potree, CloudCompare, QGIS)</td>
+              </tr>
+              <tr>
+                <td><strong>Orthophoto &amp; Elevation Rasters</strong></td>
+                <td><code>orthophoto.tif</code>, <code>dsm.tif</code></td>
+                <td>Georeferenced GeoTIFF (UTM)</td>
+                <td>Top-down mapping, elevation profiles &amp; overlays</td>
+              </tr>
+              <tr>
+                <td><strong>Quality &amp; Accuracy Report</strong></td>
+                <td><code>report.pdf</code></td>
+                <td>PDF + Provenance JSON</td>
+                <td>RMS_3D / RMS_XY diagnostics &amp; capture timestamps</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="band" style="border-bottom: 0;">
+      <div class="wrap">
+        <div class="kicker"><span class="tag">03 / OPERATOR FAQ</span><span>COMMON QUESTIONS</span></div>
+        <div class="faq-list">
+          <div class="faq-item open">
+            <button class="faq-q" type="button" aria-expanded="true">Does posEye upload drone footage to any cloud server? <span class="faq-plus">−</span></button>
+            <div class="faq-a"><p>Never. Every stage—FFmpeg frame extraction, sharpness filtering, EXIF geotagging, YOLOv8n masking, the posEye Construction Engine, and WebGL viewing—runs strictly on your local Windows machine over loopback 127.0.0.1.</p></div>
+          </div>
+          <div class="faq-item">
+            <button class="faq-q" type="button" aria-expanded="false">What happens if I process a drone video without an .SRT file? <span class="faq-plus">+</span></button>
+            <div class="faq-a"><p>posEye still builds a clean, proportional 3D model in relative mode. Because monocular video without GPS lacks real-world scale, the 3D viewer explicitly marks the model as uncalibrated and displays measurements in "model units" instead of fake meters.</p></div>
+          </div>
+          <div class="faq-item">
+            <button class="faq-q" type="button" aria-expanded="false">Is an NVIDIA GPU required to run posEye? <span class="faq-plus">+</span></button>
+            <div class="faq-a"><p>No. When an NVIDIA RTX GPU and Container Toolkit are detected, posEye enables GPU-accelerated SIFT feature extraction automatically. If unavailable, the pipeline falls back cleanly to multi-core CPU processing.</p></div>
+          </div>
+          <div class="faq-item">
+            <button class="faq-q" type="button" aria-expanded="false">Are posEye models certified for legal cadastral surveying? <span class="faq-plus">+</span></button>
+            <div class="faq-a"><p>Models built solely from consumer drone GPS carry nominal ±2–5 m horizontal GNSS variance and are intended for reconnaissance, inspection, and planning. Survey-grade validation requires surveyed Ground Control Points (GCPs) and independent checkpoints.</p></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <div class="footer-grid">
+        <div class="footer-col"><a class="brand" href="../" data-nav style="margin-bottom: 12px;"><img src="../posEye.png" alt=""><span>pos<span class="signal">Eye</span></span></a><p class="muted" style="font-size: 13px; margin: 0;">Offline drone video photogrammetry for Windows workstations.</p></div>
+        <div class="footer-col"><h4>PRODUCT</h4><a href="../" data-nav>Overview</a><a href="../pipeline/" data-nav>11-Stage Pipeline</a><a href="../viewer/" data-nav>Interactive 3D Lab</a><a href="../download/" data-nav>Download v0.1.9</a></div>
+        <div class="footer-col"><h4>ENGINEERING</h4><a href="../architecture/" data-nav>Architecture &amp; Math</a><a href="../docs/" data-nav>Docs &amp; FAQ</a><a href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">GitHub ↗</a></div>
+        <div class="footer-col"><h4>CONNECT</h4><a href="../contact/" data-nav>Contact Us</a><a href="https://github.com/Atharv3142M/posEye/issues" target="_blank" rel="noreferrer">Issues ↗</a></div>
+      </div>
+      <div class="footer-bottom"><span>MIT LICENSE · CREATED BY ATHARV POSE</span><span>© <span id="year"></span> posEye</span></div>
+    </div>
+  </footer>
+
+  <script type="module" src="../src/pages/docs.js"></script>
+</body>
+</html>

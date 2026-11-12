@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { initChrome, isWebGLAvailable, showWebGLFallback } from '../lib/ui.js';
-import { addTacticalLights, createRenderer } from '../lib/terrain.js';
+import { initSiteChrome, isWebGLAvailable, showWebGLFallback } from '../lib/core.js';
+import { addTacticalLights, createRenderer } from '../lib/scene3d.js';
 
-const { reduced, gsap } = initChrome();
+const { reduced, gsap } = initSiteChrome();
 
 function initCoordinateVisualizer() {
   const canvas = document.querySelector('#arch-canvas');
@@ -24,10 +24,7 @@ function initCoordinateVisualizer() {
   camera.lookAt(0, 0, 0);
 
   addTacticalLights(scene);
-
-  // Origin axes
-  const axes = new THREE.AxesHelper(3.4);
-  scene.add(axes);
+  scene.add(new THREE.AxesHelper(3.4));
 
   const grid = new THREE.GridHelper(12, 24, 0xff4b0b, 0x1b2029);
   grid.position.y = -1.2;
@@ -35,31 +32,27 @@ function initCoordinateVisualizer() {
   grid.material.opacity = 0.25;
   scene.add(grid);
 
-  // Outer datum wireframe sphere
   const datumSphere = new THREE.Mesh(
     new THREE.IcosahedronGeometry(2.8, 2),
     new THREE.MeshBasicMaterial({ color: 0x5cc4ff, wireframe: true, transparent: true, opacity: 0.16 })
   );
   scene.add(datumSphere);
 
-  // Model bounding box cube representing reconstructed scene
   const modelBox = new THREE.Group();
   const coreGeo = new THREE.BoxGeometry(1.7, 0.9, 1.7);
-  const coreMesh = new THREE.Mesh(
-    coreGeo,
-    new THREE.MeshStandardMaterial({
-      color: 0x1c222e,
-      metalness: 0.45,
-      roughness: 0.48,
-      transparent: true,
-      opacity: 0.85,
-    })
+  modelBox.add(
+    new THREE.Mesh(
+      coreGeo,
+      new THREE.MeshStandardMaterial({
+        color: 0x1c222e,
+        metalness: 0.45,
+        roughness: 0.48,
+        transparent: true,
+        opacity: 0.85,
+      })
+    ),
+    new THREE.LineSegments(new THREE.EdgesGeometry(coreGeo), new THREE.LineBasicMaterial({ color: 0xff4b0b }))
   );
-  const coreWire = new THREE.LineSegments(
-    new THREE.EdgesGeometry(coreGeo),
-    new THREE.LineBasicMaterial({ color: 0xff4b0b })
-  );
-  modelBox.add(coreMesh, coreWire);
   scene.add(modelBox);
 
   const stateBadge = document.querySelector('#coord-state-readout');
@@ -77,8 +70,8 @@ function initCoordinateVisualizer() {
     }
     if (stateBadge) {
       stateBadge.textContent = centered
-        ? 'ORIGIN CENTERED (0, 0, 0) · ZERO FLOAT32 JITTER · UTM OFFSET PRESERVED IN HUD'
-        : 'RAW UTM SPACE (E 314820, N 2108450) · LARGE-COORDINATE DEPTH PRECISION LOSS';
+        ? 'ORIGIN CENTERED (0, 0, 0) · ZERO FLOAT32 JITTER · UTM OFFSET PRESERVED'
+        : 'RAW UTM SPACE (E 314820, N 2108450) · DEPTH PRECISION LOSS';
     }
   };
 

@@ -3,86 +3,89 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#07080b">
-  <meta name="description" content="Interactive WebGL 3D Spatial Sandbox mirroring the posEye desktop viewport and measurement tools.">
-  <title>3D Spatial Sandbox — posEye</title>
+  <meta name="theme-color" content="#060709">
+  <meta name="description" content="Interactive WebGL 3D Spatial Lab mirroring the posEye desktop viewport, elevation slicer, and Euclidean measurement tools.">
+  <title>Interactive 3D Lab — posEye</title>
   <link rel="icon" type="image/png" href="../posEye.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../src/styles/tokens.css">
-  <link rel="stylesheet" href="../src/styles/pages.css">
+  <link rel="stylesheet" href="../src/styles/system.css">
+  <link rel="stylesheet" href="../src/styles/sections.css">
 </head>
 <body class="loading">
-  <div class="loader" aria-hidden="true">
-    <img src="../posEye.png" alt="">
-    <span>MOUNTING 3D SPATIAL SANDBOX</span>
-    <i></i>
-  </div>
-  <div class="page-curtain" aria-hidden="true"></div>
-  <div class="noise" aria-hidden="true"></div>
+  <div class="loader" aria-hidden="true"><img src="../posEye.png" alt=""><span>MOUNTING 3D LAB</span><i></i></div>
+  <div class="route-curtain" aria-hidden="true"></div>
 
-  <header class="nav">
+  <header class="topbar">
     <a class="brand" href="../" data-nav aria-label="posEye home">
       <img src="../posEye.png" alt="posEye logo">
-      <span>pos<span class="orange">Eye</span></span>
+      <span>pos<span class="signal">Eye</span></span>
+      <span class="brand-ver">v0.1.9</span>
     </a>
     <nav class="navlinks" aria-label="Primary navigation">
-      <a href="../" data-nav>OVERVIEW</a>
+      <a href="../" data-nav>PRODUCT</a>
       <a href="../pipeline/" data-nav>PIPELINE</a>
-      <a href="../viewer/" class="active" data-nav>3D SANDBOX</a>
+      <a href="../viewer/" class="active" data-nav>3D LAB</a>
       <a href="../architecture/" data-nav>ARCHITECTURE</a>
-      <a href="../download/" data-nav>GET v0.1.9</a>
+      <a href="../docs/" data-nav>DOCS</a>
+      <a href="../contact/" data-nav>CONTACT</a>
     </nav>
-    <a class="nav-cta" href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">GITHUB <span>↗</span></a>
-    <button class="menu" aria-label="Open navigation" aria-expanded="false"><span></span><span></span></button>
+    <a class="nav-cta" href="../download/" data-nav>GET v0.1.9 <span>↓</span></a>
+    <button class="menu-btn" aria-label="Open navigation" aria-expanded="false"><span></span><span></span></button>
   </header>
 
   <main class="viewer-shell">
-    <section class="viewer-viewport" aria-label="Interactive 3D model viewport">
+    <section class="viewer-viewport" aria-label="Interactive 3D spatial sandbox">
       <canvas id="sandbox-canvas"></canvas>
       <div class="webgl-fallback">
         <div>
-          <p class="eyebrow"><b></b> WEBGL REQUIRED</p>
-          <h2>3D Spatial Sandbox</h2>
-          <p class="muted">Enable hardware acceleration in your browser to orbit and measure the procedural 3D terrains.</p>
+          <p class="kicker"><span class="tag">WEBGL REQUIRED</span></p>
+          <h2 class="h2-xl">3D Spatial Lab</h2>
+          <p class="muted">Enable hardware acceleration in your browser to inspect and measure the procedural terrains.</p>
         </div>
       </div>
 
       <div class="viewer-hud-top">
         <div class="btn-group">
-          <button class="pill-btn active" type="button" data-site="coastal">COASTAL CLIFF</button>
-          <button class="pill-btn" type="button" data-site="substation">SUBSTATION</button>
-          <button class="pill-btn" type="button" data-site="canyon">CORRIDOR CANYON</button>
+          <button class="cad-btn active" type="button" data-site="coastal">COASTAL CLIFF</button>
+          <button class="cad-btn" type="button" data-site="substation">SUBSTATION</button>
+          <button class="cad-btn" type="button" data-site="canyon">CORRIDOR CANYON</button>
         </div>
         <div class="btn-group">
-          <button class="pill-btn" type="button" id="reset-camera">RESET VIEW (R)</button>
+          <button class="cad-btn" type="button" id="reset-camera">RESET VIEW (R)</button>
         </div>
       </div>
 
-      <div class="ag-card viewer-hud-bottom">
-        <span class="orange">LEFT DRAG: ORBIT · RIGHT DRAG: PAN · SCROLL: ZOOM · R: RESET</span>
+      <div class="cad-panel viewer-hud-bottom">
+        <span class="signal">LEFT DRAG: ORBIT · RIGHT DRAG: PAN · SCROLL: ZOOM · R: RESET</span>
         <span id="hud-coords">HOVER SURFACE FOR COORDINATES</span>
       </div>
     </section>
 
     <aside class="viewer-sidebar">
-      <div class="ag-card viewer-panel">
-        <h3>01 // VIEWPORT SHADER MODE</h3>
+      <div class="cad-panel viewer-panel">
+        <h3>01 // SHADER &amp; GEOMETRY LAYER</h3>
         <div class="btn-group">
-          <button class="pill-btn active" type="button" data-view-mode="topo">CONTOUR SURFACE</button>
-          <button class="pill-btn" type="button" data-view-mode="wireframe">WIREFRAME MESH</button>
-          <button class="pill-btn" type="button" data-view-mode="pointcloud">POINT FIELD</button>
-          <button class="pill-btn" type="button" data-view-mode="heatmap">ELEVATION HEATMAP</button>
+          <button class="cad-btn active" type="button" data-view-mode="topo">CONTOUR SURFACE</button>
+          <button class="cad-btn" type="button" data-view-mode="wireframe">WIREFRAME MESH</button>
+          <button class="cad-btn" type="button" data-view-mode="pointcloud">POINT FIELD</button>
+          <button class="cad-btn" type="button" data-view-mode="heatmap">ELEVATION HEATMAP</button>
         </div>
       </div>
 
-      <div class="ag-card viewer-panel">
-        <h3>02 // EUCLIDEAN MEASURE TOOL</h3>
-        <div class="btn-group" style="margin-bottom: 12px;">
-          <button class="pill-btn" type="button" id="toggle-measure">ENABLE MEASURE TOOL</button>
-          <button class="pill-btn" type="button" id="clear-measure">CLEAR</button>
-          <button class="pill-btn active" type="button" id="toggle-georef">MODE: GEOREFERENCED (SRT)</button>
+      <div class="cad-panel viewer-panel">
+        <h3>02 // CROSS-SECTION ELEVATION SLICER</h3>
+        <input id="slice-slider" type="range" min="15" max="100" value="100" style="width: 100%; accent-color: var(--signal); cursor: pointer;">
+        <div id="slice-readout" class="mono muted" style="font-size: 10px; margin-top: 8px;">FULL MESH (NO CLIP)</div>
+      </div>
+
+      <div class="cad-panel viewer-panel">
+        <h3>03 // EUCLIDEAN MEASURE TOOL</h3>
+        <div class="btn-group" style="margin-bottom: 10px;">
+          <button class="cad-btn" type="button" id="toggle-measure">ENABLE MEASURE TOOL</button>
+          <button class="cad-btn" type="button" id="clear-measure">CLEAR</button>
+          <button class="cad-btn active" type="button" id="toggle-georef">MODE: GEOREFERENCED (SRT)</button>
         </div>
         <div class="measure-readout">
           <span class="muted">POINT A ↔ POINT B DISTANCE</span>
@@ -91,31 +94,24 @@
         </div>
       </div>
 
-      <div class="ag-card viewer-panel">
-        <h3>03 // BUFFER &amp; ENGINE TELEMETRY</h3>
+      <div class="cad-panel viewer-panel">
+        <h3>04 // VIEWPORT TELEMETRY</h3>
         <div class="stat-pair-list">
           <div><span>VERTICES</span><strong id="stat-verts">--</strong></div>
           <div><span>TRIANGLES</span><strong id="stat-tris">--</strong></div>
           <div><span>LIFECYCLE</span><strong id="stat-lifecycle">LOADED</strong></div>
           <div><span>DECODER</span><strong>DRACO WASM</strong></div>
         </div>
-        <p class="muted" style="font-size: 12px; margin: 14px 0 0;">
-          Procedural WebGL demonstration of the posEye Desktop 3D viewport: origin-centered geometry, throttled raycasting, and honest scale attribution.
-        </p>
       </div>
     </aside>
   </main>
 
   <footer class="site-footer">
-    <div class="footer-inner">
-      <a class="brand" href="../" data-nav><img src="../posEye.png" alt=""><span>pos<span class="orange">Eye</span></span></a>
-      <div class="footer-links">
-        <a href="../" data-nav>OVERVIEW</a>
-        <a href="../pipeline/" data-nav>PIPELINE</a>
-        <a href="../architecture/" data-nav>ARCHITECTURE</a>
-        <a href="../download/" data-nav>DOWNLOAD v0.1.9</a>
+    <div class="wrap">
+      <div class="footer-bottom" style="padding-top: 0;">
+        <span>posEye INTERACTIVE 3D LAB · PROCEDURAL WEBGL SIMULATION</span>
+        <span>MIT LICENSE · © <span id="year"></span> ATHARV POSE</span>
       </div>
-      <span>MIT LICENSE · CREATED BY ATHARV POSE · © <span id="year"></span></span>
     </div>
   </footer>
 

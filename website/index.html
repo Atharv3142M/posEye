@@ -3,272 +3,257 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#07080b">
-  <meta name="description" content="posEye — Single-pass drone video to accurate, georeferenced 3D models. Powered locally by the posEye Construction Engine.">
-  <title>posEye — Single-Pass Drone Video to 3D Spatial Models</title>
+  <meta name="theme-color" content="#060709">
+  <meta name="description" content="posEye v0.1.9 — Single-pass drone video to accurate, georeferenced 3D models on Windows. 100% local photogrammetry powered by the posEye Construction Engine.">
+  <title>posEye — Offline Drone Video to 3D Photogrammetry Workstation</title>
   <link rel="icon" type="image/png" href="./posEye.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./src/styles/tokens.css">
-  <link rel="stylesheet" href="./src/styles/pages.css">
+  <link rel="stylesheet" href="./src/styles/system.css">
+  <link rel="stylesheet" href="./src/styles/sections.css">
 </head>
 <body class="loading">
   <div class="loader" aria-hidden="true">
     <img src="./posEye.png" alt="">
-    <span>INITIALIZING posEye SPATIAL ENGINE</span>
+    <span>BOOTING posEye SPATIAL WORKSTATION</span>
     <i></i>
   </div>
-  <div class="page-curtain" aria-hidden="true"></div>
-  <div class="noise" aria-hidden="true"></div>
+  <div class="route-curtain" aria-hidden="true"></div>
 
-  <header class="nav">
+  <header class="topbar">
     <a class="brand" href="./" data-nav aria-label="posEye home">
       <img src="./posEye.png" alt="posEye logo">
-      <span>pos<span class="orange">Eye</span></span>
+      <span>pos<span class="signal">Eye</span></span>
+      <span class="brand-ver">v0.1.9</span>
     </a>
     <nav class="navlinks" aria-label="Primary navigation">
-      <a href="./" class="active" data-nav>OVERVIEW</a>
+      <a href="./" class="active" data-nav>PRODUCT</a>
       <a href="./pipeline/" data-nav>PIPELINE</a>
-      <a href="./viewer/" data-nav>3D SANDBOX</a>
+      <a href="./viewer/" data-nav>3D LAB</a>
       <a href="./architecture/" data-nav>ARCHITECTURE</a>
-      <a href="./download/" data-nav>GET v0.1.9</a>
+      <a href="./docs/" data-nav>DOCS</a>
+      <a href="./contact/" data-nav>CONTACT</a>
     </nav>
-    <a class="nav-cta" href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">GITHUB <span>↗</span></a>
-    <button class="menu" aria-label="Open navigation" aria-expanded="false"><span></span><span></span></button>
+    <a class="nav-cta" href="./download/" data-nav>GET v0.1.9 <span>↓</span></a>
+    <button class="menu-btn" aria-label="Open navigation" aria-expanded="false"><span></span><span></span></button>
   </header>
 
   <main>
-    <!-- HERO 3D SCENE -->
-    <section class="hero" aria-label="posEye spatial overview">
-      <div class="hero-grid"></div>
-      <canvas id="hero-canvas" aria-label="Interactive 3D photogrammetry terrain and drone flight path"></canvas>
+    <!-- 01. FLAGSHIP HERO PRODUCT STAGE -->
+    <section class="hero-stage" aria-label="posEye product showcase">
+      <canvas id="hero-canvas" aria-label="Interactive 3D drone photogrammetry terrain"></canvas>
       <div class="webgl-fallback">
         <div>
-          <p class="eyebrow"><b></b> WEBGL FALLBACK VIEW</p>
-          <h2 class="display-h2">posEye Spatial Engine</h2>
-          <p class="muted">Hardware WebGL acceleration is disabled on this device. Explore the pipeline and documentation below.</p>
+          <p class="kicker"><span class="tag">posEye v0.1.9</span></p>
+          <h2 class="h2-xl">posEye Spatial Workstation</h2>
+          <p class="muted">Enable WebGL hardware acceleration to inspect the live 3D photogrammetry terrain.</p>
         </div>
       </div>
-      <div class="hero-vignette"></div>
+      <div class="hero-scrim"></div>
 
-      <div class="hero-inner">
-        <div class="hero-content">
-          <p class="eyebrow hero-reveal"><b></b> OFFLINE WINDOWS PHOTOGRAMMETRY · v0.1.9</p>
-          <h1 class="hero-reveal">Reality,<br><em>reconstructed.</em></h1>
-          <p class="hero-copy hero-reveal">
-            Drop a single drone flight video and companion telemetry. The <strong>posEye Construction Engine</strong> turns raw aerial footage into georeferenced, measurable 3D environments—100% locally on your workstation.
+      <div class="wrap hero-grid-layout">
+        <div>
+          <span class="hero-eyebrow hero-reveal"><i></i> WINDOWS 10/11 x64 · ZERO CLOUD · posEye CONSTRUCTION ENGINE</span>
+          <h1 class="hero-title hero-reveal">One flight.<br><em>Measurable</em><br>3D reality.</h1>
+          <p class="hero-sub hero-reveal">
+            posEye converts raw drone video and companion <code>.SRT</code> telemetry into georeferenced, interactive 3D surface models in one automated click—completely offline on your workstation.
           </p>
-          <div class="hero-actions hero-reveal">
-            <a class="button primary" href="./viewer/" data-nav>Launch 3D Sandbox <span>↗</span></a>
-            <a class="button quiet" href="./pipeline/" data-nav>Explore 11-Stage Pipeline <span>→</span></a>
+          <div class="hero-cta-row hero-reveal">
+            <a class="btn btn-primary" href="./download/" data-nav>Download v0.1.9 for Windows <span>↓</span></a>
+            <a class="btn" href="./viewer/" data-nav>Open Live 3D Lab <span>↗</span></a>
+          </div>
+
+          <div class="hero-spec-strip hero-reveal">
+            <div><span>PROCESSING</span><strong>100% LOCAL</strong></div>
+            <div><span>AUTOMATION</span><strong>11 STAGES</strong></div>
+            <div><span>VIEWPORT</span><strong>DRACO WASM</strong></div>
+            <div><span>GEODETIC CRS</span><strong>WGS 84 / UTM</strong></div>
           </div>
         </div>
 
-        <div class="hero-hud-stack hero-reveal">
-          <div class="ag-card hero-telemetry" data-tilt>
-            <div class="hero-telemetry-head">
-              <span>LIVE TELEMETRY SIMULATION</span>
-              <span class="orange">LOCAL // 127.0.0.1</span>
+        <!-- 3D-Tilted Live Product Preview Frame -->
+        <aside class="hero-product-frame hero-reveal" aria-label="posEye Desktop preview">
+          <div class="win-titlebar">
+            <div class="win-dots"><span></span><span></span><span></span></div>
+            <span>poseye://app — ACTIVE RECONSTRUCTION</span>
+            <span class="signal">CUDA GPU</span>
+          </div>
+          <div class="win-body">
+            <div class="win-row">
+              <span>JOB: COASTAL_SURVEY_04.MP4 + SRT</span>
+              <span class="cyan">STAGE 07/11 · CONSTRUCTING</span>
             </div>
-            <div class="hero-telemetry-grid">
-              <div><span>ALTITUDE (AMSL)</span><strong id="hud-alt">118.4 m AMSL</strong></div>
-              <div><span>FRAME OVERLAP</span><strong>74% TARGET</strong></div>
-              <div><span>CONSTRUCTION</span><strong>posEye ENGINE</strong></div>
-              <div><span>DATUM / CRS</span><strong>WGS 84 · UTM</strong></div>
+            <div class="win-progress"><i></i></div>
+
+            <div class="win-metrics">
+              <div class="win-metric"><span>ALTITUDE</span><strong id="win-alt">118.4 m</strong></div>
+              <div class="win-metric"><span>TRIANGLES</span><strong>367,444</strong></div>
+              <div class="win-metric"><span>LOOPBACK</span><strong>127.0.0.1</strong></div>
+            </div>
+
+            <div class="win-row" style="margin-bottom: 8px;">
+              <span class="muted">LIVE VIEWPORT LAYER</span>
+              <span id="win-mode-readout" class="signal">CONTOUR SURFACE</span>
+            </div>
+            <div class="hero-stage-controls" role="group" aria-label="Switch 3D viewport mode">
+              <button class="cad-btn active" type="button" data-hero-mode="surface">TOPO SURFACE</button>
+              <button class="cad-btn" type="button" data-hero-mode="pointcloud">POINT FIELD</button>
+              <button class="cad-btn" type="button" data-hero-mode="wireframe">WIREFRAME MESH</button>
             </div>
           </div>
+        </aside>
+      </div>
+    </section>
 
-          <div class="hero-mode-bar" role="group" aria-label="3D viewport render mode">
-            <button class="pill-btn active" type="button" data-hero-mode="surface">TOPO SURFACE</button>
-            <button class="pill-btn" type="button" data-hero-mode="pointcloud">POINT FIELD</button>
-            <button class="pill-btn" type="button" data-hero-mode="wireframe">WIREFRAME</button>
+    <!-- 02. INTERACTIVE VIDEO-TO-3D MORPH SHOWCASE -->
+    <section class="morph-section" aria-label="Interactive video to 3D reconstruction morph">
+      <div class="morph-sticky">
+        <canvas id="morph-canvas" aria-hidden="true"></canvas>
+        <div class="webgl-fallback"><div><p class="muted">3D Pipeline Morph Visualization</p></div></div>
+
+        <div class="wrap morph-overlay">
+          <div class="morph-copy">
+            <span id="morph-step-tag" class="mono signal" style="font-size: 10px;">01 / VIDEO &amp; TELEMETRY INGEST</span>
+            <h2 id="morph-step-title">Extract sharp frames with real GPS.</h2>
+            <p id="morph-step-desc">Static FFmpeg probes codecs locally while companion SRT telemetry aligns WGS 84 coordinates and AMSL altitude to each retained frame.</p>
+          </div>
+
+          <div class="morph-dock">
+            <button class="cad-btn active" type="button" data-morph-jump="0">01 INGEST</button>
+            <button class="cad-btn" type="button" data-morph-jump="1">02 FILTER &amp; MASK</button>
+            <button class="cad-btn" type="button" data-morph-jump="2">03 CONSTRUCT</button>
+            <button class="cad-btn" type="button" data-morph-jump="3">04 INSPECT</button>
+            <input id="morph-slider" class="morph-slider" type="range" min="0" max="100" value="0" aria-label="Scrub 3D reconstruction progress">
+            <span id="morph-pct" class="morph-pct">0% COMPLETE</span>
           </div>
         </div>
       </div>
-
-      <div class="hero-meta-bar">
-        <span>FIELD RECONNAISSANCE &amp; SITE INSPECTION</span>
-        <span>SCROLL TO MORPH 3D PIPELINE ↓</span>
-      </div>
     </section>
 
-    <!-- CORE CAPABILITIES -->
-    <section class="section-pad">
-      <div class="section-index">
-        <span>01 / ZERO CLOUD DEPENDENCY</span>
-        <span>LOCAL WORKSTATION PIPELINE</span>
-      </div>
-
-      <div class="stat-grid" data-stagger-grid>
-        <article class="ag-card stat-card" data-tilt>
-          <div class="num">01 CLICK</div>
-          <h3>Single-Pass Automation</h3>
-          <p>Select video and optional <code>.SRT</code> telemetry, press Start, and receive an inspectable 3D model with zero manual terminal steps.</p>
-        </article>
-        <article class="ag-card stat-card" data-tilt>
-          <div class="num">11 STAGES</div>
-          <h3>Stage-Aware Orchestration</h3>
-          <p>From FFmpeg probing and Laplacian blur rejection to the <strong>posEye Construction Engine</strong> and Draco GLB validation.</p>
-        </article>
-        <article class="ag-card stat-card" data-tilt>
-          <div class="num">100% LOCAL</div>
-          <h3>Air-Gapped Privacy</h3>
-          <p>No imagery, telemetry, or reconstructed meshes ever leave your Windows workstation. Loopback-isolated API with session auth.</p>
-        </article>
-        <article class="ag-card stat-card" data-tilt>
-          <div class="num">DRACO GLB</div>
-          <h3>Demand-Driven 3D Viewer</h3>
-          <p>Hardware-accelerated WebGL viewport with WebAssembly Draco decoding, origin-centered coordinates, and Euclidean distance measurement.</p>
-        </article>
-      </div>
-    </section>
-
-    <!-- 5-CHAPTER INTERACTIVE SCROLL STORY -->
-    <section class="scroll-story" id="process" aria-label="Scroll-driven 3D reconstruction sequence">
-      <div class="story-sticky">
-        <canvas id="story-canvas" aria-hidden="true"></canvas>
-        <div class="webgl-fallback"><div><p class="muted">Interactive 3D scroll visualization</p></div></div>
-        <div class="story-label"><span class="dot"></span> THE posEye CONSTRUCTION SEQUENCE</div>
-
-        <article class="story-copy active" data-step="0">
-          <span class="chapter">CHAPTER 01 — CAPTURE &amp; PROBE</span>
-          <h2>Start with<br>a single flight.</h2>
-          <p>Ingest standard <code>.MP4</code> or <code>.MOV</code> drone video alongside <code>.SRT</code> flight telemetry. posEye probes codecs, framerate, and true capture timestamps locally before extracting frames.</p>
-          <div class="tag-row"><span>FFMPEG STATIC</span><span>SRT PARSER</span><span>PRE-FLIGHT GUARD</span></div>
-        </article>
-
-        <article class="story-copy" data-step="1">
-          <span class="chapter">CHAPTER 02 — FILTER &amp; GEOTAG</span>
-          <h2>Keep only the<br>sharpest frames.</h2>
-          <p>Laplacian variance rejects motion-blurred frames while 64-bit <code>dHash</code> deduplication removes redundant hover shots. Each retained frame receives exact WGS 84 DMS coordinates and AMSL altitude.</p>
-          <div class="tag-row"><span>LAPLACIAN SCORE</span><span>DHASH OVERLAP</span><span>EPSG:4326 EXIF</span></div>
-        </article>
-
-        <article class="story-copy" data-step="2">
-          <span class="chapter">CHAPTER 03 — MASK &amp; CONSTRUCT</span>
-          <h2>Static geometry.<br>Zero ghosting.</h2>
-          <p>Optional YOLOv8n segmentation masks transient vehicles and personnel before the <strong>posEye Construction Engine</strong> solves sparse structure, dense point fields, and Poisson surface meshes.</p>
-          <div class="tag-row"><span>YOLOV8N MASKING</span><span>posEye ENGINE</span><span>CUDA / CPU</span></div>
-        </article>
-
-        <article class="story-copy" data-step="3">
-          <span class="chapter">CHAPTER 04 — CENTER &amp; VALIDATE</span>
-          <h2>Origin-centered<br>precision.</h2>
-          <p>Archives unpack inside zip-slip-hardened bounds. Meshes convert to Draco-compressed binary glTF and center to <code>(0, 0, 0)</code> to eliminate floating-point jitter while keeping true UTM coordinates.</p>
-          <div class="tag-row"><span>ZIP-SLIP SAFE</span><span>DRACO WASM</span><span>RMS ACCURACY</span></div>
-        </article>
-
-        <article class="story-copy" data-step="4">
-          <span class="chapter">CHAPTER 05 — INSPECT &amp; EXPORT</span>
-          <h2>Measure reality<br>on your desktop.</h2>
-          <p>Orbit 350K+ triangle meshes at smooth interactive framerates, snap point-to-point measurements with honest metric disclaimers, and export <code>.GLB</code>, <code>.LAZ</code>, and <code>.TIF</code> deliverables.</p>
-          <div class="tag-row"><span>ORBIT &amp; MEASURE</span><span>LAZ &amp; GEOTIFF</span><span>OFFLINE READY</span></div>
-        </article>
-
-        <div class="story-rail" aria-hidden="true">
-          <span class="story-step-num">01 / 05</span>
-          <div class="story-rail-bar"><span></span></div>
+    <!-- 03. INSIDE posEye DESKTOP -->
+    <section class="band">
+      <div class="wrap">
+        <div class="kicker">
+          <span class="tag">INSIDE posEye DESKTOP</span>
+          <span>MONOCHROME CAD WORKSPACE · BUILT FOR FIELD OPERATORS</span>
         </div>
-      </div>
-    </section>
+        <h2 class="h2-xl" data-reveal>No command lines.<br><span class="muted">Just the instrument.</span></h2>
 
-    <!-- HYPERFRAMES DETERMINISTIC ENGINE REEL -->
-    <section class="section-pad">
-      <div class="section-index">
-        <span>02 / DETERMINISTIC ENGINE REEL</span>
-        <span>HYPERFRAMES MOTION TIMELINE</span>
-      </div>
-      <div style="margin-top: 28px; max-width: 680px;" data-reveal>
-        <h2 class="display-h2">Every stage,<br><span class="muted">frame-accurate.</span></h2>
-      </div>
-
-      <div class="ag-card reel-shell" id="hf-reel" data-reveal>
-        <div class="reel-stage">
-          <div class="reel-grid-bg" aria-hidden="true"></div>
-          <div class="reel-beat">
-            <span class="reel-badge">BEAT 01 // INGEST &amp; PROBE</span>
-            <h3 class="reel-title">Single flight video. Zero cloud upload.</h3>
-            <p class="reel-sub">FFmpeg probes codec, resolution &amp; framerate locally while DJI/Autel SRT telemetry aligns to sub-second precision.</p>
-            <div class="reel-visual-nodes">
-              <div class="reel-node"><span>01 / INPUT</span><strong>MP4 / MOV + SRT</strong></div>
-              <div class="reel-node"><span>02 / PROBE</span><strong>60 FPS VERIFIED</strong></div>
-              <div class="reel-node"><span>03 / CLOCK</span><strong>REAL CAPTURE TIME</strong></div>
-              <div class="reel-node"><span>04 / SCOPE</span><strong>100% LOCAL DISK</strong></div>
+        <div class="app-showcase" data-reveal>
+          <div class="app-chrome">
+            <span>posEye Desktop v0.1.9 — Local Session Authenticated</span>
+            <span class="cyan">API 127.0.0.1:8765 · READY</span>
+          </div>
+          <div class="app-layout">
+            <div class="app-sidebar" role="tablist" aria-label="posEye desktop screens">
+              <button class="app-tab active" type="button" data-app-tab="probe">01 / VIDEO PROBE</button>
+              <button class="app-tab" type="button" data-app-tab="hud">02 / 11-STAGE HUD</button>
+              <button class="app-tab" type="button" data-app-tab="viewer">03 / 3D MEASUREMENT</button>
+              <button class="app-tab" type="button" data-app-tab="exports">04 / GIS EXPORTS</button>
+            </div>
+            <div class="app-main">
+              <div>
+                <h3 id="app-pane-title" style="font-size: 28px; letter-spacing: -0.04em; margin-bottom: 12px;">Instant Media &amp; Telemetry Probe</h3>
+                <p id="app-pane-copy" class="muted" style="font-size: 14.5px; margin: 0 0 20px;">Select a drone video (.MP4/.MOV) and companion .SRT log. posEye immediately resolves codec, framerate, duration, extractable frame count, and real capture timestamps without uploading a single byte.</p>
+                <a class="btn" href="./pipeline/" data-nav>Inspect Full 11-Stage Pipeline <span>→</span></a>
+              </div>
+              <pre id="app-pane-console" class="app-pane-visual"></pre>
             </div>
           </div>
         </div>
+      </div>
+    </section>
 
-        <div class="reel-controls">
-          <button class="pill-btn active" type="button" id="reel-play">PAUSE REEL</button>
-          <button class="pill-btn" type="button" data-reel-beat="0">01 INGEST</button>
-          <button class="pill-btn" type="button" data-reel-beat="1">02 FILTER</button>
-          <button class="pill-btn" type="button" data-reel-beat="2">03 CONSTRUCT</button>
-          <button class="pill-btn" type="button" data-reel-beat="3">04 INSPECT</button>
-          <input id="reel-scrubber" class="reel-scrubber" type="range" min="0" max="100" value="0" aria-label="Timeline scrubber">
-          <span class="reel-time" id="reel-time">0.0s / 12.0s</span>
+    <!-- 04. FIELD VERTICALS (EDITORIAL LEDGER) -->
+    <section class="band">
+      <div class="wrap">
+        <div class="kicker">
+          <span class="tag">BUILT FOR REAL DEPLOYMENTS</span>
+          <span>ACCURACY &amp; PRIVACY OVER COSMETICS</span>
+        </div>
+        <h2 class="h2-xl" style="margin-bottom: 42px;" data-reveal>Engineered for<br><span class="muted">critical missions.</span></h2>
+
+        <div class="ledger" data-reveal>
+          <div class="ledger-row">
+            <span class="ledger-idx">01</span>
+            <h3>Disaster Response &amp; Triage</h3>
+            <p>Generate measurable 3D rubble, flood-corridor, and structural damage models in the field with zero internet connectivity.</p>
+            <span class="ledger-tag">OFFLINE · RAPID PRESET</span>
+          </div>
+          <div class="ledger-row">
+            <span class="ledger-idx">02</span>
+            <h3>Infrastructure Inspection</h3>
+            <p>Mask out moving traffic automatically with YOLOv8n so bridges, substations, and towers reconstruct free of ghosting artifacts.</p>
+            <span class="ledger-tag">YOLOV8N MASKING</span>
+          </div>
+          <div class="ledger-row">
+            <span class="ledger-idx">03</span>
+            <h3>Air-Gapped Reconnaissance</h3>
+            <p>All decoding, photogrammetry, and Draco GLB rendering stay bound to <code>127.0.0.1</code> with session-scoped bearer tokens.</p>
+            <span class="ledger-tag">ZERO TELEMETRY</span>
+          </div>
+          <div class="ledger-row">
+            <span class="ledger-idx">04</span>
+            <h3>Georeferenced Site Mapping</h3>
+            <p>WGS 84 DMS EXIF tagging, true AMSL altitude semantics, and honest metric vs. uncalibrated model-unit distance readouts.</p>
+            <span class="ledger-tag">EPSG:4326 · UTM</span>
+          </div>
         </div>
       </div>
     </section>
 
-    <!-- MULTI-PAGE EXPLORATION PORTALS -->
-    <section class="section-pad">
-      <div class="section-index">
-        <span>03 / EXPLORE THE SYSTEM</span>
-        <span>DEDICATED TECHNICAL CHAPTERS</span>
-      </div>
-
-      <div class="portal-grid" data-stagger-grid>
-        <a class="ag-card portal-card" href="./pipeline/" data-nav data-tilt>
-          <div>
-            <span class="mono orange">01 / PIPELINE &amp; ENGINE</span>
-            <h3>11-Stage Construction Pipeline</h3>
-            <p>Walk through every deterministic state from FFmpeg demuxing and YOLOv8n masking to the posEye Construction Engine and preset density comparison.</p>
-          </div>
-          <div class="portal-foot"><span>INSPECT STAGES</span><span>→</span></div>
-        </a>
-
-        <a class="ag-card portal-card" href="./viewer/" data-nav data-tilt>
-          <div>
-            <span class="mono cyan">02 / INTERACTIVE WEBGL LAB</span>
-            <h3>3D Spatial Sandbox</h3>
-            <p>Orbit real-time procedural photogrammetry terrains, switch wireframe/point-cloud/heatmap shaders, and test Euclidean point-to-point measurement.</p>
-          </div>
-          <div class="portal-foot"><span>LAUNCH 3D VIEWPORT</span><span>↗</span></div>
-        </a>
-
-        <a class="ag-card portal-card" href="./architecture/" data-nav data-tilt>
-          <div>
-            <span class="mono orange">03 / GEOSPATIAL &amp; SECURITY</span>
-            <h3>Coordinate Math &amp; Architecture</h3>
-            <p>See how posEye prevents depth-buffer jitter via origin centering, enforces honest metric vs. model-unit disclosure, and isolates loopback APIs.</p>
-          </div>
-          <div class="portal-foot"><span>READ ARCHITECTURE</span><span>→</span></div>
-        </a>
-
-        <a class="ag-card portal-card" href="./download/" data-nav data-tilt>
-          <div>
-            <span class="mono cyan">04 / RELEASE v0.1.9</span>
-            <h3>Windows Installer &amp; Quickstart</h3>
-            <p>Download the Windows 10/11 x64 NSIS package, verify SHA-256 checksums, review GPU/CPU specs, and launch with zero manual dependencies.</p>
-          </div>
-          <div class="portal-foot"><span>GET posEye v0.1.9</span><span>↓</span></div>
-        </a>
+    <!-- 05. CLOSING PRODUCT CTA -->
+    <section class="band" style="border-bottom: 0;">
+      <div class="wrap" style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 32px;" data-reveal>
+        <div>
+          <p class="kicker" style="margin-bottom: 14px;"><span class="tag">DEPLOY ON WINDOWS 10/11 x64</span></p>
+          <h2 class="h2-xl">Ready for your<br>next flight.</h2>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 12px;">
+          <a class="btn btn-primary" href="./download/" data-nav>Get posEye v0.1.9 <span>↓</span></a>
+          <a class="btn" href="./contact/" data-nav>Contact Engineering <span>→</span></a>
+        </div>
       </div>
     </section>
   </main>
 
   <footer class="site-footer">
-    <div class="footer-inner">
-      <a class="brand" href="./" data-nav><img src="./posEye.png" alt=""><span>pos<span class="orange">Eye</span></span></a>
-      <div class="footer-links">
-        <a href="./pipeline/" data-nav>PIPELINE</a>
-        <a href="./viewer/" data-nav>3D SANDBOX</a>
-        <a href="./architecture/" data-nav>ARCHITECTURE</a>
-        <a href="./download/" data-nav>DOWNLOAD v0.1.9</a>
-        <a href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">GITHUB ↗</a>
+    <div class="wrap">
+      <div class="footer-grid">
+        <div class="footer-col">
+          <a class="brand" href="./" data-nav style="margin-bottom: 12px;">
+            <img src="./posEye.png" alt="">
+            <span>pos<span class="signal">Eye</span></span>
+          </a>
+          <p class="muted" style="font-size: 13px; max-width: 280px; margin: 0;">
+            Single-pass drone video to accurate 3D model generation system for Windows workstations.
+          </p>
+        </div>
+        <div class="footer-col">
+          <h4>PRODUCT</h4>
+          <a href="./" data-nav>Overview</a>
+          <a href="./pipeline/" data-nav>11-Stage Pipeline</a>
+          <a href="./viewer/" data-nav>Interactive 3D Lab</a>
+          <a href="./download/" data-nav>Download v0.1.9</a>
+        </div>
+        <div class="footer-col">
+          <h4>ENGINEERING</h4>
+          <a href="./architecture/" data-nav>Architecture &amp; Math</a>
+          <a href="./docs/" data-nav>Docs &amp; FAQ</a>
+          <a href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">GitHub Repository ↗</a>
+        </div>
+        <div class="footer-col">
+          <h4>CONNECT</h4>
+          <a href="./contact/" data-nav>Contact Us</a>
+          <a href="https://github.com/Atharv3142M/posEye/issues" target="_blank" rel="noreferrer">Report an Issue ↗</a>
+          <a href="https://github.com/Atharv3142M/posEye/releases" target="_blank" rel="noreferrer">Release History ↗</a>
+        </div>
       </div>
-      <span>MIT LICENSE · CREATED BY ATHARV POSE · © <span id="year"></span></span>
+      <div class="footer-bottom">
+        <span>MIT OPEN-SOURCE LICENSE · BUILT BY ATHARV POSE</span>
+        <span>© <span id="year"></span> posEye</span>
+      </div>
     </div>
   </footer>
 

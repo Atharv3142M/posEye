@@ -1,32 +1,20 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { initChrome, isWebGLAvailable, showWebGLFallback } from '../lib/ui.js';
+import { initSiteChrome, isWebGLAvailable, showWebGLFallback } from '../lib/core.js';
 import {
   addTacticalLights,
   buildPointCloudFromTerrain,
   buildTerrainGeometry,
   createRenderer,
   createTopoShaderMaterial,
-} from '../lib/terrain.js';
+} from '../lib/scene3d.js';
 
-initChrome();
+initSiteChrome();
 
 const SITE_META = {
-  coastal: {
-    label: 'COASTAL CLIFF SURVEY',
-    utmOffset: [314820.4, 2108450.2, 42.0],
-    scaleMeters: 14.5,
-  },
-  substation: {
-    label: 'INFRASTRUCTURE SUBSTATION',
-    utmOffset: [542190.8, 4189320.6, 118.4],
-    scaleMeters: 12.0,
-  },
-  canyon: {
-    label: 'DISASTER CORRIDOR CANYON',
-    utmOffset: [428710.1, 3621090.9, 284.7],
-    scaleMeters: 18.0,
-  },
+  coastal: { label: 'COASTAL CLIFF', utmOffset: [314820.4, 2108450.2, 42.0], scaleMeters: 14.5 },
+  substation: { label: 'SUBSTATION', utmOffset: [542190.8, 4189320.6, 118.4], scaleMeters: 12.0 },
+  canyon: { label: 'CORRIDOR CANYON', utmOffset: [428710.1, 3621090.9, 284.7], scaleMeters: 18.0 },
 };
 
 function initSandbox() {
@@ -39,7 +27,7 @@ function initSandbox() {
 
   const renderer = createRenderer(canvas, 2.0);
   const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0x06070a, 0.025);
+  scene.fog = new THREE.FogExp2(0x060709, 0.024);
 
   const camera = new THREE.PerspectiveCamera(
     45,
@@ -66,22 +54,15 @@ function initSandbox() {
   const modelGroup = new THREE.Group();
   scene.add(modelGroup);
 
-  // Measurement visuals
   const measureGroup = new THREE.Group();
   scene.add(measureGroup);
   const markerGeo = new THREE.SphereGeometry(0.14, 16, 16);
-  const markerMatA = new THREE.MeshBasicMaterial({ color: 0xff4b0b });
-  const markerMatB = new THREE.MeshBasicMaterial({ color: 0x5cc4ff });
-  const markerA = new THREE.Mesh(markerGeo, markerMatA);
-  const markerB = new THREE.Mesh(markerGeo, markerMatB);
+  const markerA = new THREE.Mesh(markerGeo, new THREE.MeshBasicMaterial({ color: 0xff4b0b }));
+  const markerB = new THREE.Mesh(markerGeo, new THREE.MeshBasicMaterial({ color: 0x5cc4ff }));
   markerA.visible = false;
   markerB.visible = false;
-  const lineMat = new THREE.LineBasicMaterial({ color: 0xff4b0b });
-  const lineGeo = new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(),
-    new THREE.Vector3(),
-  ]);
-  const measureLine = new THREE.Line(lineGeo, lineMat);
+  const lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+  const measureLine = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0xff4b0b }));
   measureLine.visible = false;
   measureGroup.add(markerA, markerB, measureLine);
 
@@ -89,6 +70,7 @@ function initSandbox() {
   let currentMode = 'topo';
   let measureEnabled = false;
   let georeferenced = true;
+  let sliceVal = 99;
   let pointA = null;
   let pointB = null;
   let solidMesh = null;
@@ -102,6 +84,8 @@ function initSandbox() {
   const coordEl = document.querySelector('#hud-coords');
   const distOut = document.querySelector('#measure-distance');
   const unitNote = document.querySelector('#measure-unit-note');
+  const sliceSlider = document.querySelector('#slice-slider');
+  const sliceOut = document.querySelector('#slice-readout');
 
   const clearMeasure = () => {
     pointA = null;
@@ -120,12 +104,9 @@ function initSandbox() {
   const updateDistanceDisplay = () => {
     if (!pointA || !pointB || !distOut) return;
     const raw = pointA.distanceTo(pointB);
-    if (georeferenced) {
-      const meters = raw * SITE_META[currentSite].scaleMeters;
-      distOut.textContent = `${meters.toFixed(2)} m`;
-    } else {
-      distOut.textContent = `${raw.toFixed(3)} units`;
-    }
+    distOut.textContent = georeferenced
+      ? `${(raw * SITE_META[currentSite].scaleMeters).toFixed(2)} m`
+      : `${raw.toFixed(3)} units`;
   };
 
   const resetView = () => {
@@ -151,10 +132,8 @@ function initSandbox() {
     document.querySelectorAll('[data-site]').forEach((b) =>
       b.classList.toggle('active', b.dataset.site === site)
     );
+    if (lifecycleEl) lifecycleEl.textContent = 'LOADED';
 
-    if (lifecycleEl) lifecycleEl.textContent = 'PARSING -> UPLOADING -> LOADED';
-
-    // Dispose old geometry/materials
     if (solidMesh) {
       solidMesh.geometry.dispose();
       solidMesh.material.dispose();
@@ -173,18 +152,14 @@ function initSandbox() {
     const segs = 96;
     const { geo, minY, maxY } = buildTerrainGeometry(14, segs, site);
     topoMat = createTopoShaderMaterial(minY, maxY);
+    topoMat.uniforms.uSliceY.value = sliceVal;
     solidMesh = new THREE.Mesh(geo, topoMat);
     wireMesh = new THREE.Mesh(
       geo,
       new THREE.MeshBasicMaterial({ color: 0xff4b0b, wireframe: true, transparent: true, opacity: 0.72 })
     );
-
     const cloudGeo = buildPointCloudFromTerrain(14, 7200, site, site.length * 97);
-    cloudPoints = new THREE.Points(
-      cloudGeo,
-      new THREE.PointsMaterial({ size: 0.075, vertexColors: true })
-    );
-
+    cloudPoints = new THREE.Points(cloudGeo, new THREE.PointsMaterial({ size: 0.075, vertexColors: true }));
     modelGroup.add(solidMesh, wireMesh, cloudPoints);
 
     if (vertsEl) vertsEl.textContent = geo.attributes.position.count.toLocaleString();
@@ -194,13 +169,19 @@ function initSandbox() {
     applyViewMode(currentMode);
   };
 
-  // UI Bindings
   document.querySelectorAll('[data-site]').forEach((b) =>
     b.addEventListener('click', () => loadSite(b.dataset.site))
   );
   document.querySelectorAll('[data-view-mode]').forEach((b) =>
     b.addEventListener('click', () => applyViewMode(b.dataset.viewMode))
   );
+
+  sliceSlider?.addEventListener('input', () => {
+    const pct = Number(sliceSlider.value);
+    sliceVal = pct >= 99 ? 99 : -1.5 + (pct / 100) * 3.8;
+    if (topoMat) topoMat.uniforms.uSliceY.value = sliceVal;
+    if (sliceOut) sliceOut.textContent = pct >= 99 ? 'FULL MESH (NO CLIP)' : `CLIPPING AT ${pct}% ELEVATION`;
+  });
 
   const measureBtn = document.querySelector('#toggle-measure');
   measureBtn?.addEventListener('click', () => {
@@ -230,7 +211,6 @@ function initSandbox() {
     if (e.key === 'r' || e.key === 'R') resetView();
   });
 
-  // Raycasting for coordinates + point-to-point distance
   const raycaster = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
   let lastRay = 0;
@@ -242,7 +222,9 @@ function initSandbox() {
     ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(ndc, camera);
     const hits = raycaster.intersectObject(solidMesh, false);
-    return hits[0]?.point ?? null;
+    const p = hits[0]?.point ?? null;
+    if (p && p.y > sliceVal) return null;
+    return p;
   };
 
   canvas.addEventListener('pointermove', (e) => {
@@ -264,7 +246,6 @@ function initSandbox() {
     if (!measureEnabled) return;
     const hit = getHitPoint(e);
     if (!hit) return;
-
     if (!pointA || (pointA && pointB)) {
       pointA = hit.clone();
       pointB = null;
@@ -281,15 +262,6 @@ function initSandbox() {
       measureLine.visible = true;
       updateDistanceDisplay();
     }
-  });
-
-  // WebGL context resilience
-  canvas.addEventListener('webglcontextlost', (e) => {
-    e.preventDefault();
-    if (lifecycleEl) lifecycleEl.textContent = 'CONTEXT LOST — RECOVERING';
-  });
-  canvas.addEventListener('webglcontextrestored', () => {
-    if (lifecycleEl) lifecycleEl.textContent = 'LOADED';
   });
 
   const resize = () => {
@@ -310,10 +282,7 @@ function initSandbox() {
   let raf = 0;
   const tick = () => {
     raf = requestAnimationFrame(tick);
-    const t = clock.getElapsedTime();
-    if (topoMat) {
-      topoMat.uniforms.uTime.value = t;
-    }
+    if (topoMat) topoMat.uniforms.uTime.value = clock.getElapsedTime();
     controls.update();
     renderer.render(scene, camera);
   };

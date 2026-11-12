@@ -1,13 +1,13 @@
 import * as THREE from 'three';
-import { initChrome, isWebGLAvailable, showWebGLFallback } from '../lib/ui.js';
+import { initSiteChrome, isWebGLAvailable, showWebGLFallback } from '../lib/core.js';
 import {
   addTacticalLights,
   buildTerrainGeometry,
   createRenderer,
   createTopoShaderMaterial,
-} from '../lib/terrain.js';
+} from '../lib/scene3d.js';
 
-const { reduced, gsap, ScrollTrigger } = initChrome();
+const { reduced, gsap, ScrollTrigger } = initSiteChrome();
 
 function initPipelineStack3D() {
   const canvas = document.querySelector('#pipeline-canvas');
@@ -38,7 +38,7 @@ function initPipelineStack3D() {
     { name: 'STAGE 03–04 // FILTER & WGS84 EXIF', color: 0x9aa4b2, y: 1.0 },
     { name: 'STAGE 05 // YOLOV8N MASKING', color: 0x3cd070, y: 0.0 },
     { name: 'STAGE 06–07 // posEye CONSTRUCTION ENGINE', color: 0xff4b0b, y: -1.0 },
-    { name: 'STAGE 08–10 // DRACO GLB & READY', color: 0xf1f0ed, y: -2.0 },
+    { name: 'STAGE 08–10 // DRACO GLB & READY', color: 0xf0f6fc, y: -2.0 },
   ];
 
   const layers = layerDefs.map((def, idx) => {
@@ -62,7 +62,6 @@ function initPipelineStack3D() {
     );
     group.add(edges);
 
-    // Inner grid detail
     const grid = new THREE.GridHelper(3.4, 8, def.color, 0x1e2430);
     grid.position.y = 0.08;
     grid.material.transparent = true;
@@ -73,13 +72,14 @@ function initPipelineStack3D() {
     return { group, plate, edges, baseY: def.y, idx, name: def.name };
   });
 
-  // Vertical telemetry bus line connecting all layers
-  const busGeo = new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(-1.95, 2.4, -1.95),
-    new THREE.Vector3(-1.95, -2.4, -1.95),
-  ]);
   stack.add(
-    new THREE.Line(busGeo, new THREE.LineBasicMaterial({ color: 0xff4b0b, transparent: true, opacity: 0.65 }))
+    new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-1.95, 2.4, -1.95),
+        new THREE.Vector3(-1.95, -2.4, -1.95),
+      ]),
+      new THREE.LineBasicMaterial({ color: 0xff4b0b, transparent: true, opacity: 0.65 })
+    )
   );
 
   const stageItems = [...document.querySelectorAll('.stage-item')];
@@ -96,20 +96,19 @@ function initPipelineStack3D() {
       hudTitle.textContent = el.dataset.stateLabel || 'validating';
       hudState.textContent = el.dataset.tierLabel || layerDefs[tier].name;
     }
-
     layers.forEach((l, i) => {
-      const isFocused = i === tier;
+      const focused = i === tier;
       if (!reduced) {
         gsap.to(l.group.position, {
-          y: l.baseY + (isFocused ? 0.25 : 0) + (i - tier) * 0.12,
-          x: isFocused ? 0.35 : 0,
+          y: l.baseY + (focused ? 0.25 : 0) + (i - tier) * 0.12,
+          x: focused ? 0.35 : 0,
           duration: 0.55,
           ease: 'expo.out',
         });
       }
-      l.plate.material.emissive.setHex(isFocused ? layerDefs[i].color : 0x000000);
-      l.plate.material.emissiveIntensity = isFocused ? 0.22 : 0;
-      l.edges.material.opacity = isFocused ? 1.0 : 0.32;
+      l.plate.material.emissive.setHex(focused ? layerDefs[i].color : 0x000000);
+      l.plate.material.emissiveIntensity = focused ? 0.22 : 0;
+      l.edges.material.opacity = focused ? 1.0 : 0.32;
     });
   };
 
@@ -145,7 +144,7 @@ function initPipelineStack3D() {
     if (!reduced) {
       stack.rotation.y = Math.sin(t * 0.35) * 0.22 - 0.35;
     }
-    camera.position.y += ((2.2 - activeTier * 0.65) - camera.position.y) * 0.05;
+    camera.position.y += (2.2 - activeTier * 0.65 - camera.position.y) * 0.05;
     camera.lookAt(0, 0, 0);
     renderer.render(scene, camera);
   };
@@ -202,11 +201,7 @@ function initPresetComparator() {
     );
     wire.position.y = 0.015;
     scene.add(mesh, wire);
-
-    const tris = segments * segments * 2;
-    if (statsOut) {
-      statsOut.textContent = `${label} · ${tris.toLocaleString()} TRIANGLES`;
-    }
+    if (statsOut) statsOut.textContent = `${label} · ${(segments * segments * 2).toLocaleString()} TRIANGLES`;
   };
 
   const buttons = [...document.querySelectorAll('[data-preset-seg]')];

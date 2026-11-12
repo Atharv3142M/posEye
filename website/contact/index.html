@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#060709">
+  <meta name="description" content="Contact the posEye engineering team for field deployments, research collaborations, bug reports, and security disclosures.">
+  <title>Contact Us — posEye</title>
+  <link rel="icon" type="image/png" href="../posEye.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../src/styles/system.css">
+  <link rel="stylesheet" href="../src/styles/sections.css">
+</head>
+<body class="loading">
+  <div class="loader" aria-hidden="true"><img src="../posEye.png" alt=""><span>OPENING COMMS CHANNEL</span><i></i></div>
+  <div class="route-curtain" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <a class="brand" href="../" data-nav aria-label="posEye home">
+      <img src="../posEye.png" alt="posEye logo">
+      <span>pos<span class="signal">Eye</span></span>
+      <span class="brand-ver">v0.1.9</span>
+    </a>
+    <nav class="navlinks" aria-label="Primary navigation">
+      <a href="../" data-nav>PRODUCT</a>
+      <a href="../pipeline/" data-nav>PIPELINE</a>
+      <a href="../viewer/" data-nav>3D LAB</a>
+      <a href="../architecture/" data-nav>ARCHITECTURE</a>
+      <a href="../docs/" data-nav>DOCS</a>
+      <a href="../contact/" class="active" data-nav>CONTACT</a>
+    </nav>
+    <a class="nav-cta" href="../download/" data-nav>GET v0.1.9 <span>↓</span></a>
+    <button class="menu-btn" aria-label="Open navigation" aria-expanded="false"><span></span><span></span></button>
+  </header>
+
+  <main>
+    <section class="page-head">
+      <div class="wrap">
+        <div class="kicker"><span class="tag">ENGINEERING &amp; DEPLOYMENT INQUIRIES</span><span>OPEN SOURCE · ATHARV POSE</span></div>
+        <h1 class="hero-reveal">Connect with<br><span class="signal">posEye.</span></h1>
+        <p class="hero-reveal">Planning an air-gapped field deployment, evaluating custom telemetry formats, or reporting a diagnostics trace? Reach the maintainer directly below.</p>
+      </div>
+    </section>
+
+    <section class="band">
+      <div class="wrap">
+        <div class="contact-grid">
+          <form id="contact-form" class="cad-panel" style="padding: 28px;" novalidate>
+            <div class="kicker" style="margin-bottom: 18px;"><span class="tag">MISSION BRIEF COMPOSER</span></div>
+
+            <div class="field-grid">
+              <div class="field">
+                <label for="c-name">YOUR NAME</label>
+                <input id="c-name" name="name" type="text" placeholder="Operator / Engineer name" required>
+              </div>
+              <div class="field">
+                <label for="c-email">EMAIL ADDRESS</label>
+                <input id="c-email" name="email" type="email" placeholder="name@organization.org" required>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="c-topic">INQUIRY CATEGORY</label>
+              <select id="c-topic" name="topic">
+                <option value="Field / Enterprise Deployment">Field / Enterprise Deployment</option>
+                <option value="Custom Drone Telemetry / SRT Support">Custom Drone Telemetry / SRT Support</option>
+                <option value="Bug Report & Diagnostics">Bug Report &amp; Diagnostics</option>
+                <option value="Academic / Research Collaboration">Academic / Research Collaboration</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="c-msg">MISSION DETAILS OR DIAGNOSTIC CONTEXT</label>
+              <textarea id="c-msg" name="message" rows="5" placeholder="Describe your drone hardware, video resolution, telemetry format, or GPU setup..." required></textarea>
+            </div>
+
+            <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
+              <button class="btn btn-primary" type="submit">Prepare Engineering Brief <span>→</span></button>
+              <a id="contact-gh-link" class="btn" href="https://github.com/Atharv3142M/posEye/issues/new" target="_blank" rel="noreferrer" style="display: none;">Open Pre-Filled GitHub Issue <span>↗</span></a>
+            </div>
+
+            <div id="contact-status" class="form-status" role="status" aria-live="polite"></div>
+          </form>
+
+          <div>
+            <div class="canvas-box" style="height: 320px; margin-bottom: 20px;">
+              <canvas id="contact-canvas" aria-label="3D Orbital Telemetry Beacon"></canvas>
+              <div class="webgl-fallback"><div><p class="muted">Telemetry Beacon</p></div></div>
+              <div class="cad-panel hud-bar">
+                <span class="signal">MAINTAINER: ATHARV POSE</span>
+                <span class="muted">GITHUB // @ATHARV3142M</span>
+              </div>
+            </div>
+
+            <div class="ledger">
+              <div class="ledger-row" style="grid-template-columns: 110px 1fr;">
+                <span class="ledger-idx">ISSUES</span>
+                <div>
+                  <h3 style="font-size: 18px;">GitHub Issue Tracker</h3>
+                  <p><a href="https://github.com/Atharv3142M/posEye/issues" target="_blank" rel="noreferrer" class="signal">github.com/Atharv3142M/posEye/issues ↗</a></p>
+                </div>
+              </div>
+              <div class="ledger-row" style="grid-template-columns: 110px 1fr;">
+                <span class="ledger-idx">SECURITY</span>
+                <div>
+                  <h3 style="font-size: 18px;">Vulnerability Disclosures</h3>
+                  <p>Follow the coordinated disclosure policy in <a href="https://github.com/Atharv3142M/posEye/blob/main/SECURITY.md" target="_blank" rel="noreferrer" class="cyan">SECURITY.md ↗</a>.</p>
+                </div>
+              </div>
+              <div class="ledger-row" style="grid-template-columns: 110px 1fr;">
+                <span class="ledger-idx">SOURCE</span>
+                <div>
+                  <h3 style="font-size: 18px;">Open-Source Contributions</h3>
+                  <p>MIT Licensed. Pull requests and test fixtures welcome at <a href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer" class="signal">posEye Repository ↗</a>.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <div class="footer-grid">
+        <div class="footer-col"><a class="brand" href="../" data-nav style="margin-bottom: 12px;"><img src="../posEye.png" alt=""><span>pos<span class="signal">Eye</span></span></a><p class="muted" style="font-size: 13px; margin: 0;">Offline drone video photogrammetry for Windows workstations.</p></div>
+        <div class="footer-col"><h4>PRODUCT</h4><a href="../" data-nav>Overview</a><a href="../pipeline/" data-nav>11-Stage Pipeline</a><a href="../viewer/" data-nav>Interactive 3D Lab</a><a href="../download/" data-nav>Download v0.1.9</a></div>
+        <div class="footer-col"><h4>ENGINEERING</h4><a href="../architecture/" data-nav>Architecture &amp; Math</a><a href="../docs/" data-nav>Docs &amp; FAQ</a><a href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">GitHub ↗</a></div>
+        <div class="footer-col"><h4>CONNECT</h4><a href="../contact/" data-nav>Contact Us</a><a href="https://github.com/Atharv3142M/posEye/issues" target="_blank" rel="noreferrer">Issues ↗</a></div>
+      </div>
+      <div class="footer-bottom"><span>MIT LICENSE · CREATED BY ATHARV POSE</span><span>© <span id="year"></span> posEye</span></div>
+    </div>
+  </footer>
+
+  <script type="module" src="../src/pages/contact.js"></script>
+</body>
+</html>
