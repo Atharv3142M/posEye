@@ -1,116 +1,93 @@
-import * as THREE from 'three';
-import { initSiteChrome, isWebGLAvailable, showWebGLFallback } from '../lib/core.js';
-import { addTacticalLights, createRenderer } from '../lib/scene3d.js';
+import { initChrome } from '../lib/chrome.js';
 
-const { reduced } = initSiteChrome();
+initChrome();
 
-function initTelemetryBeacon3D() {
-  const canvas = document.querySelector('#contact-canvas');
-  if (!canvas) return;
-  if (!isWebGLAvailable()) {
-    showWebGLFallback(canvas);
-    return;
+const form = document.querySelector('#contact-form');
+const topicInput = document.querySelector('#contact-topic');
+const nameInput = document.querySelector('#contact-name');
+const emailInput = document.querySelector('#contact-email');
+const messageInput = document.querySelector('#contact-message');
+const statusBox = document.querySelector('#contact-status');
+const githubBtn = document.querySelector('#btn-open-github');
+const copyBtn = document.querySelector('#btn-copy-summary');
+
+let selectedTopic = 'Bug Report';
+
+document.querySelectorAll('[data-topic]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    selectedTopic = btn.dataset.topic;
+    if (topicInput) topicInput.value = selectedTopic;
+    document.querySelectorAll('[data-topic]').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+  });
+});
+
+function clearErrors() {
+  document.querySelectorAll('.field-error').forEach((el) => (el.textContent = ''));
+  [nameInput, emailInput, messageInput].forEach((el) => el?.setAttribute('aria-invalid', 'false'));
+}
+
+function validateForm() {
+  clearErrors();
+  let valid = true;
+
+  if (!nameInput.value.trim()) {
+    nameInput.setAttribute('aria-invalid', 'true');
+    document.querySelector('#err-name').textContent = 'Please enter your name.';
+    valid = false;
   }
 
-  const renderer = createRenderer(canvas, 1.6);
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(
-    42,
-    (canvas.clientWidth || 1) / (canvas.clientHeight || 1),
-    0.1,
-    60
-  );
-  camera.position.set(0, 2.2, 6.4);
-  camera.lookAt(0, 0, 0);
+  const emailVal = emailInput.value.trim();
+  if (!emailVal || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal)) {
+    emailInput.setAttribute('aria-invalid', 'true');
+    document.querySelector('#err-email').textContent = 'Please enter a valid email address for follow-up.';
+    valid = false;
+  }
 
-  addTacticalLights(scene);
+  if (messageInput.value.trim().length < 15) {
+    messageInput.setAttribute('aria-invalid', 'true');
+    document.querySelector('#err-message').textContent = 'Please provide at least 15 characters describing your inquiry or flight dataset details.';
+    valid = false;
+  }
 
-  const group = new THREE.Group();
-  scene.add(group);
-
-  const globe = new THREE.Mesh(
-    new THREE.SphereGeometry(1.75, 28, 18),
-    new THREE.MeshBasicMaterial({ color: 0x303a4b, wireframe: true, transparent: true, opacity: 0.48 })
-  );
-  group.add(globe);
-
-  const core = new THREE.Mesh(
-    new THREE.IcosahedronGeometry(0.9, 1),
-    new THREE.MeshStandardMaterial({ color: 0x151922, metalness: 0.6, roughness: 0.45 })
-  );
-  group.add(core);
-
-  const orbit = new THREE.Mesh(
-    new THREE.TorusGeometry(2.35, 0.015, 10, 80),
-    new THREE.MeshBasicMaterial({ color: 0xff4b0b, transparent: true, opacity: 0.65 })
-  );
-  orbit.rotation.x = Math.PI / 2.8;
-  group.add(orbit);
-
-  const resize = () => {
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
-    if (!w || !h) return;
-    renderer.setSize(w, h, false);
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
-  };
-  const ro = new ResizeObserver(resize);
-  ro.observe(canvas);
-
-  const clock = new THREE.Clock();
-  let raf = 0;
-  const tick = () => {
-    raf = requestAnimationFrame(tick);
-    const t = clock.getElapsedTime();
-    if (!reduced) {
-      group.rotation.y = t * 0.22;
-      orbit.rotation.z = t * 0.35;
-    }
-    renderer.render(scene, camera);
-  };
-  tick();
-
-  window.addEventListener('beforeunload', () => {
-    cancelAnimationFrame(raf);
-    ro.disconnect();
-    renderer.dispose();
-  });
+  return valid;
 }
 
-function initContactForm() {
-  const form = document.querySelector('#contact-form');
-  const statusEl = document.querySelector('#contact-status');
-  const ghLink = document.querySelector('#contact-gh-link');
-  if (!form || !statusEl) return;
-
-  form.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const data = new FormData(form);
-    const name = String(data.get('name') || '').trim();
-    const email = String(data.get('email') || '').trim();
-    const topic = String(data.get('topic') || 'Field Deployment').trim();
-    const message = String(data.get('message') || '').trim();
-
-    if (!name || !email || !message) {
-      statusEl.className = 'form-status visible';
-      statusEl.innerHTML = '<span class="signal">ERROR //</span> Please complete your name, contact email, and mission details.';
-      return;
-    }
-
-    const title = encodeURIComponent(`[Website Inquiry] ${topic} — ${name}`);
-    const body = encodeURIComponent(`**From:** ${name} (${email})\n**Category:** ${topic}\n\n${message}`);
-    const issueUrl = `https://github.com/Atharv3142M/posEye/issues/new?title=${title}&body=${body}`;
-
-    if (ghLink) {
-      ghLink.href = issueUrl;
-      ghLink.style.display = 'inline-flex';
-    }
-
-    statusEl.className = 'form-status visible';
-    statusEl.innerHTML = `<span class="cyan">DISPATCH READY //</span> Structured brief prepared for <strong>${name}</strong> (${topic}). Submit directly via GitHub Issues using the button below, or copy your brief for direct maintainer outreach.`;
-  });
+function buildPayload() {
+  const title = `[${selectedTopic}] Inquiry from ${nameInput.value.trim()}`;
+  const body = [
+    `Topic: ${selectedTopic}`,
+    `From: ${nameInput.value.trim()} (${emailInput.value.trim()})`,
+    '',
+    'Details:',
+    messageInput.value.trim(),
+  ].join('\n');
+  return { title, body };
 }
 
-initTelemetryBeacon3D();
-initContactForm();
+form?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (!validateForm()) return;
+
+  const { title, body } = buildPayload();
+  const issueUrl = `https://github.com/Atharv3142M/posEye/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+
+  githubBtn.href = issueUrl;
+  githubBtn.hidden = false;
+  copyBtn.hidden = false;
+
+  statusBox.hidden = false;
+  statusBox.innerHTML = '<strong>Summary prepared locally.</strong> Because this documentation site is hosted as static files on GitHub Pages with no backend form server, click <strong>Open Pre-Filled GitHub Issue</strong> below or copy the formatted message directly.';
+});
+
+copyBtn?.addEventListener('click', async () => {
+  if (!validateForm()) return;
+  const { title, body } = buildPayload();
+  try {
+    await navigator.clipboard.writeText(`${title}\n\n${body}`);
+    statusBox.hidden = false;
+    statusBox.textContent = 'Formatted inquiry copied to your clipboard.';
+  } catch {
+    statusBox.hidden = false;
+    statusBox.textContent = 'Clipboard permission was declined. Use Open Pre-Filled GitHub Issue instead.';
+  }
+});

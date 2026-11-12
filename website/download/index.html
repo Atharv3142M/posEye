@@ -2,133 +2,107 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#060709">
-  <meta name="description" content="Download posEye v0.1.9 for Windows 10/11 x64 — standalone installer with bundled FFmpeg and posEye Construction Engine.">
-  <title>Get posEye v0.1.9 — Windows Workstation</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F4F3EF">
+  <meta name="description" content="Download posEye v0.1.9 Windows desktop installer or build the local drone photogrammetry pipeline from source.">
+  <title>Download v0.1.9 | posEye</title>
   <link rel="icon" type="image/png" href="../posEye.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../src/styles/system.css">
-  <link rel="stylesheet" href="../src/styles/sections.css">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../src/styles/base.css">
 </head>
-<body class="loading">
-  <div class="loader" aria-hidden="true"><img src="../posEye.png" alt=""><span>LOADING RELEASE v0.1.9</span><i></i></div>
-  <div class="route-curtain" aria-hidden="true"></div>
+<body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
 
-  <header class="topbar">
-    <a class="brand" href="../" data-nav aria-label="posEye home">
-      <img src="../posEye.png" alt="posEye logo">
-      <span>pos<span class="signal">Eye</span></span>
-      <span class="brand-ver">v0.1.9</span>
+  <header class="site-header">
+    <a class="brand" href="../" aria-label="posEye home">
+      <img src="../posEye.png" alt="posEye logo" width="120" height="32">
     </a>
+
     <nav class="navlinks" aria-label="Primary navigation">
-      <a href="../" data-nav>PRODUCT</a>
-      <a href="../pipeline/" data-nav>PIPELINE</a>
-      <a href="../viewer/" data-nav>3D LAB</a>
-      <a href="../architecture/" data-nav>ARCHITECTURE</a>
-      <a href="../docs/" data-nav>DOCS</a>
-      <a href="../contact/" data-nav>CONTACT</a>
+      <a href="../">Overview</a>
+      <a href="../pipeline/">Pipeline</a>
+      <a href="../viewer/">3D Lab</a>
+      <a href="../architecture/">Architecture</a>
+      <a href="../docs/">Docs</a>
+      <a href="./" aria-current="page">Download</a>
+      <a href="../contact/">Contact</a>
     </nav>
-    <a class="nav-cta" href="../download/" data-nav>GET v0.1.9 <span>↓</span></a>
-    <button class="menu-btn" aria-label="Open navigation" aria-expanded="false"><span></span><span></span></button>
+
+    <a class="nav-cta" href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">GitHub Repo</a>
+    <button class="menu-btn" type="button" aria-label="Open navigation menu" aria-expanded="false">Menu</button>
   </header>
 
-  <main>
-    <section class="page-head">
-      <div class="wrap">
-        <div class="kicker"><span class="tag">RELEASE v0.1.9 · WINDOWS 10 / 11 x64</span><span>STANDALONE NSIS INSTALLER</span></div>
-        <h1 class="hero-reveal">Zero cloud.<br><span class="signal">Zero manual setup.</span></h1>
-        <p class="hero-reveal">Install posEye via the Windows NSIS wizard. Bundled static FFmpeg, offline Draco WebAssembly decoders, standalone Orchestrator binary, and automated local posEye Construction Engine provisioning included.</p>
-      </div>
-    </section>
-
-    <section class="band">
-      <div class="wrap">
-        <div class="kicker"><span class="tag">01 / DOWNLOAD &amp; VERIFY</span><span>posEye.Setup.0.1.9.exe</span></div>
-
-        <div class="download-grid">
-          <div class="cad-panel" style="padding: 28px;" data-tilt>
-            <span class="mono signal" style="font-size: 10px;">PRE-RELEASE // v0.1.9</span>
-            <h2 class="h2-xl" style="font-size: 36px; margin: 10px 0 12px;">posEye Desktop Setup</h2>
-            <p class="muted" style="margin: 0 0 22px;">Includes the Electron desktop UI, offline Draco decoders, static FFmpeg extractor, and <code>posEye.Orchestrator.exe</code>.</p>
-            <div class="hero-cta-row" style="margin-bottom: 24px;">
-              <a class="btn btn-primary" href="https://github.com/Atharv3142M/posEye/releases" target="_blank" rel="noreferrer">Download on GitHub Releases <span>↗</span></a>
-              <a class="btn" href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">Source Repository <span>→</span></a>
-            </div>
-            <span class="mono dim" style="font-size: 10px; display: block; margin-bottom: 6px;">POWERSHELL SHA-256 CHECK</span>
-            <pre class="code-block" id="verify-cmd">Get-FileHash -Path .\posEye.Setup.0.1.9.exe -Algorithm SHA256</pre>
-            <button class="cad-btn" style="margin-top: 10px;" type="button" data-copy-target="#verify-cmd">COPY COMMAND</button>
-          </div>
-
-          <div class="canvas-box">
-            <canvas id="download-canvas" aria-label="3D posEye Engine Core"></canvas>
-            <div class="webgl-fallback"><div><p class="muted">posEye Engine Core</p></div></div>
-            <div class="cad-panel hud-bar">
-              <span class="signal">posEye.Orchestrator.exe</span>
-              <span class="muted">BUNDLED · LOOPBACK 127.0.0.1</span>
-            </div>
-          </div>
+  <main id="main-content">
+    <section class="page-hero">
+      <div class="page-hero-inner">
+        <div>
+          <p class="eyebrow">Windows 10 / 11 Desktop Package</p>
+          <h1>posEye v0.1.9.</h1>
         </div>
+        <p class="lead">Distributed as an NSIS desktop installer containing the Electron shell, compiled FastAPI orchestrator, static FFmpeg binary, and Three.js 3D viewer.</p>
       </div>
     </section>
 
-    <section class="band">
-      <div class="wrap">
-        <div class="kicker"><span class="tag">02 / SYSTEM REQUIREMENTS</span><span>MINIMUM VS RECOMMENDED</span></div>
-        <div class="ledger">
-          <div class="ledger-row">
-            <span class="ledger-idx">CPU</span>
-            <h3>6+ Cores (16+ Recommended)</h3>
-            <p>x86_64 Intel 10th Gen+ or AMD Ryzen 5000+ minimum; Threadripper or Ryzen 9 / Core i9 recommended for dense meshing.</p>
-            <span class="ledger-tag">x86_64</span>
-          </div>
-          <div class="ledger-row">
-            <span class="ledger-idx">RAM</span>
-            <h3>16 GB Minimum (32–64 GB Ideal)</h3>
-            <p>Prevents out-of-memory stalls during high-precision dense point cloud and Poisson surface reconstruction.</p>
-            <span class="ledger-tag">DDR4 / DDR5</span>
-          </div>
-          <div class="ledger-row">
-            <span class="ledger-idx">GPU</span>
-            <h3>WebGL 2.0 / NVIDIA CUDA</h3>
-            <p>DirectX 11 / WebGL 2.0 minimum; NVIDIA RTX 3060+ with CUDA Container Toolkit accelerates feature extraction with automatic CPU fallback.</p>
-            <span class="ledger-tag">CUDA OPTIONAL</span>
-          </div>
-          <div class="ledger-row">
-            <span class="ledger-idx">OS</span>
-            <h3>Windows 10 / 11 64-Bit + WSL2</h3>
-            <p>Requires hardware virtualization (VT-x / AMD-V) enabled in BIOS/UEFI and 25–100+ GB free SSD/NVMe storage.</p>
-            <span class="ledger-tag">WIN 19041+</span>
-          </div>
-        </div>
-      </div>
-    </section>
+    <section class="section-pad">
+      <div class="section-inner">
+        <div class="split-grid">
+          <article class="panel-box">
+            <span class="mono" style="font-size:11px;color:var(--accent);">OPTION 01 / PACKAGED INSTALLER</span>
+            <h2 style="margin-top:12px;">Windows NSIS Release</h2>
+            <p style="margin-bottom:20px;">Install directly on Windows 10 or 11 (x64) without manual Python or FFmpeg setup. Docker Desktop is used locally to run the posEye Construction Engine container.</p>
+            <dl class="stats-kv" style="margin-bottom:24px;">
+              <dt>Current Version</dt>
+              <dd>v0.1.9</dd>
+              <dt>Target OS</dt>
+              <dd>Windows 10 / 11 (64-bit)</dd>
+              <dt>GPU Support</dt>
+              <dd>NVIDIA CUDA (auto CPU fallback)</dd>
+              <dt>Bundled Tools</dt>
+              <dd>Static FFmpeg + Orchestrator EXE</dd>
+            </dl>
+            <a class="button primary" href="https://github.com/Atharv3142M/posEye/releases" target="_blank" rel="noreferrer">Open GitHub Releases</a>
+          </article>
 
-    <section class="band" style="border-bottom: 0;">
-      <div class="wrap">
-        <div class="kicker"><span class="tag">03 / BUILD FROM SOURCE</span><span>DEVELOPER QUICKSTART</span></div>
-        <pre class="code-block" id="dev-cmd">git clone https://github.com/Atharv3142M/posEye.git
-cd posEye
-.\scripts\setup.ps1
+          <article class="panel-box">
+            <span class="mono" style="font-size:11px;color:var(--accent);">OPTION 02 / BUILD FROM SOURCE</span>
+            <h2 style="margin-top:12px;">Reproduce Locally</h2>
+            <p>Requires Python 3.10+, Node.js, and PowerShell on Windows. Run from the repository root:</p>
+            <pre id="build-cmds" class="code-block">.\scripts\setup.ps1
 .\scripts\fetch-ffmpeg.ps1
-.\.venv\Scripts\python.exe -m pytest apps\pipeline apps\orchestrator -v
-cd apps\desktop &amp;&amp; npm ci &amp;&amp; npm run build</pre>
-        <button class="cad-btn" style="margin-top: 10px;" type="button" data-copy-target="#dev-cmd">COPY QUICKSTART</button>
+.\scripts\build-orchestrator.ps1
+cd apps\desktop
+npm install
+npm run build
+npm run dist</pre>
+            <div style="margin-top:18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+              <button id="copy-build-cmds" class="button quiet" type="button">Copy Commands</button>
+              <span id="copy-status" class="muted-ink" style="font-size:13px;" aria-live="polite"></span>
+            </div>
+          </article>
+        </div>
       </div>
     </section>
   </main>
 
   <footer class="site-footer">
-    <div class="wrap">
-      <div class="footer-grid">
-        <div class="footer-col"><a class="brand" href="../" data-nav style="margin-bottom: 12px;"><img src="../posEye.png" alt=""><span>pos<span class="signal">Eye</span></span></a><p class="muted" style="font-size: 13px; margin: 0;">Offline drone video photogrammetry for Windows workstations.</p></div>
-        <div class="footer-col"><h4>PRODUCT</h4><a href="../" data-nav>Overview</a><a href="../pipeline/" data-nav>11-Stage Pipeline</a><a href="../viewer/" data-nav>Interactive 3D Lab</a><a href="../download/" data-nav>Download v0.1.9</a></div>
-        <div class="footer-col"><h4>ENGINEERING</h4><a href="../architecture/" data-nav>Architecture &amp; Math</a><a href="../docs/" data-nav>Docs &amp; FAQ</a><a href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">GitHub ↗</a></div>
-        <div class="footer-col"><h4>CONNECT</h4><a href="../contact/" data-nav>Contact Us</a><a href="https://github.com/Atharv3142M/posEye/issues" target="_blank" rel="noreferrer">Issues ↗</a></div>
+    <div class="footer-inner">
+      <a class="brand" href="../" aria-label="posEye home">
+        <img src="../posEye.png" alt="posEye logo" width="105" height="28">
+      </a>
+      <nav class="footer-links" aria-label="Footer navigation">
+        <a href="../">Overview</a>
+        <a href="../pipeline/">Pipeline</a>
+        <a href="../viewer/">3D Lab</a>
+        <a href="../architecture/">Architecture</a>
+        <a href="../docs/">Docs</a>
+        <a href="../contact/">Contact</a>
+      </nav>
+      <div class="footer-meta">
+        <span>Produces release/posEye.Setup installer when built locally.</span>
+        <span>&copy; <span id="year">2026</span> posEye</span>
       </div>
-      <div class="footer-bottom"><span>MIT LICENSE · CREATED BY ATHARV POSE</span><span>© <span id="year"></span> posEye</span></div>
     </div>
   </footer>
 

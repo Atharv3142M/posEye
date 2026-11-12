@@ -1,294 +1,275 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { initSiteChrome, isWebGLAvailable, showWebGLFallback } from '../lib/core.js';
+import { initChrome, reducedMotion } from '../lib/chrome.js';
 import {
-  addTacticalLights,
-  buildPointCloudFromTerrain,
-  buildTerrainGeometry,
+  addStudioLighting,
+  buildVertexPointCloud,
   createRenderer,
-  createTopoShaderMaterial,
-} from '../lib/scene3d.js';
+  hasWebGL,
+  loadGLB,
+  normalizeModel,
+  showStageFallback,
+} from '../lib/models.js';
 
-initSiteChrome();
+initChrome();
 
-const SITE_META = {
-  coastal: { label: 'COASTAL CLIFF', utmOffset: [314820.4, 2108450.2, 42.0], scaleMeters: 14.5 },
-  substation: { label: 'SUBSTATION', utmOffset: [542190.8, 4189320.6, 118.4], scaleMeters: 12.0 },
-  canyon: { label: 'CORRIDOR CANYON', utmOffset: [428710.1, 3621090.9, 284.7], scaleMeters: 18.0 },
+const MODELS = {
+  scan: {
+    file: 'poseye-scan.glb',
+    title: 'posEye Aerial Scan (test7)',
+    source: 'Actual posEye photogrammetry output converted to Draco GLB',
+    camera: [4.6, 3.1, 4.9],
+  },
+  cliff: {
+    file: 'coastal-cliff.glb',
+    title: 'Coastal Cliff 01 (CC0)',
+    source: 'Poly Haven photogrammetry terrain scan (1K WebP + Draco)',
+    camera: [4.9, 2.5, 5.2],
+  },
+  drone: {
+    file: 'drone.glb',
+    title: 'Survey UAV (CesiumDrone)',
+    source: 'Apache-2.0 quadcopter with rotor animation clip',
+    camera: [3.6, 2.2, 4.2],
+  },
 };
 
-function initSandbox() {
-  const canvas = document.querySelector('#sandbox-canvas');
-  if (!canvas) return;
-  if (!isWebGLAvailable()) {
-    showWebGLFallback(canvas);
+function setLoader(pct, done = false) {
+  const el = document.querySelector('#viewer-loader');
+  if (!el) return;
+  el.classList.toggle('done', done);
+  const bar = el.querySelector('.stage-bar i');
+  const txt = el.querySelector('.loader-text');
+  if (bar && Number.isFinite(pct)) bar.style.width = `${pct}%`;
+  if (txt && Number.isFinite(pct)) txt.textContent = `Loading GLB (${pct}%)`;
+}
+
+async function initViewer() {
+  const canvas = document.querySelector('#lab-canvas');
+  const stageFrame = document.querySelector('#viewer-stage');
+  if (!canvas || !stageFrame) return;
+
+  if (!hasWebGL()) {
+    setLoader(100, true);
+    showStageFallback(stageFrame, 'WebGL is unavailable in this browser. The desktop app includes the same Three.js GLB inspector.');
     return;
   }
 
-  const renderer = createRenderer(canvas, 2.0);
+  const renderer = createRenderer(canvas);
   const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0x060709, 0.024);
-
-  const camera = new THREE.PerspectiveCamera(
-    45,
-    (canvas.clientWidth || 1) / (canvas.clientHeight || 1),
-    0.1,
-    120
-  );
-
+  const camera = new THREE.PerspectiveCamera(42, 1, 0.05, 120);
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
   controls.dampingFactor = 0.06;
+  controls.minDistance = 1.1;
+  controls.maxDistance = 18;
   controls.maxPolarAngle = Math.PI * 0.49;
-  controls.minDistance = 4;
-  controls.maxDistance = 32;
 
-  addTacticalLights(scene);
+  addStudioLighting(scene);
 
-  const grid = new THREE.GridHelper(24, 36, 0xff4b0b, 0x1b2029);
-  grid.position.y = -1.6;
+  const grid = new THREE.GridHelper(10, 20, 0x9e3816, 0x3b4451);
+  grid.position.y = -0.01;
   grid.material.transparent = true;
   grid.material.opacity = 0.25;
   scene.add(grid);
 
-  const modelGroup = new THREE.Group();
-  scene.add(modelGroup);
-
   const measureGroup = new THREE.Group();
   scene.add(measureGroup);
-  const markerGeo = new THREE.SphereGeometry(0.14, 16, 16);
-  const markerA = new THREE.Mesh(markerGeo, new THREE.MeshBasicMaterial({ color: 0xff4b0b }));
-  const markerB = new THREE.Mesh(markerGeo, new THREE.MeshBasicMaterial({ color: 0x5cc4ff }));
-  markerA.visible = false;
-  markerB.visible = false;
-  const lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
-  const measureLine = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0xff4b0b }));
-  measureLine.visible = false;
-  measureGroup.add(markerA, markerB, measureLine);
 
-  let currentSite = 'coastal';
-  let currentMode = 'topo';
-  let measureEnabled = false;
-  let georeferenced = true;
-  let sliceVal = 99;
-  let pointA = null;
-  let pointB = null;
-  let solidMesh = null;
-  let wireMesh = null;
-  let cloudPoints = null;
-  let topoMat = null;
+  const contentRoot = new THREE.Group();
+  scene.add(contentRoot);
 
-  const vertsEl = document.querySelector('#stat-verts');
-  const trisEl = document.querySelector('#stat-tris');
-  const lifecycleEl = document.querySelector('#stat-lifecycle');
-  const coordEl = document.querySelector('#hud-coords');
-  const distOut = document.querySelector('#measure-distance');
-  const unitNote = document.querySelector('#measure-unit-note');
-  const sliceSlider = document.querySelector('#slice-slider');
-  const sliceOut = document.querySelector('#slice-readout');
-
-  const clearMeasure = () => {
-    pointA = null;
-    pointB = null;
-    markerA.visible = false;
-    markerB.visible = false;
-    measureLine.visible = false;
-    if (distOut) distOut.textContent = '--';
-    if (unitNote) {
-      unitNote.textContent = georeferenced
-        ? 'WGS 84 / UTM METRIC SCALE (NOMINAL GNSS ±2–5m)'
-        : 'UNCALIBRATED RELATIVE MODE (MODEL UNITS ONLY)';
-    }
-  };
-
-  const updateDistanceDisplay = () => {
-    if (!pointA || !pointB || !distOut) return;
-    const raw = pointA.distanceTo(pointB);
-    distOut.textContent = georeferenced
-      ? `${(raw * SITE_META[currentSite].scaleMeters).toFixed(2)} m`
-      : `${raw.toFixed(3)} units`;
-  };
-
-  const resetView = () => {
-    camera.position.set(8.5, 7.2, 11.2);
-    controls.target.set(0, 0.2, 0);
-    controls.update();
-  };
-
-  const applyViewMode = (mode) => {
-    currentMode = mode;
-    document.querySelectorAll('[data-view-mode]').forEach((b) =>
-      b.classList.toggle('active', b.dataset.viewMode === mode)
-    );
-    if (!solidMesh || !wireMesh || !cloudPoints || !topoMat) return;
-    solidMesh.visible = mode === 'topo' || mode === 'heatmap';
-    topoMat.uniforms.uHeatmap.value = mode === 'heatmap' ? 1.0 : 0.0;
-    wireMesh.visible = mode === 'wireframe';
-    cloudPoints.visible = mode === 'pointcloud';
-  };
-
-  const loadSite = (site) => {
-    currentSite = site;
-    document.querySelectorAll('[data-site]').forEach((b) =>
-      b.classList.toggle('active', b.dataset.site === site)
-    );
-    if (lifecycleEl) lifecycleEl.textContent = 'LOADED';
-
-    if (solidMesh) {
-      solidMesh.geometry.dispose();
-      solidMesh.material.dispose();
-      modelGroup.remove(solidMesh);
-    }
-    if (wireMesh) {
-      wireMesh.material.dispose();
-      modelGroup.remove(wireMesh);
-    }
-    if (cloudPoints) {
-      cloudPoints.geometry.dispose();
-      cloudPoints.material.dispose();
-      modelGroup.remove(cloudPoints);
-    }
-
-    const segs = 96;
-    const { geo, minY, maxY } = buildTerrainGeometry(14, segs, site);
-    topoMat = createTopoShaderMaterial(minY, maxY);
-    topoMat.uniforms.uSliceY.value = sliceVal;
-    solidMesh = new THREE.Mesh(geo, topoMat);
-    wireMesh = new THREE.Mesh(
-      geo,
-      new THREE.MeshBasicMaterial({ color: 0xff4b0b, wireframe: true, transparent: true, opacity: 0.72 })
-    );
-    const cloudGeo = buildPointCloudFromTerrain(14, 7200, site, site.length * 97);
-    cloudPoints = new THREE.Points(cloudGeo, new THREE.PointsMaterial({ size: 0.075, vertexColors: true }));
-    modelGroup.add(solidMesh, wireMesh, cloudPoints);
-
-    if (vertsEl) vertsEl.textContent = geo.attributes.position.count.toLocaleString();
-    if (trisEl) trisEl.textContent = (segs * segs * 2).toLocaleString();
-
-    clearMeasure();
-    applyViewMode(currentMode);
-  };
-
-  document.querySelectorAll('[data-site]').forEach((b) =>
-    b.addEventListener('click', () => loadSite(b.dataset.site))
-  );
-  document.querySelectorAll('[data-view-mode]').forEach((b) =>
-    b.addEventListener('click', () => applyViewMode(b.dataset.viewMode))
-  );
-
-  sliceSlider?.addEventListener('input', () => {
-    const pct = Number(sliceSlider.value);
-    sliceVal = pct >= 99 ? 99 : -1.5 + (pct / 100) * 3.8;
-    if (topoMat) topoMat.uniforms.uSliceY.value = sliceVal;
-    if (sliceOut) sliceOut.textContent = pct >= 99 ? 'FULL MESH (NO CLIP)' : `CLIPPING AT ${pct}% ELEVATION`;
-  });
-
-  const measureBtn = document.querySelector('#toggle-measure');
-  measureBtn?.addEventListener('click', () => {
-    measureEnabled = !measureEnabled;
-    measureBtn.classList.toggle('active', measureEnabled);
-    measureBtn.textContent = measureEnabled ? 'MEASURE: ACTIVE (CLICK A & B)' : 'ENABLE MEASURE TOOL';
-    canvas.classList.toggle('measuring', measureEnabled);
-  });
-
-  document.querySelector('#clear-measure')?.addEventListener('click', clearMeasure);
-  document.querySelector('#reset-camera')?.addEventListener('click', resetView);
-
-  const georefBtn = document.querySelector('#toggle-georef');
-  georefBtn?.addEventListener('click', () => {
-    georeferenced = !georeferenced;
-    georefBtn.textContent = georeferenced ? 'MODE: GEOREFERENCED (SRT)' : 'MODE: UNCALIBRATED (NO SRT)';
-    georefBtn.classList.toggle('active', georeferenced);
-    if (unitNote) {
-      unitNote.textContent = georeferenced
-        ? 'WGS 84 / UTM METRIC SCALE (NOMINAL GNSS ±2–5m)'
-        : 'UNCALIBRATED RELATIVE MODE (MODEL UNITS ONLY)';
-    }
-    updateDistanceDisplay();
-  });
-
-  window.addEventListener('keydown', (e) => {
-    if (e.key === 'r' || e.key === 'R') resetView();
-  });
-
-  const raycaster = new THREE.Raycaster();
-  const ndc = new THREE.Vector2();
-  let lastRay = 0;
-
-  const getHitPoint = (e) => {
-    if (!solidMesh) return null;
-    const rect = canvas.getBoundingClientRect();
-    ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-    ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-    raycaster.setFromCamera(ndc, camera);
-    const hits = raycaster.intersectObject(solidMesh, false);
-    const p = hits[0]?.point ?? null;
-    if (p && p.y > sliceVal) return null;
-    return p;
-  };
-
-  canvas.addEventListener('pointermove', (e) => {
-    const now = performance.now();
-    if (now - lastRay < 40) return;
-    lastRay = now;
-    const hit = getHitPoint(e);
-    if (!hit || !coordEl) return;
-    if (georeferenced) {
-      const [ox, oy, oz] = SITE_META[currentSite].utmOffset;
-      const s = SITE_META[currentSite].scaleMeters;
-      coordEl.textContent = `E ${(ox + hit.x * s).toFixed(1)} · N ${(oy + hit.z * s).toFixed(1)} · Z ${(oz + hit.y * s).toFixed(1)}m`;
-    } else {
-      coordEl.textContent = `LOCAL X ${hit.x.toFixed(2)} · Y ${hit.y.toFixed(2)} · Z ${hit.z.toFixed(2)} units`;
-    }
-  });
-
-  canvas.addEventListener('click', (e) => {
-    if (!measureEnabled) return;
-    const hit = getHitPoint(e);
-    if (!hit) return;
-    if (!pointA || (pointA && pointB)) {
-      pointA = hit.clone();
-      pointB = null;
-      markerA.position.copy(pointA);
-      markerA.visible = true;
-      markerB.visible = false;
-      measureLine.visible = false;
-      if (distOut) distOut.textContent = 'SELECT POINT B...';
-    } else {
-      pointB = hit.clone();
-      markerB.position.copy(pointB);
-      markerB.visible = true;
-      lineGeo.setFromPoints([pointA, pointB]);
-      measureLine.visible = true;
-      updateDistanceDisplay();
-    }
-  });
+  let activeKey = 'scan';
+  let activeMode = 'pbr';
+  let darkStage = true;
+  let measureMode = false;
+  let measurePoints = [];
+  let activeMesh = null;
+  let activeCloud = null;
+  let mixer = null;
 
   const resize = () => {
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
+    const w = stageFrame.clientWidth;
+    const h = stageFrame.clientHeight;
     if (!w || !h) return;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
   };
   const ro = new ResizeObserver(resize);
-  ro.observe(canvas);
+  ro.observe(stageFrame);
+  resize();
 
-  loadSite('coastal');
-  resetView();
+  const updateMeasureUI = (text) => {
+    const out = document.querySelector('#measure-readout');
+    if (out) out.textContent = text;
+  };
+
+  const clearMeasure = () => {
+    measurePoints = [];
+    while (measureGroup.children.length) {
+      const child = measureGroup.children.pop();
+      child.geometry?.dispose?.();
+      child.material?.dispose?.();
+    }
+    updateMeasureUI(measureMode ? 'Click two points on the 3D surface' : 'Measurement off');
+  };
+
+  const applyRenderMode = () => {
+    if (!activeMesh || !activeCloud) return;
+
+    activeMesh.visible = activeMode !== 'cloud';
+    activeCloud.visible = activeMode === 'cloud';
+
+    activeMesh.traverse((obj) => {
+      if (!obj.isMesh || !obj.material) return;
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      mats.forEach((m) => {
+        m.wireframe = activeMode === 'wireframe';
+      });
+    });
+
+    if (activeMode === 'ortho') {
+      camera.position.set(0.01, 7.6, 0.01);
+      controls.target.set(0, 0.2, 0);
+      controls.update();
+    }
+  };
+
+  const resetCamera = () => {
+    const cfg = MODELS[activeKey];
+    camera.position.set(...cfg.camera);
+    controls.target.set(0, 0.5, 0);
+    controls.update();
+  };
+
+  const loadSelectedModel = async (key) => {
+    activeKey = key;
+    clearMeasure();
+    setLoader(10, false);
+
+    while (contentRoot.children.length) contentRoot.remove(contentRoot.children[0]);
+    mixer = null;
+
+    try {
+      const gltf = await loadGLB(MODELS[key].file, (pct) => setLoader(pct, false));
+      const { root, stats } = normalizeModel(gltf.scene, 5.2);
+      activeMesh = root;
+      activeCloud = buildVertexPointCloud(root, 32000);
+      activeCloud.material.size = 0.036;
+
+      contentRoot.add(activeMesh);
+      contentRoot.add(activeCloud);
+
+      if (gltf.animations?.length) {
+        mixer = new THREE.AnimationMixer(root.children[0]);
+        mixer.clipAction(gltf.animations[0]).play();
+      }
+
+      document.querySelector('#stat-verts').textContent = stats.vertices.toLocaleString();
+      document.querySelector('#stat-tris').textContent = stats.triangles.toLocaleString();
+      document.querySelector('#stat-meshes').textContent = String(stats.meshes);
+      document.querySelector('#stat-source').textContent = MODELS[key].source;
+      document.querySelector('#hud-model-title').textContent = MODELS[key].title;
+
+      applyRenderMode();
+      resetCamera();
+      setLoader(100, true);
+    } catch {
+      setLoader(100, true);
+      showStageFallback(stageFrame, `Unable to load ${MODELS[key].file}.`);
+    }
+  };
+
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+
+  canvas.addEventListener('click', (e) => {
+    if (!measureMode || !activeMesh) return;
+    const rect = canvas.getBoundingClientRect();
+    pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointer, camera);
+
+    const hits = raycaster.intersectObject(activeMesh, true);
+    if (!hits.length) return;
+    const pt = hits[0].point.clone();
+
+    if (measurePoints.length >= 2) clearMeasure();
+    measurePoints.push(pt);
+
+    const marker = new THREE.Mesh(
+      new THREE.SphereGeometry(0.06, 16, 16),
+      new THREE.MeshBasicMaterial({ color: 0xea8b69 })
+    );
+    marker.position.copy(pt);
+    measureGroup.add(marker);
+
+    if (measurePoints.length === 2) {
+      const dist = measurePoints[0].distanceTo(measurePoints[1]);
+      const lineGeo = new THREE.BufferGeometry().setFromPoints(measurePoints);
+      const line = new THREE.Line(
+        lineGeo,
+        new THREE.LineBasicMaterial({ color: 0xea8b69 })
+      );
+      measureGroup.add(line);
+      updateMeasureUI(`Measured span: ${dist.toFixed(3)} normalized units`);
+    } else {
+      updateMeasureUI('Point A locked. Click Point B on the surface.');
+    }
+  });
+
+  document.querySelectorAll('[data-model]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-model]').forEach((b) => b.setAttribute('aria-pressed', 'false'));
+      btn.setAttribute('aria-pressed', 'true');
+      loadSelectedModel(btn.dataset.model);
+    });
+  });
+
+  document.querySelectorAll('[data-mode]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', 'false'));
+      btn.setAttribute('aria-pressed', 'true');
+      activeMode = btn.dataset.mode;
+      applyRenderMode();
+    });
+  });
+
+  document.querySelector('#btn-stage-theme')?.addEventListener('click', (e) => {
+    darkStage = !darkStage;
+    stageFrame.classList.toggle('is-dark', darkStage);
+    e.currentTarget.setAttribute('aria-pressed', String(!darkStage));
+    e.currentTarget.textContent = darkStage ? 'Switch to Mineral Paper Stage' : 'Switch to Drafting Slate Stage';
+  });
+
+  document.querySelector('#btn-measure')?.addEventListener('click', (e) => {
+    measureMode = !measureMode;
+    e.currentTarget.setAttribute('aria-pressed', String(measureMode));
+    e.currentTarget.textContent = measureMode ? 'Disable Surface Measure' : 'Enable Surface Measure';
+    clearMeasure();
+  });
+
+  document.querySelector('#btn-reset-cam')?.addEventListener('click', resetCamera);
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'r' || e.key === 'R') resetCamera();
+  });
+
+  await loadSelectedModel('scan');
 
   const clock = new THREE.Clock();
   let raf = 0;
   const tick = () => {
     raf = requestAnimationFrame(tick);
-    if (topoMat) topoMat.uniforms.uTime.value = clock.getElapsedTime();
+    const dt = Math.min(clock.getDelta(), 0.05);
+    if (mixer && !reducedMotion) mixer.update(dt);
     controls.update();
     renderer.render(scene, camera);
   };
   tick();
 
-  window.addEventListener('beforeunload', () => {
+  window.addEventListener('pagehide', () => {
     cancelAnimationFrame(raf);
     ro.disconnect();
     controls.dispose();
@@ -296,4 +277,4 @@ function initSandbox() {
   });
 }
 
-initSandbox();
+initViewer();

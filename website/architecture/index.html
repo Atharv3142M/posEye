@@ -2,155 +2,126 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#060709">
-  <meta name="description" content="Geospatial coordinate math, accuracy integrity, and local-first security architecture of posEye.">
-  <title>Architecture &amp; Math — posEye</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F4F3EF">
+  <meta name="description" content="System architecture of posEye: Electron shell, FastAPI orchestrator, Python frame pipeline, and local posEye Construction Engine.">
+  <title>Architecture | posEye</title>
   <link rel="icon" type="image/png" href="../posEye.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../src/styles/system.css">
-  <link rel="stylesheet" href="../src/styles/sections.css">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../src/styles/base.css">
 </head>
-<body class="loading">
-  <div class="loader" aria-hidden="true"><img src="../posEye.png" alt=""><span>LOADING ARCHITECTURE</span><i></i></div>
-  <div class="route-curtain" aria-hidden="true"></div>
+<body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
 
-  <header class="topbar">
-    <a class="brand" href="../" data-nav aria-label="posEye home">
-      <img src="../posEye.png" alt="posEye logo">
-      <span>pos<span class="signal">Eye</span></span>
-      <span class="brand-ver">v0.1.9</span>
+  <header class="site-header">
+    <a class="brand" href="../" aria-label="posEye home">
+      <img src="../posEye.png" alt="posEye logo" width="120" height="32">
     </a>
+
     <nav class="navlinks" aria-label="Primary navigation">
-      <a href="../" data-nav>PRODUCT</a>
-      <a href="../pipeline/" data-nav>PIPELINE</a>
-      <a href="../viewer/" data-nav>3D LAB</a>
-      <a href="../architecture/" class="active" data-nav>ARCHITECTURE</a>
-      <a href="../docs/" data-nav>DOCS</a>
-      <a href="../contact/" data-nav>CONTACT</a>
+      <a href="../">Overview</a>
+      <a href="../pipeline/">Pipeline</a>
+      <a href="../viewer/">3D Lab</a>
+      <a href="./" aria-current="page">Architecture</a>
+      <a href="../docs/">Docs</a>
+      <a href="../download/">Download</a>
+      <a href="../contact/">Contact</a>
     </nav>
-    <a class="nav-cta" href="../download/" data-nav>GET v0.1.9 <span>↓</span></a>
-    <button class="menu-btn" aria-label="Open navigation" aria-expanded="false"><span></span><span></span></button>
+
+    <a class="nav-cta" href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">GitHub Repo</a>
+    <button class="menu-btn" type="button" aria-label="Open navigation menu" aria-expanded="false">Menu</button>
   </header>
 
-  <main>
-    <section class="page-head">
-      <div class="wrap">
-        <div class="kicker"><span class="tag">GEOREFERENCING · ACCURACY · SECURITY</span><span>MATHEMATICAL HONESTY</span></div>
-        <h1 class="hero-reveal">Coordinate discipline.<br><span class="signal">Air-gapped execution.</span></h1>
-        <p class="hero-reveal">posEye enforces strict datum transformations, transparent measurement bounds, and loopback process isolation from video ingestion through WebGL rendering.</p>
+  <main id="main-content">
+    <section class="page-hero">
+      <div class="page-hero-inner">
+        <div>
+          <p class="eyebrow">Four-Layer Local System</p>
+          <h1>Desktop Architecture.</h1>
+        </div>
+        <p class="lead">Designed to keep heavy video extraction, EXIF geotagging, containerized reconstruction, and interactive GLB inspection synchronized locally on a single machine.</p>
       </div>
     </section>
 
-    <section class="band">
-      <div class="wrap">
-        <div class="kicker"><span class="tag">01 / ORIGIN CENTERING</span><span>ELIMINATING FLOAT32 DEPTH JITTER</span></div>
-
-        <div class="arch-grid">
-          <div class="canvas-box">
-            <canvas id="arch-canvas" aria-label="Interactive 3D coordinate frame visualizer"></canvas>
-            <div class="webgl-fallback"><div><p class="muted">3D Coordinate Visualizer</p></div></div>
-            <div class="cad-panel hud-bar">
-              <span id="coord-state-readout" class="signal">ORIGIN CENTERED (0, 0, 0)</span>
+    <section class="section-pad">
+      <div class="section-inner">
+        <div class="split-grid" style="align-items:stretch;">
+          <div class="panel-box" style="display:flex;flex-direction:column;gap:20px;">
+            <p class="eyebrow">Inspect Component Layer</p>
+            <div class="seg-row two">
+              <button class="ctrl-btn" type="button" data-layer="desktop" aria-pressed="true">Desktop Shell</button>
+              <button class="ctrl-btn" type="button" data-layer="orchestrator" aria-pressed="false">Orchestrator API</button>
+              <button class="ctrl-btn" type="button" data-layer="pipeline" aria-pressed="false">Frame Pipeline</button>
+              <button class="ctrl-btn" type="button" data-layer="engine" aria-pressed="false">Construction Engine</button>
             </div>
+            <div>
+              <h2 id="layer-title">Desktop Shell &amp; Viewer (apps/desktop)</h2>
+              <p id="layer-body" style="margin-top:10px;"></p>
+            </div>
+            <dl id="layer-facts" class="stats-kv"></dl>
           </div>
 
-          <div>
-            <h2 class="h2-xl" style="font-size: clamp(28px, 3.6vw, 48px);">Zero vertex shimmer on large UTM models.</h2>
-            <p class="muted" style="margin: 16px 0 22px;">
-              Raw UTM coordinates lie hundreds of thousands of meters from world zero, exhausting 32-bit WebGL float precision. posEye translates every reconstructed mesh bounding box cleanly to <code>(0, 0, 0)</code> while keeping the exact offset vector to show true georeferenced coordinates in the HUD.
-            </p>
-            <div class="btn-group">
-              <button class="cad-btn active" type="button" data-coord-mode="centered">ORIGIN-CENTERED (posEye)</button>
-              <button class="cad-btn" type="button" data-coord-mode="raw">RAW UTM SPACE</button>
+          <div class="stage-frame is-dark" style="min-height:380px;border:1px solid var(--line);">
+            <canvas id="arch-canvas" class="stage-canvas" aria-label="Rotating 3D inspection drone hardware model"></canvas>
+            <div id="arch-loader" class="stage-loader" aria-live="polite">
+              <span class="loader-text">Loading UAV model</span>
+              <span class="stage-bar"><i></i></span>
             </div>
           </div>
         </div>
       </div>
     </section>
 
-    <section class="band">
-      <div class="wrap">
-        <div class="kicker"><span class="tag">02 / GEOSPATIAL ACCURACY BOUNDARIES</span><span>TRUTHFUL SCALE REPORTING</span></div>
-
-        <div style="overflow-x: auto;">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>INPUT MODE</th>
-                <th>COORDINATE SYSTEM</th>
-                <th>SCALE UNIT</th>
-                <th>RELATIVE COHERENCE</th>
-                <th>ABSOLUTE POSITIONING</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><strong>Drone Video + SRT Telemetry</strong></td>
-                <td>WGS 84 (EPSG:4326) → Local UTM</td>
-                <td>Meters (m)</td>
-                <td>~0.1 – 0.5 m frame-to-frame</td>
-                <td>±2.0 – 5.0 m (nominal consumer GNSS)</td>
-              </tr>
-              <tr>
-                <td><strong>Video Only (No SRT / EXIF)</strong></td>
-                <td>Uncalibrated Local Frame</td>
-                <td>Model Units (explicit)</td>
-                <td>Proportional geometry</td>
-                <td>Unreferenced (never fakes meters)</td>
-              </tr>
-              <tr>
-                <td><strong>Survey GCP / Checkpoint Validation</strong></td>
-                <td>Proj4 / EPSG + RMS Checkpoints</td>
-                <td>Ground Truth</td>
-                <td>Verified via RMS_XY &amp; RMS_3D</td>
-                <td>Rejects incomplete / NaN residuals</td>
-              </tr>
-            </tbody>
-          </table>
+    <section class="section-pad section-band">
+      <div class="section-inner">
+        <div class="section-index">
+          <span>Security &amp; Offline Boundaries</span>
+          <span>Localhost Isolation</span>
         </div>
-      </div>
-    </section>
 
-    <section class="band" style="border-bottom: 0;">
-      <div class="wrap">
-        <div class="kicker"><span class="tag">03 / SECURITY BOUNDARIES</span><span>LOOPBACK &amp; IPC ISOLATION</span></div>
+        <div class="principle-row">
+          <span class="principle-num">01</span>
+          <h3>Token-Gated Local API</h3>
+          <p>The bundled Python orchestrator binds exclusively to 127.0.0.1:8765 and authenticates Electron requests with a random per-launch bearer secret.</p>
+          <span class="principle-tag">IPC</span>
+        </div>
 
-        <div class="ledger">
-          <div class="ledger-row">
-            <span class="ledger-idx">L1</span>
-            <h3>Privileged Desktop Origin</h3>
-            <p>Packaged Electron serves solely from <code>poseye://app</code> with tick-0 preload token injection, frame-sender checks, and strict filesystem path confinement.</p>
-            <span class="ledger-tag">IPC CONFINED</span>
-          </div>
-          <div class="ledger-row">
-            <span class="ledger-idx">L2</span>
-            <h3>Loopback Orchestrator Auth</h3>
-            <p>FastAPI binds strictly to <code>127.0.0.1:8765</code> and authenticates every REST &amp; WebSocket call with session-scoped bearer tokens (`DT_API_TOKEN`).</p>
-            <span class="ledger-tag">127.0.0.1 ONLY</span>
-          </div>
-          <div class="ledger-row">
-            <span class="ledger-idx">L3</span>
-            <h3>posEye Construction Engine</h3>
-            <p>Isolated local compute with pinned GPU image verification, CUDA runtime checks, and Zip-Slip / decompression-bomb archive guards.</p>
-            <span class="ledger-tag">ZIP-SLIP GUARD</span>
-          </div>
+        <div class="principle-row">
+          <span class="principle-num">02</span>
+          <h3>Zip-Slip Path Validation</h3>
+          <p>Downloaded construction archives are normalized and boundary-checked before extraction so malformed relative entries cannot write outside job directories.</p>
+          <span class="principle-tag">Sanitization</span>
+        </div>
+
+        <div class="principle-row">
+          <span class="principle-num">03</span>
+          <h3>Custom Origin Scheme</h3>
+          <p>Production React assets are served over the registered poseye://app scheme rather than unrestricted file URLs.</p>
+          <span class="principle-tag">Isolation</span>
         </div>
       </div>
     </section>
   </main>
 
   <footer class="site-footer">
-    <div class="wrap">
-      <div class="footer-grid">
-        <div class="footer-col"><a class="brand" href="../" data-nav style="margin-bottom: 12px;"><img src="../posEye.png" alt=""><span>pos<span class="signal">Eye</span></span></a><p class="muted" style="font-size: 13px; margin: 0;">Offline drone video photogrammetry for Windows workstations.</p></div>
-        <div class="footer-col"><h4>PRODUCT</h4><a href="../" data-nav>Overview</a><a href="../pipeline/" data-nav>11-Stage Pipeline</a><a href="../viewer/" data-nav>Interactive 3D Lab</a><a href="../download/" data-nav>Download v0.1.9</a></div>
-        <div class="footer-col"><h4>ENGINEERING</h4><a href="../architecture/" data-nav>Architecture &amp; Math</a><a href="../docs/" data-nav>Docs &amp; FAQ</a><a href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">GitHub ↗</a></div>
-        <div class="footer-col"><h4>CONNECT</h4><a href="../contact/" data-nav>Contact Us</a><a href="https://github.com/Atharv3142M/posEye/issues" target="_blank" rel="noreferrer">Issues ↗</a></div>
+    <div class="footer-inner">
+      <a class="brand" href="../" aria-label="posEye home">
+        <img src="../posEye.png" alt="posEye logo" width="105" height="28">
+      </a>
+      <nav class="footer-links" aria-label="Footer navigation">
+        <a href="../">Overview</a>
+        <a href="../pipeline/">Pipeline</a>
+        <a href="../viewer/">3D Lab</a>
+        <a href="../docs/">Docs</a>
+        <a href="../download/">Download</a>
+        <a href="../contact/">Contact</a>
+      </nav>
+      <div class="footer-meta">
+        <span>Zero cloud upload. Zero third-party telemetry servers.</span>
+        <span>&copy; <span id="year">2026</span> posEye</span>
       </div>
-      <div class="footer-bottom"><span>MIT LICENSE · CREATED BY ATHARV POSE</span><span>© <span id="year"></span> posEye</span></div>
     </div>
   </footer>
 
