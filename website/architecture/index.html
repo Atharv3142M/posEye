@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#07080b">
+  <meta name="description" content="Geospatial coordinate math, accuracy integrity, local-first security, and the future roadmap of posEye.">
+  <title>Architecture &amp; Geospatial Math — posEye</title>
+  <link rel="icon" type="image/png" href="../posEye.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../src/styles/tokens.css">
+  <link rel="stylesheet" href="../src/styles/pages.css">
+</head>
+<body class="loading">
+  <div class="loader" aria-hidden="true">
+    <img src="../posEye.png" alt="">
+    <span>LOADING SYSTEM ARCHITECTURE</span>
+    <i></i>
+  </div>
+  <div class="page-curtain" aria-hidden="true"></div>
+  <div class="noise" aria-hidden="true"></div>
+
+  <header class="nav">
+    <a class="brand" href="../" data-nav aria-label="posEye home">
+      <img src="../posEye.png" alt="posEye logo">
+      <span>pos<span class="orange">Eye</span></span>
+    </a>
+    <nav class="navlinks" aria-label="Primary navigation">
+      <a href="../" data-nav>OVERVIEW</a>
+      <a href="../pipeline/" data-nav>PIPELINE</a>
+      <a href="../viewer/" data-nav>3D SANDBOX</a>
+      <a href="../architecture/" class="active" data-nav>ARCHITECTURE</a>
+      <a href="../download/" data-nav>GET v0.1.9</a>
+    </nav>
+    <a class="nav-cta" href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">GITHUB <span>↗</span></a>
+    <button class="menu" aria-label="Open navigation" aria-expanded="false"><span></span><span></span></button>
+  </header>
+
+  <main>
+    <section class="subhero">
+      <div class="hero-grid"></div>
+      <div class="subhero-inner">
+        <p class="eyebrow hero-reveal"><b></b> GEOREFERENCING · SECURITY · INTEGRITY</p>
+        <h1 class="hero-reveal">Mathematical honesty.<br><span class="orange">Air-gapped execution.</span></h1>
+        <p class="lead hero-reveal">
+          posEye enforces strict coordinate datum discipline, transparent measurement error boundaries, and loopback-isolated local security across every process boundary.
+        </p>
+      </div>
+    </section>
+
+    <!-- ORIGIN CENTERING & COORDINATE VISUALIZER -->
+    <section class="section-pad">
+      <div class="section-index">
+        <span>01 / COORDINATE TRANSFORMATION</span>
+        <span>ORIGIN-CENTERED WEBGL STABILITY</span>
+      </div>
+
+      <div class="arch-grid">
+        <div class="arch-canvas-box">
+          <canvas id="arch-canvas" aria-label="Interactive 3D coordinate frame visualizer"></canvas>
+          <div class="webgl-fallback"><div><p class="muted">Coordinate Frame Visualizer</p></div></div>
+          <div class="ag-card pipeline-hud-badge">
+            <span id="coord-state-readout" class="orange">ORIGIN CENTERED (0, 0, 0)</span>
+          </div>
+        </div>
+
+        <div>
+          <h2 class="display-h2" style="font-size: clamp(30px, 3.8vw, 52px);">No depth-buffer jitter.</h2>
+          <p class="muted" style="margin: 16px 0 22px;">
+            Raw UTM coordinates sit hundreds of thousands of meters from zero, causing WebGL 32-bit float vertex jitter. posEye shifts every reconstructed bounding box cleanly to <code>(0, 0, 0)</code> while retaining the exact offset vector to display true UTM / WGS 84 coordinates in the HUD.
+          </p>
+          <div class="btn-group">
+            <button class="pill-btn active" type="button" data-coord-mode="centered">ORIGIN-CENTERED (posEye)</button>
+            <button class="pill-btn" type="button" data-coord-mode="raw">RAW UTM SPACE</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- GEOSPATIAL ACCURACY MATRIX -->
+    <section class="section-pad">
+      <div class="section-index">
+        <span>02 / GEOSPATIAL ACCURACY CONTRACT</span>
+        <span>HONEST SCALE ATTRIBUTION</span>
+      </div>
+
+      <div class="accuracy-table-wrap" data-reveal>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>INPUT MODE</th>
+              <th>DATUM / CRS</th>
+              <th>SCALE UNIT</th>
+              <th>RELATIVE COHERENCE</th>
+              <th>ABSOLUTE POSITIONING</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Drone Video + SRT Telemetry</strong></td>
+              <td>WGS 84 (EPSG:4326) → Local UTM</td>
+              <td>Meters (m)</td>
+              <td>~0.1 – 0.5 m frame-to-frame</td>
+              <td>±2.0 – 5.0 m (nominal consumer GNSS)</td>
+            </tr>
+            <tr>
+              <td><strong>Video Only (No SRT / EXIF)</strong></td>
+              <td>Uncalibrated Local Frame</td>
+              <td>Model Units (explicit)</td>
+              <td>Proportional geometry</td>
+              <td>Unreferenced (never fakes meters)</td>
+            </tr>
+            <tr>
+              <td><strong>Survey GCP / Checkpoint Validation</strong></td>
+              <td>Proj4 / EPSG + RMS Checkpoints</td>
+              <td>Ground Truth</td>
+              <td>Validated via RMS_XY &amp; RMS_3D</td>
+              <td>Rejects incomplete / NaN residuals</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- LOCAL SECURITY & MULTI-LAYER STACK -->
+    <section class="section-pad">
+      <div class="section-index">
+        <span>03 / LOCAL-FIRST SECURITY ISOLATION</span>
+        <span>DEFENSE IN DEPTH</span>
+      </div>
+
+      <div class="iso-stack" style="margin-top: 32px;" data-stagger-grid>
+        <article class="ag-card iso-layer" data-tilt>
+          <span class="mono orange">LAYER 01 // PRIVILEGED DESKTOP SHELL</span>
+          <h3 style="margin: 8px 0 6px;">poseye://app Custom Origin &amp; IPC Confinement</h3>
+          <p class="muted" style="margin:0;">Synchronous preload token hydration at tick 0. IPC handlers verify top-level frame sender identity and enforce strict canonical filesystem path containment.</p>
+        </article>
+
+        <article class="ag-card iso-layer" data-tilt>
+          <span class="mono cyan">LAYER 02 // LOOPBACK SPATIAL ORCHESTRATOR</span>
+          <h3 style="margin: 8px 0 6px;">127.0.0.1:8765 Session Bearer Authentication</h3>
+          <p class="muted" style="margin:0;">FastAPI orchestrator binds strictly to loopback, enforces per-session cryptographic tokens (`DT_API_TOKEN`) on REST &amp; WebSockets, and denies external browser origins.</p>
+        </article>
+
+        <article class="ag-card iso-layer" data-tilt>
+          <span class="mono orange">LAYER 03 // ISOLATED RECONSTRUCTION RUNTIME</span>
+          <h3 style="margin: 8px 0 6px;">posEye Construction Engine &amp; Zip-Slip Protection</h3>
+          <p class="muted" style="margin:0;">Containerized local compute with pinned GPU image verification, CUDA capability checks, and canonical path validation blocking directory traversal and zip bombs.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <a class="brand" href="../" data-nav><img src="../posEye.png" alt=""><span>pos<span class="orange">Eye</span></span></a>
+      <div class="footer-links">
+        <a href="../" data-nav>OVERVIEW</a>
+        <a href="../pipeline/" data-nav>PIPELINE</a>
+        <a href="../viewer/" data-nav>3D SANDBOX</a>
+        <a href="../download/" data-nav>DOWNLOAD v0.1.9</a>
+      </div>
+      <span>MIT LICENSE · CREATED BY ATHARV POSE · © <span id="year"></span></span>
+    </div>
+  </footer>
+
+  <script type="module" src="../src/pages/architecture.js"></script>
+</body>
+</html>

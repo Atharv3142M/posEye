@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#07080b">
+  <meta name="description" content="Explore the 11-stage posEye photogrammetry pipeline and the posEye Construction Engine.">
+  <title>Pipeline &amp; Construction Engine — posEye</title>
+  <link rel="icon" type="image/png" href="../posEye.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../src/styles/tokens.css">
+  <link rel="stylesheet" href="../src/styles/pages.css">
+</head>
+<body class="loading">
+  <div class="loader" aria-hidden="true">
+    <img src="../posEye.png" alt="">
+    <span>LOADING PIPELINE STAGES</span>
+    <i></i>
+  </div>
+  <div class="page-curtain" aria-hidden="true"></div>
+  <div class="noise" aria-hidden="true"></div>
+
+  <header class="nav">
+    <a class="brand" href="../" data-nav aria-label="posEye home">
+      <img src="../posEye.png" alt="posEye logo">
+      <span>pos<span class="orange">Eye</span></span>
+    </a>
+    <nav class="navlinks" aria-label="Primary navigation">
+      <a href="../" data-nav>OVERVIEW</a>
+      <a href="../pipeline/" class="active" data-nav>PIPELINE</a>
+      <a href="../viewer/" data-nav>3D SANDBOX</a>
+      <a href="../architecture/" data-nav>ARCHITECTURE</a>
+      <a href="../download/" data-nav>GET v0.1.9</a>
+    </nav>
+    <a class="nav-cta" href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">GITHUB <span>↗</span></a>
+    <button class="menu" aria-label="Open navigation" aria-expanded="false"><span></span><span></span></button>
+  </header>
+
+  <main>
+    <section class="subhero">
+      <div class="hero-grid"></div>
+      <div class="subhero-inner">
+        <p class="eyebrow hero-reveal"><b></b> DETERMINISTIC STATE MACHINE · 11 STAGES</p>
+        <h1 class="hero-reveal">One click in.<br><span class="orange">Verified 3D out.</span></h1>
+        <p class="lead hero-reveal">
+          Every reconstruction advances through an immutable state-machine managed by the posEye Spatial Orchestrator and executed locally by the <strong>posEye Construction Engine</strong>. Scroll or select any stage below to inspect the 3D subsystem stack.
+        </p>
+      </div>
+    </section>
+
+    <section class="section-pad">
+      <div class="section-index">
+        <span>01 / STATE LIFECYCLE</span>
+        <span>SCROLL OR CLICK TO FOCUS 3D LAYER</span>
+      </div>
+
+      <div class="pipeline-split">
+        <div class="pipeline-canvas-wrap">
+          <canvas id="pipeline-canvas" aria-label="Interactive 3D pipeline layer stack"></canvas>
+          <div class="webgl-fallback"><div><p class="muted">3D Subsystem Stack</p></div></div>
+          <div class="ag-card pipeline-hud-badge">
+            <span id="pipeline-hud-title" class="orange">01 / validating</span>
+            <span id="pipeline-hud-state" class="muted">STAGE 01–02 // FFMPEG INGEST</span>
+          </div>
+        </div>
+
+        <div class="stage-list">
+          <article class="ag-card stage-item active" data-state-label="01 / validating" data-tier-label="STAGE 01–02 // FFMPEG INGEST">
+            <div class="stage-top"><span>STATE: validating</span><span>PHASE 01</span></div>
+            <h3>Media &amp; Telemetry Probe</h3>
+            <p>Verifies video container integrity, codec streams, resolution, framerate, duration, and SRT telemetry bounds before allocating job storage.</p>
+          </article>
+
+          <article class="ag-card stage-item" data-state-label="02 / extracting" data-tier-label="STAGE 01–02 // FFMPEG INGEST">
+            <div class="stage-top"><span>STATE: extracting</span><span>PHASE 02</span></div>
+            <h3>Static FFmpeg Frame Sampling</h3>
+            <p>Managed subprocess extraction pulls candidate frames at configurable rates using the bundled offline FFmpeg binary, with instant clean teardown on cancel.</p>
+          </article>
+
+          <article class="ag-card stage-item" data-state-label="03 / filtering" data-tier-label="STAGE 03–04 // FILTER &amp; WGS84 EXIF">
+            <div class="stage-top"><span>STATE: filtering</span><span>PHASE 03</span></div>
+            <h3>Laplacian Blur &amp; dHash Deduplication</h3>
+            <p>Drops motion-blurred frames via OpenCV Laplacian variance and eliminates hover redundancy with 64-bit perceptual hashing (~70–80% overlap target).</p>
+          </article>
+
+          <article class="ag-card stage-item" data-state-label="04 / geotagging" data-tier-label="STAGE 03–04 // FILTER &amp; WGS84 EXIF">
+            <div class="stage-top"><span>STATE: geotagging</span><span>PHASE 04</span></div>
+            <h3>WGS 84 EXIF &amp; Timestamp Provenance</h3>
+            <p>Matches frames to SRT cues within a strict 1.5s window, writes EPSG:4326 DMS coordinates, preserves AMSL altitude (`GPSAltitudeRef`), and stamps true capture times.</p>
+          </article>
+
+          <article class="ag-card stage-item" data-state-label="05 / masking" data-tier-label="STAGE 05 // YOLOV8N MASKING">
+            <div class="stage-top"><span>STATE: masking</span><span>PHASE 05</span></div>
+            <h3>Dynamic Obstruction Masking</h3>
+            <p>Optional YOLOv8n segmentation identifies transient vehicles, personnel, and animals, generating per-frame masks so moving objects never ghost the static mesh.</p>
+          </article>
+
+          <article class="ag-card stage-item" data-state-label="06 / uploading" data-tier-label="STAGE 06–07 // posEye CONSTRUCTION ENGINE">
+            <div class="stage-top"><span>STATE: dispatching</span><span>PHASE 06</span></div>
+            <h3>Loopback Engine Dispatch</h3>
+            <p>Packages geotagged frames and optional masks into an authenticated local payload dispatched strictly over <code>127.0.0.1</code> to the posEye Construction Engine.</p>
+          </article>
+
+          <article class="ag-card stage-item" data-state-label="07 / reconstructing" data-tier-label="STAGE 06–07 // posEye CONSTRUCTION ENGINE">
+            <div class="stage-top"><span>STATE: reconstructing</span><span>PHASE 07</span></div>
+            <h3>posEye Construction Engine</h3>
+            <p>Executes sparse bundle adjustment, dense multi-view point generation, Poisson surface meshing, texture baking, and orthomosaic synthesis—with verified CUDA GPU acceleration or CPU fallback.</p>
+          </article>
+
+          <article class="ag-card stage-item" data-state-label="08 / postprocessing" data-tier-label="STAGE 08–10 // DRACO GLB &amp; READY">
+            <div class="stage-top"><span>STATE: postprocessing</span><span>PHASE 08</span></div>
+            <h3>Zip-Slip Hardened Extraction</h3>
+            <p>Unpacks output archives through canonical path confinement, blocking directory traversal, symlinks, encrypted bombs, and oversized payloads.</p>
+          </article>
+
+          <article class="ag-card stage-item" data-state-label="09 / converting" data-tier-label="STAGE 08–10 // DRACO GLB &amp; READY">
+            <div class="stage-top"><span>STATE: converting</span><span>PHASE 09</span></div>
+            <h3>Draco GLB &amp; Origin Centering</h3>
+            <p>Transforms surface meshes into Draco-compressed binary glTF, centers bounding boxes to <code>(0, 0, 0)</code> for jitter-free WebGL, and validates headers and vertex buffers.</p>
+          </article>
+
+          <article class="ag-card stage-item" data-state-label="10 / ready" data-tier-label="STAGE 08–10 // DRACO GLB &amp; READY">
+            <div class="stage-top"><span>STATE: ready</span><span>PHASE 10</span></div>
+            <h3>Immutable Completion &amp; Export</h3>
+            <p>Persists job metadata and accuracy provenance to <code>job.json</code>, streaming the verified model into the 3D viewport alongside <code>.LAZ</code>, <code>.TIF</code>, and <code>.PDF</code> exports.</p>
+          </article>
+
+          <article class="ag-card stage-item" data-state-label="11 / cancellation" data-tier-label="STAGE 08–10 // DRACO GLB &amp; READY">
+            <div class="stage-top"><span>STATE: cancellation_requested → cancelled</span><span>PHASE 11</span></div>
+            <h3>Graceful Subprocess Cancellation</h3>
+            <p>Operators can abort active runs safely at any phase; worker trees terminate cleanly, partial scratch artifacts are purged, and terminal states remain immutable.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- QUALITY PRESET COMPARATOR -->
+    <section class="section-pad">
+      <div class="section-index">
+        <span>02 / HARDWARE-AWARE PRESETS</span>
+        <span>LIVE 3D MESH DENSITY PREVIEW</span>
+      </div>
+      <div style="margin-top: 24px;" data-reveal>
+        <h2 class="display-h2">Scale to your<br><span class="muted">workstation.</span></h2>
+      </div>
+
+      <div class="preset-grid">
+        <div class="preset-options">
+          <button class="ag-card preset-card" type="button" data-preset-seg="22" data-preset-label="FAST PREVIEW · 1280PX">
+            <span class="mono orange">PRESET 01 // FIELD TRIAGE</span>
+            <h3>Fast / Low Quality (1280px)</h3>
+            <p>Downsampled inputs and sparse feature matching for rapid on-site verification on mid-range laptops.</p>
+          </button>
+
+          <button class="ag-card preset-card active" type="button" data-preset-seg="48" data-preset-label="BALANCED · 2048PX">
+            <span class="mono orange">PRESET 02 // DEFAULT INSPECTION</span>
+            <h3>Balanced / Default (2048px)</h3>
+            <p>Medium-density point field and clean surface meshing tuned for standard engineering inspections.</p>
+          </button>
+
+          <button class="ag-card preset-card" type="button" data-preset-seg="88" data-preset-label="HIGH PRECISION · 4096PX">
+            <span class="mono orange">PRESET 03 // FULL WORKSTATION</span>
+            <h3>High Precision (Native + 4096px Atlas)</h3>
+            <p>Full-resolution feature extraction, dense Poisson meshing, and high-detail 4K texture synthesis.</p>
+          </button>
+        </div>
+
+        <div class="preset-preview">
+          <canvas id="preset-canvas" aria-label="Interactive mesh density comparison"></canvas>
+          <div class="webgl-fallback"><div><p class="muted">Preset Mesh Preview</p></div></div>
+          <div class="ag-card pipeline-hud-badge">
+            <span class="orange">LIVE WIREFRAME + TOPO</span>
+            <span id="preset-stats">BALANCED · 2048PX · 4,608 TRIANGLES</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <a class="brand" href="../" data-nav><img src="../posEye.png" alt=""><span>pos<span class="orange">Eye</span></span></a>
+      <div class="footer-links">
+        <a href="../" data-nav>OVERVIEW</a>
+        <a href="../viewer/" data-nav>3D SANDBOX</a>
+        <a href="../architecture/" data-nav>ARCHITECTURE</a>
+        <a href="../download/" data-nav>DOWNLOAD v0.1.9</a>
+      </div>
+      <span>MIT LICENSE · CREATED BY ATHARV POSE · © <span id="year"></span></span>
+    </div>
+  </footer>
+
+  <script type="module" src="../src/pages/pipeline.js"></script>
+</body>
+</html>

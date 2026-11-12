@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#07080b">
+  <meta name="description" content="Interactive WebGL 3D Spatial Sandbox mirroring the posEye desktop viewport and measurement tools.">
+  <title>3D Spatial Sandbox — posEye</title>
+  <link rel="icon" type="image/png" href="../posEye.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../src/styles/tokens.css">
+  <link rel="stylesheet" href="../src/styles/pages.css">
+</head>
+<body class="loading">
+  <div class="loader" aria-hidden="true">
+    <img src="../posEye.png" alt="">
+    <span>MOUNTING 3D SPATIAL SANDBOX</span>
+    <i></i>
+  </div>
+  <div class="page-curtain" aria-hidden="true"></div>
+  <div class="noise" aria-hidden="true"></div>
+
+  <header class="nav">
+    <a class="brand" href="../" data-nav aria-label="posEye home">
+      <img src="../posEye.png" alt="posEye logo">
+      <span>pos<span class="orange">Eye</span></span>
+    </a>
+    <nav class="navlinks" aria-label="Primary navigation">
+      <a href="../" data-nav>OVERVIEW</a>
+      <a href="../pipeline/" data-nav>PIPELINE</a>
+      <a href="../viewer/" class="active" data-nav>3D SANDBOX</a>
+      <a href="../architecture/" data-nav>ARCHITECTURE</a>
+      <a href="../download/" data-nav>GET v0.1.9</a>
+    </nav>
+    <a class="nav-cta" href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">GITHUB <span>↗</span></a>
+    <button class="menu" aria-label="Open navigation" aria-expanded="false"><span></span><span></span></button>
+  </header>
+
+  <main class="viewer-shell">
+    <section class="viewer-viewport" aria-label="Interactive 3D model viewport">
+      <canvas id="sandbox-canvas"></canvas>
+      <div class="webgl-fallback">
+        <div>
+          <p class="eyebrow"><b></b> WEBGL REQUIRED</p>
+          <h2>3D Spatial Sandbox</h2>
+          <p class="muted">Enable hardware acceleration in your browser to orbit and measure the procedural 3D terrains.</p>
+        </div>
+      </div>
+
+      <div class="viewer-hud-top">
+        <div class="btn-group">
+          <button class="pill-btn active" type="button" data-site="coastal">COASTAL CLIFF</button>
+          <button class="pill-btn" type="button" data-site="substation">SUBSTATION</button>
+          <button class="pill-btn" type="button" data-site="canyon">CORRIDOR CANYON</button>
+        </div>
+        <div class="btn-group">
+          <button class="pill-btn" type="button" id="reset-camera">RESET VIEW (R)</button>
+        </div>
+      </div>
+
+      <div class="ag-card viewer-hud-bottom">
+        <span class="orange">LEFT DRAG: ORBIT · RIGHT DRAG: PAN · SCROLL: ZOOM · R: RESET</span>
+        <span id="hud-coords">HOVER SURFACE FOR COORDINATES</span>
+      </div>
+    </section>
+
+    <aside class="viewer-sidebar">
+      <div class="ag-card viewer-panel">
+        <h3>01 // VIEWPORT SHADER MODE</h3>
+        <div class="btn-group">
+          <button class="pill-btn active" type="button" data-view-mode="topo">CONTOUR SURFACE</button>
+          <button class="pill-btn" type="button" data-view-mode="wireframe">WIREFRAME MESH</button>
+          <button class="pill-btn" type="button" data-view-mode="pointcloud">POINT FIELD</button>
+          <button class="pill-btn" type="button" data-view-mode="heatmap">ELEVATION HEATMAP</button>
+        </div>
+      </div>
+
+      <div class="ag-card viewer-panel">
+        <h3>02 // EUCLIDEAN MEASURE TOOL</h3>
+        <div class="btn-group" style="margin-bottom: 12px;">
+          <button class="pill-btn" type="button" id="toggle-measure">ENABLE MEASURE TOOL</button>
+          <button class="pill-btn" type="button" id="clear-measure">CLEAR</button>
+          <button class="pill-btn active" type="button" id="toggle-georef">MODE: GEOREFERENCED (SRT)</button>
+        </div>
+        <div class="measure-readout">
+          <span class="muted">POINT A ↔ POINT B DISTANCE</span>
+          <strong id="measure-distance">--</strong>
+          <span id="measure-unit-note" class="muted">WGS 84 / UTM METRIC SCALE (NOMINAL GNSS ±2–5m)</span>
+        </div>
+      </div>
+
+      <div class="ag-card viewer-panel">
+        <h3>03 // BUFFER &amp; ENGINE TELEMETRY</h3>
+        <div class="stat-pair-list">
+          <div><span>VERTICES</span><strong id="stat-verts">--</strong></div>
+          <div><span>TRIANGLES</span><strong id="stat-tris">--</strong></div>
+          <div><span>LIFECYCLE</span><strong id="stat-lifecycle">LOADED</strong></div>
+          <div><span>DECODER</span><strong>DRACO WASM</strong></div>
+        </div>
+        <p class="muted" style="font-size: 12px; margin: 14px 0 0;">
+          Procedural WebGL demonstration of the posEye Desktop 3D viewport: origin-centered geometry, throttled raycasting, and honest scale attribution.
+        </p>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <a class="brand" href="../" data-nav><img src="../posEye.png" alt=""><span>pos<span class="orange">Eye</span></span></a>
+      <div class="footer-links">
+        <a href="../" data-nav>OVERVIEW</a>
+        <a href="../pipeline/" data-nav>PIPELINE</a>
+        <a href="../architecture/" data-nav>ARCHITECTURE</a>
+        <a href="../download/" data-nav>DOWNLOAD v0.1.9</a>
+      </div>
+      <span>MIT LICENSE · CREATED BY ATHARV POSE · © <span id="year"></span></span>
+    </div>
+  </footer>
+
+  <script type="module" src="../src/pages/viewer.js"></script>
+</body>
+</html>
