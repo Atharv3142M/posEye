@@ -5,7 +5,7 @@
   <p><strong>Offline Drone Video Photogrammetry & 3D Reconstruction System for Windows</strong></p>
 
   [![CI Pipeline](https://github.com/Atharv3142M/posEye/actions/workflows/ci.yml/badge.svg)](https://github.com/Atharv3142M/posEye/actions/workflows/ci.yml)
-  [![Release Candidate](https://img.shields.io/badge/pre--release-v0.1.6-blue.svg)](https://github.com/Atharv3142M/posEye/releases/tag/v0.1.6)
+  [![Release](https://img.shields.io/badge/release-v0.1.9-blue.svg)](https://github.com/Atharv3142M/posEye/releases/tag/v0.1.9)
   [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64-lightgrey.svg)](https://github.com/Atharv3142M/posEye)
   [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
   [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
@@ -52,7 +52,7 @@ flowchart TD
     subgraph Inspection ["Stage 8-10: Post-Processing & Viewer"]
         N --> O[Zip-Slip Protected Archive Extraction]
         O --> P[Trimesh OBJ/GLTF to Binary GLB]
-        P --> Q[Bounding Box Origin Centering]
+        P --> Q[Bounding Box Origin Centering & Coords Alignment]
         Q --> R[Three.js Interactive 3D Viewport]
     end
 ```
@@ -61,7 +61,7 @@ flowchart TD
 
 | Phase | State | Operational Responsibility |
 |---|---|---|
-| **01** | `validating` | Probes container integrity, codec streams, resolution, framerate, and duration via FFmpeg. |
+| **01** | `validating` | Probes container integrity, codec streams, resolution, framerate, and duration via static FFmpeg. |
 | **02** | `extracting` | Samples video frames at configurable target rates via managed background subprocesses. |
 | **03** | `filtering` | Evaluates OpenCV Laplacian variance to discard blurred frames and computes 64-bit difference hashes (`dHash`) to eliminate static near-duplicates. |
 | **04** | `geotagging` | Parses DJI/Autel SRT logs, performs nearest-neighbor temporal matching (1.5s window), and injects WGS 84 DMS coordinates, AMSL altitude, and ISO timestamps into JPEG EXIF. |
@@ -74,26 +74,26 @@ flowchart TD
 
 ---
 
-## Release v0.1.5: Distribution & Verification
+## Release v0.1.9: Distribution & Verification
 
-The current pre-release is **posEye v0.1.5**, packaged as a standard Windows 10/11 x64 NSIS installer.
+The current release is **posEye v0.1.9**, packaged as a standard Windows 10/11 x64 NSIS installer.
 
-- **Installer Executable:** `posEye.Setup.0.1.5.exe`
-- **File Size:** `192,366,747` bytes (~183.45 MiB)
-- **SHA-256 Digest:** `804053F05E8874A10C408887FA5B11C8E3C69780DBD4E7E27AD7635D45660249`
-- **Release Documentation:** [Docs/RELEASE_NOTES_v0.1.5.md](Docs/RELEASE_NOTES_v0.1.5.md)
-- **Previous pre-release:** [v0.1.4](https://github.com/Atharv3142M/posEye/releases/tag/v0.1.4)
+- **Installer Executable:** `posEye.Setup.0.1.9.exe`
+- **Architecture:** Windows x64 (Electron 32 + Python 3.11 standalone runtime)
+- **Release Documentation:** [Docs/RELEASE_NOTES_v0.1.9.md](Docs/RELEASE_NOTES_v0.1.9.md)
+- **Artifact Verification:** [Docs/RELEASE_ARTIFACT_AUDIT_v0.1.9.md](Docs/RELEASE_ARTIFACT_AUDIT_v0.1.9.md)
+- **Previous Releases:** [v0.1.8](Docs/RELEASE_NOTES_v0.1.8.md) | [v0.1.7](Docs/RELEASE_NOTES_v0.1.7.md) | [v0.1.6](Docs/RELEASE_NOTES_v0.1.6.md)
 
 > [!NOTE]
-> The binary attached to the GitHub pre-release is the local Windows build recorded above. A tag push also runs GitHub Actions packaging. NSIS output is not byte-stable, so a CI installer can have a different hash with the same contents.
+> The installer binary contains the standalone `posEye.Orchestrator.exe` (PyInstaller) and static FFmpeg binary. Docker Desktop and the NodeODM Docker image are managed locally on the host machine.
 
 ### Cryptographic Verification
 
 Prior to executing the installer, verify the integrity of the binary using PowerShell:
 
 ```powershell
-$expectedHash = "804053F05E8874A10C408887FA5B11C8E3C69780DBD4E7E27AD7635D45660249"
-$actualHash = (Get-FileHash -Path .\posEye.Setup.0.1.5.exe -Algorithm SHA256).Hash
+$expectedHash = "<EXPECTED_SHA256_HASH>"
+$actualHash = (Get-FileHash -Path .\posEye.Setup.0.1.9.exe -Algorithm SHA256).Hash
 if ($actualHash -eq $expectedHash) {
     Write-Host "[OK] Cryptographic verification passed: $actualHash" -ForegroundColor Green
 } else {
@@ -105,11 +105,37 @@ if ($actualHash -eq $expectedHash) {
 
 | Component | Bundled in Installer | External Prerequisite | Notes |
 |---|:---:|:---:|---|
-| **Electron Shell & UI** | Yes | No | Chromium 128 / Node 20 runtime environment. |
+| **Electron Shell & UI** | Yes | No | Chromium 128 / Node 20 desktop application environment. |
 | **Static FFmpeg Engine** | Yes | No | Pre-compiled static binary (`third_party/ffmpeg.exe`). |
-| **posEye.Orchestrator** | Yes | No | PyInstaller standalone executable with Windows version resources. |
+| **posEye.Orchestrator** | Yes | No | Standalone PyInstaller binary with Windows version metadata. |
+| **Offline Draco Decoders** | Yes | No | Bundled WebAssembly decoders (`dist/draco/`) for mesh decompression. |
 | **Docker Desktop** | No | **Yes** | Requires Docker Desktop with the WSL2 backend enabled. |
-| **NodeODM Engine** | No | **Yes** | Docker image `opendronemap/nodeodm:3.6.2` (pulled once locally). |
+| **NodeODM Engine** | No | **Yes** | Docker image `opendronemap/nodeodm:3.6.2` (pulled once or loaded offline). |
+
+---
+
+## Key Capabilities & Core Innovations
+
+### 1. Hardware-Aware NodeODM Execution Planning (`nodeodm_plan.cjs`)
+posEye dynamically evaluates the host system topology (CPU physical core count, available memory, swap file size, and NVIDIA GPU presence) prior to container task creation. It automatically computes optimal `--max-concurrency`, RAM limits, and container resource boundaries, preventing WSL2 Out-of-Memory crashes during intensive Poisson surface meshing.
+
+### 2. High-Performance Three.js 3D Viewer
+- **Offline Draco Decompression:** Bundled WebAssembly decoders (`draco_decoder.wasm`, `draco_decoder.js`) ensure seamless rendering of high-density compressed aerial meshes without external network requests.
+- **Static-Asset SPA Guard & Deep Route Remapping:** Custom protocol handler (`poseye://app`) safely resolves nested decoder paths (e.g. `/viewer/:id`) and prevents HTML fallbacks on WebAssembly modules.
+- **Demand-Driven Rendering:** Replaces continuous render loops with event-triggered drawing (`requestRender()` via `requestAnimationFrame`), dropping idle CPU/GPU consumption to near zero.
+- **Reload Loop Elimination:** Rigid React memoization and model content hash tracking (`lastLoadedHashRef`) guarantee single-pass WebGL mount and prevent canvas invalidation cycles.
+- **Photogrammetric Coordinate Alignment (`utils/coords.ts`):** Converts OpenDroneMap Z-up coordinates to Three.js Y-up world space, aligning the terrain ground plane horizontally with proper altitude orientation.
+- **Throttled Raycasting & Mesh Caching:** Pointer intersection queries operate against cached mesh arrays (`cachedMeshesRef`), eliminating cursor stutter on meshes with >350,000 triangles.
+
+### 3. Metric Precision & Dual-Mode Scale Measurement
+- **Calibrated Mode (with SRT):** Extracts WGS 84 GPS coordinates and AMSL altitude; displays real-world metric distances in meters with sub-centimeter snapping.
+- **Relative Mode (without SRT):** Automatically falls back to relative uncalibrated mode, clearly labeling distances in arbitrary **model units** to prevent false geospatial assumptions.
+
+### 4. Enterprise-Grade Local Security & Hardened Isolation
+- **Loopback-Only Binding:** All HTTP API (`:8765`) and container ports (`:3000`) bind strictly to `127.0.0.1`.
+- **Session Bearer Tokens:** Dynamic cryptographic bearer tokens (`DT_API_TOKEN`) guard all REST endpoints and WebSocket channels.
+- **Sanitized Diagnostics & Crash Logging:** Crash dumps written to `%APPDATA%/posEye/logs/` automatically sanitize tokens and sensitive paths.
+- **Zip-Slip Protection:** Path sanitization prevents directory traversal attacks during archive extraction.
 
 ---
 
@@ -140,8 +166,8 @@ if ($actualHash -eq $expectedHash) {
 
 1. Install [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop/).
 2. In Docker Desktop Settings:
-   - Navigate to **General** $\rightarrow$ Ensure **Use the WSL 2 based engine** is checked.
-   - Navigate to **Resources** $\rightarrow$ **WSL Integration** $\rightarrow$ Enable integration with your default distro.
+   - Navigate to **General** -> Ensure **Use the WSL 2 based engine** is checked.
+   - Navigate to **Resources** -> **WSL Integration** -> Enable integration with your default distro.
 3. Start Docker Desktop and verify daemon connectivity via PowerShell:
    ```powershell
    docker info
@@ -161,7 +187,7 @@ docker pull opendronemap/nodeodm:3.6.2
 
 ### Step 3: Run the posEye Setup Wizard
 
-1. Download `posEye.Setup.0.1.4.exe` and confirm the SHA-256 hash.
+1. Download `posEye.Setup.0.1.9.exe`.
 2. Run the installer and complete the setup wizard.
 3. Launch **posEye** from the Start Menu or desktop shortcut.
 4. On startup, posEye completes background engine discovery (< 300ms) and verifies loopback API endpoints.
@@ -220,7 +246,7 @@ posEye maintains strict mathematical honesty regarding geospatial accuracy bound
 └──────────────────────────┴───────────────────────┴─────────────────────┘
 ```
 
-1. **Consumer GNSS Limitations:** Commercial camera drones (e.g., DJI Mini/Air, Autel) employ single-frequency GPS/GLONASS receivers subject to ionospheric delay and multipath interference. While relative geometry between consecutive frames is precise ($\approx 0.05 - 0.2$ m), absolute global positioning carries standard consumer GPS variance ($\pm 2 - 5$ m).
+1. **Consumer GNSS Limitations:** Commercial camera drones (e.g., DJI Mini/Air, Autel) employ single-frequency GPS/GLONASS receivers subject to ionospheric delay and multipath interference. While relative geometry between consecutive frames is precise (~0.05 - 0.2 m), absolute global positioning carries standard consumer GPS variance (±2 - 5 m).
 2. **Relative Scale Warning:** If video is processed without an `.srt` telemetry track or EXIF geotags, monocular Structure from Motion cannot resolve metric scale. In this mode, posEye explicitly flags the model as uncalibrated and formats all measurements in **model units** rather than meters.
 3. **Vertical Datum & Altitude:** posEye extracts Absolute Mean Sea Level (AMSL) altitude whenever reported by the telemetry stream and encodes the EXIF `GPSAltitudeRef` byte flag (`0` = Above Sea Level, `1` = Below Sea Level). Relative takeoff altitude (`rel_alt`) is never promoted to absolute altitude.
 4. **Not Certified for Cadastral Surveying:** Models generated without surveyed Ground Control Points (GCPs) or RTK/PPK base station correction are intended for situational awareness, asset reconnaissance, visual inspection, and preliminary dimensioning. They are not certified for legal property boundary demarcation or civil engineering sign-off.
@@ -254,15 +280,17 @@ cd ..\..
 
 ### Automated Test Execution
 
-The posEye test suite verifies core extraction algorithms, EXIF coordinate conversion, state machine transitions, archive security, and API endpoints:
+The posEye test suite verifies extraction algorithms, EXIF coordinate conversion, state machine transitions, archive security, and WebGL viewer lifecycles:
 
 ```powershell
-# Execute full Python test suite (49 passed in CI)
+# Execute full Python test suite (83 passed in CI)
 .\.venv\Scripts\python.exe -m pytest apps\pipeline apps\orchestrator -v
 
-# Perform TypeScript type checking
+# Perform desktop Node.js test suite (35 passed in CI)
 cd apps\desktop
-npm test  # 7/7 desktop security and provisioning tests passed in CI
+npm test
+
+# Perform TypeScript strict type checking
 npx tsc --noEmit
 
 # Execute frontend Vite production build
@@ -283,7 +311,7 @@ npm run pack
 npm run dist
 ```
 
-Outputs are generated in `apps/desktop/release/posEye.Setup.0.1.6.exe`.
+Outputs are generated in `apps/desktop/release/posEye.Setup.0.1.9.exe`.
 
 ---
 
@@ -295,10 +323,11 @@ posEye/
 ├── apps/
 │   ├── desktop/               Electron main process, preload bridge, and React UI
 │   │   ├── electron/          main.cjs (IPC, window lifecycle, background engine setup)
-│   │   └── src/renderer/      React 18 components, Three.js viewport, Zustand stores
+│   │   ├── src/renderer/      React 18 components, Three.js viewport, Zustand stores
+│   │   └── tests/             Automated security, Draco decoding, and lifecycle tests
 │   ├── orchestrator/          FastAPI backend, JobStore state machine, NodeODM client
 │   │   ├── src/orchestrator/  main.py, jobs.py, nodeodm.py, convert.py, system.py
-│   │   └── tests/             Automated API and job lifecycle regression tests
+│   │   └── tests/             Automated API, GPU, and job lifecycle regression tests
 │   └── pipeline/              Photogrammetry preprocessing & frame extraction
 │       ├── src/pipeline/      extract.py, filters.py, srt.py, exif.py, ffmpeg.py
 │       └── tests/             Geospatial, telemetry parser, and filtering tests
@@ -327,9 +356,10 @@ posEye/
 | [Docs/MVP_Spec.md](Docs/MVP_Spec.md) | Canonical architectural specification and success criteria. |
 | [Docs/GEOREFERENCING_AND_ACCURACY.md](Docs/GEOREFERENCING_AND_ACCURACY.md) | In-depth mathematical analysis of GPS parsing, EXIF tags, and coordinate projections. |
 | [Docs/VIEWER_ARCHITECTURE.md](Docs/VIEWER_ARCHITECTURE.md) | Technical design of the Three.js viewport, geometry centering, and measurement HUD. |
-| [Docs/ENGINE_EVALUATION_v0.1.4.md](Docs/ENGINE_EVALUATION_v0.1.4.md) | Comparative evaluation between OpenDroneMap, WebODM, and native alternatives. |
-| [Docs/RELEASE_NOTES_v0.1.4.md](Docs/RELEASE_NOTES_v0.1.4.md) | Full changelog, bug fixes, and upgrade notes for release v0.1.4. |
-| [Docs/RELEASE_ARTIFACT_AUDIT_v0.1.4.md](Docs/RELEASE_ARTIFACT_AUDIT_v0.1.4.md) | Cryptographic audit, file sizes, and binary inspection of the v0.1.4 release installer. |
+| [Docs/RELEASE_NOTES_v0.1.9.md](Docs/RELEASE_NOTES_v0.1.9.md) | Full changelog, bug fixes, and upgrade notes for release v0.1.9. |
+| [Docs/RELEASE_NOTES_v0.1.8.md](Docs/RELEASE_NOTES_v0.1.8.md) | Full changelog, bug fixes, and upgrade notes for release v0.1.8. |
+| [Docs/RELEASE_NOTES_v0.1.7.md](Docs/RELEASE_NOTES_v0.1.7.md) | Full changelog, bug fixes, and upgrade notes for release v0.1.7. |
+| [Docs/RELEASE_ARTIFACT_AUDIT_v0.1.9.md](Docs/RELEASE_ARTIFACT_AUDIT_v0.1.9.md) | Release artifact verification and manifest inspection for v0.1.9. |
 | [Docs/TROUBLESHOOTING.md](Docs/TROUBLESHOOTING.md) | Operator diagnostic runbook for Docker, WSL2, GPU detection, and FFmpeg issues. |
 | [Docs/TESTING.md](Docs/TESTING.md) | Comprehensive test matrix and continuous integration verification commands. |
 | [Docs/WEBODM_COMPARISON.md](Docs/WEBODM_COMPARISON.md) | Architectural comparison against full-stack WebODM installations. |
@@ -341,7 +371,7 @@ posEye/
 1. **Loopback Network Isolation:** Both the Python Orchestrator API (`:8765`) and the NodeODM service (`:3000`) bind strictly to `127.0.0.1`. Remote network access is denied by default.
 2. **Session Authentication:** The orchestrator enforces dynamic, session-scoped cryptographic bearer tokens (`DT_API_TOKEN`) across all REST endpoints and WebSocket connections.
 3. **Archive Security:** Decompression routines enforce strict canonical path boundaries, neutralizing Zip-Slip directory traversal attempts and decompression bombs.
-4. **Cross-Origin & IPC Isolation:** Packaged Electron runs under the privileged `poseye://app` origin. FastAPI CORS allows only `poseye://app` plus the explicit development origins `http://127.0.0.1:5173` and `http://localhost:5173`; external, `null`, and unknown origins are denied. IPC calls are restricted to the primary top-level application frame, and filesystem paths are checked for lexical and realpath containment.
+4. **Cross-Origin & IPC Isolation:** Packaged Electron runs under the privileged `poseye://app` origin. FastAPI CORS allows only `poseye://app` plus explicit development origins `http://127.0.0.1:5173` and `http://localhost:5173`; external, `null`, and unknown origins are denied. IPC calls are restricted to the primary application frame, and filesystem paths are checked for lexical and realpath containment.
 5. **Data Privacy:** posEye collects zero telemetry, crash reports, or user analytics. All media assets, coordinates, and reconstructed models remain exclusively on the user's local disk.
 
 For vulnerability disclosure procedures, refer to [SECURITY.md](SECURITY.md).

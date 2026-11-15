@@ -1,133 +1,168 @@
-# posEye — Troubleshooting Guide
+# posEye — Troubleshooting & Diagnostic Guide
 
-This guide addresses common setup, runtime, and reconstruction issues encountered when running posEye on Windows.
+This guide addresses common setup, runtime, reconstruction, and visualization issues encountered when running posEye on Windows 10/11.
 
 ---
 
-## 1. Virtualization & Docker Issues
+## 1. Virtualization & Docker Subsystem
 
 ### Symptom: "Enable Intel VT-x / AMD-V in BIOS/UEFI" Warning
-- **Cause:** Docker Desktop and the WSL2 backend require CPU hardware virtualization.
+- **Cause:** Docker Desktop and the Windows Subsystem for Linux 2 (WSL2) require hardware virtualization enabled at the motherboard firmware level.
 - **Resolution:**
-  1. Restart your PC and enter the UEFI/BIOS settings (usually `F2`, `F12`, `Del`, or `Esc` during boot).
-  2. Locate **Intel Virtualization Technology (VT-x)** or **AMD-V / SVM Mode** and set it to **Enabled**.
+  1. Restart your workstation and enter UEFI/BIOS settings (typically `F2`, `F12`, `Del`, or `Esc` during startup).
+  2. Locate **Intel Virtualization Technology (VT-x)** or **AMD SVM / AMD-V Mode** and configure it to **Enabled**.
   3. Save changes and reboot into Windows.
-  4. Note: On Windows 11 with Hyper-V or WSL2 enabled, posEye automatically detects Hypervisor root partitions (`HypervisorPresent: true`) and will not issue false-negative warnings.
+  4. *Note:* On Windows 11 systems running Hyper-V or WSL2, posEye queries the Hypervisor root partition (`HypervisorPresent: true`) to avoid false-negative alerts.
 
 ### Symptom: "Docker daemon is not running"
-- **Cause:** Docker Desktop is installed but the background service has not completed initialization.
+- **Cause:** Docker Desktop service is either stopped or in the process of starting up.
 - **Resolution:**
-  1. Start **Docker Desktop** from the Windows Start Menu.
-  2. Wait until the Docker whale icon in the system tray turns steady (green).
-  3. Verify from PowerShell:
+  1. Start **Docker Desktop** from the Start Menu.
+  2. Wait until the Docker status indicator in the Windows system tray turns steady green.
+  3. Verify daemon responsiveness via PowerShell:
      ```powershell
      docker info
      ```
-  4. Once `docker info` returns system details, relaunch posEye.
+  4. Once `docker info` outputs active system statistics, launch or refresh posEye.
 
 ### Symptom: "Offline NodeODM image not found"
-- **Cause:** The `opendronemap/nodeodm` container image is not present in your local Docker engine and no offline `nodeodm.tar` archive was located in resources.
+- **Cause:** The `opendronemap/nodeodm:3.6.2` container image is absent from local Docker storage and no pre-packaged `nodeodm.tar` was located.
 - **Resolution:**
-  If you have an internet connection, pull the official image:
-  ```powershell
-  docker pull opendronemap/nodeodm:latest
-  ```
-  If you are running in a strictly offline environment, load the pre-exported image tarball:
-  ```powershell
-  docker load -i path\to\nodeodm.tar
-  ```
+  - With active internet access, pull the verified pinned image:
+    ```powershell
+    docker pull opendronemap/nodeodm:3.6.2
+    ```
+  - In air-gapped environments, load the pre-exported image archive:
+    ```powershell
+    docker load -i path\to\nodeodm.tar
+    ```
 
 ---
 
-## 2. Port Conflicts & Network Connectivity
+## 2. Port Conflicts & Network Isolation
 
 ### Symptom: "Port 8765 is already in use"
-- **Cause:** Another instance of posEye or a lingering `posEye.Orchestrator.exe` process is binding to port 8765.
+- **Cause:** A stale background process or previous instance of `posEye.Orchestrator.exe` is holding port 8765.
 - **Resolution:**
-  1. Open PowerShell and check for processes listening on port 8765:
+  1. Check for processes listening on port 8765:
      ```powershell
      Get-NetTCPConnection -LocalPort 8765 -ErrorAction SilentlyContinue | Select-Object OwningProcess
      ```
-  2. Terminate the lingering process:
+  2. Terminate the stale orchestrator process:
      ```powershell
      Stop-Process -Id <PID> -Force
      ```
-  3. Alternatively, posEye automatically checks for an already-running Orchestrator and will reuse the instance if it responds to `/health`.
+  3. posEye automatically validates loopback health contracts and reclaims stale child processes upon launch.
 
 ### Symptom: "Port 3000 is already in use by another process"
-- **Cause:** An existing web server, Node.js development server, or Grafana instance is listening on port 3000.
+- **Cause:** A local web development server, Grafana instance, or secondary Docker service is bound to port 3000.
 - **Resolution:**
-  1. Identify the process on port 3000:
+  1. Identify the occupying PID:
      ```powershell
      Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue | Select-Object OwningProcess
      ```
-  2. Either stop the conflicting service, or run NodeODM on an alternative port (e.g., 3001) and launch posEye with the custom environment variable:
+  2. Either stop the competing service, or configure posEye to target an alternate port using the environment variable:
      ```powershell
      $env:NODEODM_URL = "http://127.0.0.1:3001"
      ```
 
 ---
 
-## 3. Video Ingestion & Frame Extraction
+## 3. Video Ingestion & Telemetry Processing
 
 ### Symptom: "FFmpeg binary not found"
-- **Cause:** In a development checkout, `fetch-ffmpeg.ps1` has not been run. (The packaged release installer bundles this automatically).
+- **Cause:** In a source checkout, static binaries have not been provisioned into `third_party/`. (Packaged NSIS installers bundle this binary automatically).
 - **Resolution:**
-  Run the automated fetch script from PowerShell:
+  Run the provisioning script from the repository root:
   ```powershell
   .\scripts\fetch-ffmpeg.ps1
   ```
-  Or specify a path manually:
+  Or override with an external static binary:
   ```powershell
   $env:FFMPEG_PATH = "C:\path\to\ffmpeg.exe"
   ```
 
 ### Symptom: "ExtractError: Not enough usable frames retained"
-- **Cause:** All or nearly all frames were discarded by the blur filter or deduplication threshold. Common causes include:
-  - Very dark, blurry, or fast spinning video during drone takeoff/landing.
-  - Frame sampling rate (`fps`) set too low on a very short video clip.
-  - Blur threshold (`blur_threshold`) set too high.
+- **Cause:** Extracted video frames were rejected by OpenCV Laplacian variance (blur scoring) or perceptual dHash deduplication. Common causes:
+  - Low-light, high-blur footage recorded during rapid takeoff, rotation, or gimbal pitch changes.
+  - Extraction framerate (`fps`) set too low on a short video clip.
+  - Blur threshold score set excessively high for the lighting conditions.
 - **Resolution:**
-  1. In the **New Project** page, lower the **Blur threshold** from `40` to `15` or `10`.
-  2. Increase the extraction rate from `3.0` to `4.0` or `5.0` fps.
-  3. Ensure the video contains stable forward motion with sharp surface details.
+  1. On the **New Project** screen, lower the **Blur threshold** from `40` to `15` or `10`.
+  2. Increase the extraction sampling rate from `3.0` to `4.0` or `5.0` fps.
+  3. Ensure the video contains stable, overlapping terrain views.
 
-### Symptom: "GPS Telemetry Not Associated"
-- **Cause:** The drone video has no embedded subtitle track or the separate `.SRT` file was not provided.
+### Symptom: "GPS Telemetry Not Associated / Uncalibrated Model"
+- **Cause:** The drone video has no companion `.srt` telemetry track or subtitle stream.
 - **Resolution:**
-  - If your drone creates companion `.SRT` files (e.g. DJI Mavic, Phantom, Air, Mini, or Autel EVO), select the file in the **Telemetry (SRT)** input field.
-  - Processing will still complete without an SRT file, but coordinates will not be georeferenced and measurements will display in uncalibrated "model units".
+  - Select the companion `.srt` file generated by your drone (DJI, Autel) during project creation.
+  - Uncalibrated reconstructions will still succeed, but distance measurements will display in arbitrary **model units** rather than real-world meters.
 
 ---
 
 ## 4. Photogrammetry Reconstruction Failures
 
-### Symptom: NodeODM task fails with `MulterError: Unexpected field`
-- **Cause:** An outdated version of the client sent multipart files with non-standard field names.
-- **Resolution:**
-  - posEye v0.1.0 uses the official multi-stage NodeODM REST API (`/task/new/init` $\rightarrow$ `/task/new/upload/{uuid}` $\rightarrow$ `/task/new/commit/{uuid}`) with the mandatory form field `"images"`. Ensure you are running v0.1.0 or later.
-
 ### Symptom: Docker Container Exits Out-of-Memory (OOM)
-- **Cause:** OpenDroneMap requires substantial memory during the OpenMVS dense point cloud and meshing phases.
+- **Cause:** OpenMVS dense point-cloud reconstruction and Poisson surface meshing require significant RAM for large photo sets.
 - **Resolution:**
-  1. Open Docker Desktop Settings $\rightarrow$ **Resources** $\rightarrow$ **Advanced**.
-  2. Increase memory allocation to at least 16 GB (or configure a larger WSL2 swap file in `%USERPROFILE%\.wslconfig`).
-  3. In posEye, select the **Fast** or **Balanced** preset instead of **Ultra**.
+  1. posEye v0.1.9 introduces automated hardware-aware planning (`nodeodm_plan.cjs`) that dynamically limits `--max-concurrency` and bounds memory allocation based on system physical memory.
+  2. In Docker Desktop Settings -> **Resources** -> **Advanced**, ensure memory allocation is set to at least 16 GB (or configure a larger swap buffer in `%USERPROFILE%\.wslconfig`):
+     ```ini
+     [wsl2]
+     memory=16GB
+     swap=8GB
+     ```
+  3. Select the **Balanced** or **Fast** preset in posEye instead of **High Precision**.
 
-### Symptom: Reconstruction Stalls or Times Out
-- **Cause:** Large high-resolution image sets require extended processing time.
+### Symptom: Reconstruction Stalls Without Progress Updates
+- **Cause:** Large high-resolution image sets require extended processing time during feature matching.
 - **Resolution:**
-  - Check the live terminal output in posEye (`/logs` or the processing progress screen).
-  - OpenDroneMap periodically logs lines such as `Matching image pairs...` and `Computing depth maps...`. If progress continues to stream, the engine is actively computing.
+  - Open the expandable terminal on the Processing screen or navigate to `/logs`.
+  - OpenDroneMap periodically streams log lines such as `Matching image pairs...` and `Computing depth maps...`. If the timer continues to increment, the engine is actively executing.
 
 ---
 
-## 5. 3D Viewer & Display
+## 5. 3D Viewer & WebGL Rendering
 
-### Symptom: 3D Viewer shows a black or empty viewport
-- **Cause:** Hardware acceleration is disabled in Electron, or WebGL context was lost.
+### Symptom: Viewer Hangs at "Loading 3D mesh..." or Times Out After 45 Seconds
+- **Cause:** Draco WebAssembly decompressor was unable to load, or network asset transfer was interrupted.
 - **Resolution:**
-  1. Ensure your graphics drivers are up to date.
-  2. Press `R` inside the viewer to reset the camera to the model's bounding sphere center.
-  3. Verify that `model.glb` was generated in the project output directory (`%APPDATA%\posEye\jobs\<id>\assets\model.glb`).
+  1. posEye v0.1.8+ includes bundled offline Draco decoders (`dist/draco/`), route-aware resolution (`resolveDracoDecoderPath()`), and static-asset SPA protection.
+  2. If the 45-second watchdog timer expires, the viewer presents an error card with a **Retry** button. Click Retry to re-initiate asset transfer.
+  3. Check that the output model file exists on disk:
+     ```text
+     %APPDATA%\posEye\jobs\<jobId>\assets\model.glb
+     ```
 
+### Symptom: 3D Viewer In a Continuous Reload Loop
+- **Cause:** In builds prior to v0.1.9, unstable React hook dependencies could cause the viewport canvas to continuously unmount and reload.
+- **Resolution:**
+  Upgrade to **posEye v0.1.9**, which incorporates content hash tracking (`lastLoadedHashRef`) and geometry memoization to guarantee single-pass mounting.
+
+### Symptom: Model Renders Sideways or Inverted
+- **Cause:** Aerial photogrammetry models are constructed in a geographic Z-up coordinate system, whereas standard WebGL viewports utilize Y-up coordinates.
+- **Resolution:**
+  posEye v0.1.9 automatically applies a spatial transformation matrix via `utils/coords.ts`, rotating the mesh by -90 degrees around the X-axis to level the terrain ground plane horizontally.
+
+### Symptom: WebGL Context Lost (`webglcontextlost`)
+- **Cause:** Windows GPU timeout detection and recovery (TDR) occurred due to excessive GPU memory demand or driver crash.
+- **Resolution:**
+  posEye automatically listens for `webglcontextrestored` and restores camera state and geometry without requiring an application restart. Updating GPU drivers resolves recurring TDR events.
+
+---
+
+## 6. Diagnostics & Crash Reporting
+
+### Accessing the Diagnostics Console
+Click the **Diagnostics** icon in the sidebar or navigate to **Settings** -> **Diagnostics Modal** to inspect:
+- Orchestrator API health, loopback port binding, and session token status.
+- Docker daemon connectivity, container engine readiness, and image version.
+- Static FFmpeg binary resolution and version details.
+- NVIDIA GPU hardware detection, driver version, and container CUDA capability.
+
+### Crash Dumps & Log Files
+Automated crash dumps are written to:
+```text
+%APPDATA%\posEye\logs\crash-<timestamp>.log
+```
+All Bearer authentication tokens, secret query parameters, and private directory paths are scrubbed with `[REDACTED]` before write operations.

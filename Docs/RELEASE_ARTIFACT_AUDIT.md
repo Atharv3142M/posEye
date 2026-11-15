@@ -1,4 +1,12 @@
-# Release Artifact Audit Report
+# Release Artifact Audit Index & Archive
+
+> **Current Production Audit:** Please refer to [RELEASE_ARTIFACT_AUDIT_v0.1.9.md](RELEASE_ARTIFACT_AUDIT_v0.1.9.md) for the latest release candidate.
+> 
+> **Audit Archive:** [v0.1.8](RELEASE_ARTIFACT_AUDIT_v0.1.8.md) | [v0.1.7](RELEASE_ARTIFACT_AUDIT_v0.1.7.md) | [v0.1.6](RELEASE_ARTIFACT_AUDIT_v0.1.6.md) | [v0.1.5](RELEASE_ARTIFACT_AUDIT_v0.1.5.md) | [v0.1.4](RELEASE_ARTIFACT_AUDIT_v0.1.4.md) | [v0.1.3](RELEASE_ARTIFACT_AUDIT_v0.1.3.md) | [v0.1.2](RELEASE_ARTIFACT_AUDIT_v0.1.2.md) | [v0.1.1](RELEASE_ARTIFACT_AUDIT_v0.1.1.md)
+
+---
+
+# Release Artifact Audit Report (v0.1.0 Baseline)
 
 **Date:** 2026-10-29  
 **Auditor:** posEye Lead Engineer  

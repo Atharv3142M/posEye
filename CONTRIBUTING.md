@@ -82,15 +82,18 @@ To run the Python Orchestrator API directly:
 Before creating a pull request, verify that all local checks pass:
 
 ```powershell
-# 1. Run Python test suite
+# 1. Run Python test suite (83 tests)
 .\.venv\Scripts\python.exe -m pytest apps\pipeline apps\orchestrator -v
 
-# 2. Frontend typecheck and build
+# 2. Run Desktop Node.js test suite (35 tests)
 cd apps\desktop
+npm test
+
+# 3. Frontend typecheck and production build
 npx tsc --noEmit
 npm run build
 
-# 3. Verify Electron packaging
+# 4. Verify Electron packaging
 npx electron-builder --win --dir
 ```
 

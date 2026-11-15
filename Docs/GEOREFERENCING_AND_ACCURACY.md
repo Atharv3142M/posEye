@@ -1,6 +1,6 @@
 # posEye — Georeferencing, Coordinate Systems & Accuracy Disclosures
 
-This document details how posEye handles flight telemetry, associates GPS coordinates with extracted video frames, registers 3D reconstructions in coordinate space, and establishes transparent measurement accuracy boundaries.
+This document details how posEye handles flight telemetry, associates GPS coordinates with extracted video frames, registers 3D reconstructions in coordinate space, maps photogrammetric data to WebGL viewports, and establishes transparent measurement accuracy boundaries.
 
 ---
 
@@ -31,7 +31,7 @@ posEye automatically parses and extracts telemetry from subtitle streams across 
    ```
 
 ### Timestamp Matching & Nearest-Neighbor Interpolation
-During frame extraction, posEye calculates the exact video time offset for each extracted frame. The pipeline matches each frame against the telemetry sample list using a nearest-neighbor temporal search with a maximum allowable drift threshold (enforced: 1.5s). Frames outside this temporal window are flagged as gaps and rejected from geotagging.
+During frame extraction, posEye calculates the exact video time offset for each extracted frame. The pipeline matches each frame against the telemetry sample list using a nearest-neighbor temporal search with a maximum allowable drift threshold (enforced: 1.5s). Frames outside this temporal window are flagged as gaps and rejected from geotagging. Pre-flight frames captured before telemetry initialization are discarded to prevent coordinate hallucination.
 
 ---
 
@@ -41,12 +41,12 @@ For each retained frame passing the Laplacian sharpness filter and dHash dedupli
 1. **Coordinate Conversion:** Latitude and longitude decimal degrees are converted into EXIF-compliant Degrees, Minutes, and Seconds (DMS) rational fractions:
    $$\text{DMS} = [(\text{deg}, 1), (\text{min}, 1), (\text{sec} \times 1000, 1000)]$$
 2. **Datum & Coordinate Boundaries:** All coordinates are referenced to the **WGS 84 (EPSG:4326)** geodetic reference system. Values outside valid geographic bounds ($[-90.0, 90.0]$ latitude, $[-180.0, 180.0]$ longitude) are rejected.
-3. **Altitude Semantics (v0.1.3 Correction):**
+3. **Altitude Semantics:**
    - **Absolute Altitude:** Only true absolute altitude values (AMSL) are written into EXIF `GPSAltitude`.
    - **Relative Altitude:** Takeoff-relative flight altitude (e.g. `rel_alt`) is **never** promoted to absolute altitude in EXIF, preventing severe z-axis registration skew in photogrammetry solvers.
    - **Altitude Reference (`GPSAltitudeRef`):** Encoded as a byte flag according to EXIF specifications: `0` represents altitude above sea level; `1` represents altitude below sea level. Negative absolute altitudes are preserved using this reference flag.
 4. **EXIF Injection:** Injected directly into the JPEG binary headers via `piexif` (`GPSLatitude`, `GPSLatitudeRef`, `GPSLongitude`, `GPSLongitudeRef`, `GPSAltitude`, `GPSAltitudeRef`).
-5. **Temporal Metadata Injection (v0.1.4 Correction):**
+5. **Temporal Metadata Injection:**
    - Standard EXIF temporal tags (`DateTimeOriginal`, `DateTime`, `DateTimeDigitized`, `GPSDateStamp`, `GPSTimeStamp`) and standard `GPSVersionID = (2, 3, 0, 0)` are injected using UTC/local time offsets derived from the source video and telemetry.
    - Eliminates OpenSfM and OpenDroneMap summary reports falling back to the Unix epoch default (`01/01/1970 00:00:00`), ensuring downstream GIS catalogues maintain correct temporal indices.
 
@@ -57,7 +57,7 @@ For each retained frame passing the Laplacian sharpness filter and dHash dedupli
 When the geotagged JPEG image set is submitted to OpenDroneMap (NodeODM):
 
 ### With Telemetry (Georeferenced Mode)
-- **OpenSfM Bundle Adjustment:** The photogrammetry solver uses camera GPS positions as initial priors in the bundle adjustment optimization.
+- **OpenSfM Bundle Adjustment:** The photogrammetry solver uses camera GPS positions as initial priors in bundle adjustment optimization.
 - **Metric Scaling:** Camera baseline distances solve the scale ambiguity inherent in monocular Structure from Motion (SfM).
 - **Coordinate Transformation:** The dense point cloud and textured mesh are aligned to an appropriate local UTM projection (Universal Transverse Mercator) and scaled in real-world **meters**.
 
@@ -68,23 +68,51 @@ When the geotagged JPEG image set is submitted to OpenDroneMap (NodeODM):
 
 ---
 
-## 4. Accuracy Boundaries & Error Sources
+## 4. WebGL Coordinate Alignment & Viewport Transformation (`coords.ts`)
 
-### 4.1 Inherent Drone GPS Accuracy
+Drone photogrammetry engines (OpenDroneMap, OpenSfM, OpenMVS) compute coordinates in a **Z-up right-handed Cartesian coordinate system** where:
+- $+X$ corresponds to Easting
+- $+Y$ corresponds to Northing
+- $+Z$ corresponds to Elevation / AMSL Altitude
+
+Standard WebGL viewports, including Three.js, operate in a **Y-up right-handed coordinate system** where:
+- $+X$ corresponds to viewport Right
+- $+Y$ corresponds to viewport Up (Vertical)
+- $+Z$ corresponds to viewport Backward (towards camera)
+
+### 4.1 Rigid Spatial Rotation Matrix
+To ensure that reconstructed drone terrain meshes rest horizontally rather than standing vertically on edge, posEye v0.1.9 applies a rigid coordinate transformation matrix in `apps/desktop/src/renderer/utils/coords.ts`:
+
+$$\begin{bmatrix} X_{\text{three}} \\ Y_{\text{three}} \\ Z_{\text{three}} \end{bmatrix} = \begin{bmatrix} 1 & 0 & 0 \\ 0 & 0 & 1 \\ 0 & -1 & 0 \end{bmatrix} \begin{bmatrix} X_{\text{odm}} \\ Y_{\text{odm}} \\ Z_{\text{odm}} \end{bmatrix}$$
+
+This aligns the photogrammetric terrain ground plane with the Three.js horizontal $X\text{–}Z$ plane and maps geographic elevation directly to the vertical $+Y$ axis.
+
+### 4.2 Large Coordinate Jitter Mitigation
+Reconstructed models in UTM coordinates have coordinates on the order of $10^5$ to $10^6$ meters. Uploading these values directly into 32-bit floating-point WebGL buffers causes severe vertex displacement jitter.
+
+posEye resolves this by:
+1. Computing the model's axis-aligned bounding box (`Box3`) in double precision.
+2. Translating the geometry so that its geometric center sits precisely at $(0, 0, 0)$.
+3. Storing the translation vector (`modelOffsetRef`) so that point-to-point measurement queries and coordinate readouts map back to true geographic UTM coordinates.
+
+---
+
+## 5. Accuracy Boundaries & Error Sources
+
+### 5.1 Inherent Drone GNSS Accuracy
 - **Standard GNSS (Consumer Drones):** Standard single-frequency GPS/GLONASS receivers without RTK/PPK typically have nominal horizontal positioning errors of $\pm 2.0 - 5.0$ meters and vertical barometric/GNSS errors of $\pm 3.0 - 5.0$ meters.
-- **Relative vs Absolute Accuracy:** While absolute geographic positioning may drift by several meters, the relative accuracy between adjacent frames within a single continuous flight is significantly higher ($\approx 0.1 - 0.5$ m), allowing coherent 3D mesh reconstruction.
+- **Relative vs Absolute Accuracy:** While absolute geographic positioning may drift by several meters, the relative accuracy between adjacent frames within a single continuous flight is significantly higher ($\approx 0.05 - 0.2$ m), allowing coherent 3D mesh reconstruction.
 
-### 4.2 Measurement Limitations
-- **Not Survey-Grade:** posEye reconstructions generated solely from drone video and standard consumer GNSS are intended for situational awareness, asset inspection, visualization, and approximate planning. They are **not** certified for boundary surveys or legal property demarcation.
-- **Ground Control Points (GCPs):** Achieving survey-grade accuracy requires surveyed Ground Control Points (GCPs) marked on the ground with RTK GPS; GCP support enables improved georeferencing and accuracy validation, but achieved accuracy must be established through independent checkpoints.
+### 5.2 Measurement Limitations & Disclaimers
+- **Not Certified for Cadastral Surveying:** posEye reconstructions generated solely from drone video and standard consumer GNSS are intended for situational awareness, asset inspection, visualization, and preliminary planning. They are **not** certified for boundary surveys or legal property demarcation.
+- **Ground Control Points (GCPs):** Achieving survey-grade sub-decimeter accuracy requires surveyed Ground Control Points (GCPs) marked on the ground with RTK base stations.
 - **Optical Distortions:** Rolling shutter artifacts from non-global-shutter drone cameras and motion blur can introduce localized geometric variations.
 
 ---
 
-## 5. Summary Table
+## 6. Summary Specification
 
 | Input Mode | Coordinate System | Scale Unit | Expected Relative Accuracy | Expected Absolute Accuracy |
 | :--- | :--- | :--- | :--- | :--- |
-| **Video + SRT Telemetry** | WGS 84 / Local UTM | Meters (m) | $\pm 2\% - 5\%$ of measured distance | $\pm 2.0 - 5.0$ m (nominal GNSS bound; not posEye benchmark) |
+| **Video + SRT Telemetry** | WGS 84 / Local UTM | Meters (m) | $\pm 2\% - 5\%$ of measured distance | $\pm 2.0 - 5.0$ m (nominal consumer GNSS) |
 | **Video Only (No Telemetry)** | Arbitrary Local | Model Units | Proportional (uncalibrated) | None (unregistered) |
-

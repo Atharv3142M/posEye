@@ -83,7 +83,7 @@ Orchestrator (FastAPI on :8765)
 # Provision static FFmpeg binary (copies from local environment to third_party/ffmpeg.exe)
 .\scripts\fetch-ffmpeg.ps1
 
-# Run Python unit and integration tests (43 passed)
+# Run Python unit and integration tests (83 passed)
 .\.venv\Scripts\python.exe -m pytest apps\pipeline apps\orchestrator -v
 
 # Build standalone posEye.Orchestrator.exe (PyInstaller)
@@ -93,7 +93,7 @@ Orchestrator (FastAPI on :8765)
 cd apps\desktop
 npm install
 npm run build
-npm run dist       # Produces release\win-unpacked\posEye.exe and release\posEye.Setup.0.1.3.exe
+npm run dist       # Produces release\win-unpacked\posEye.exe and release\posEye.Setup.0.1.9.exe
 
 # Run in development mode
 npm run dev:electron
@@ -117,7 +117,7 @@ npm run dev:electron
 - [x] Error handling for missing files, unreadable video, port conflicts, cancellation
 - [x] Project state persisted to `job.json` and reloadable
 - [x] Exports available for GLB, LAZ point clouds, and GeoTIFF orthophotos
-- [x] All 43 Python test cases pass cleanly
+- [x] All 83 Python and 35 Desktop test cases pass cleanly
 - [x] Production build and NSIS installer generation succeed
 
 

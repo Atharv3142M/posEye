@@ -1,21 +1,23 @@
-# posEye — Windows Installer Architecture
+# posEye — Windows Installer Architecture & Packaging
 
-This directory contains the packaging specifications and asset definitions for building Windows installers for posEye.
+This directory contains packaging specifications and asset definitions for building Windows installers for posEye.
 
 ---
 
-## Installer Types
+## Installer Distribution Models
 
 posEye supports two installer distribution models:
 
 ### 1. Primary Release: Electron NSIS Installer (`electron-builder`)
 The standard release artifact distributed on GitHub Releases is generated via `electron-builder`:
-- **Output Artifact:** `apps/desktop/release/posEye.Setup.0.1.4.exe` (~183 MB)
+- **Output Artifact:** `apps/desktop/release/posEye.Setup.0.1.9.exe` (~183 MB)
 - **Bundled Payloads:**
   - Electron 32 desktop runtime and bundled React 18 / Three.js frontend.
   - Bundled static FFmpeg engine (`third_party/ffmpeg.exe`).
-  - Standalone compiled Python backend (`third_party/posEye.Orchestrator.exe`) with embedded Windows version resource headers (`0.1.4.0`).
-- **Prerequisites Managed Separately:** Requires Docker Desktop with the WSL2 backend and the `opendronemap/nodeodm:3.6.2` container image available on the host.
+  - Standalone compiled Python backend (`third_party/posEye.Orchestrator.exe`) with embedded Windows version resource headers (`0.1.9.0`).
+  - Bundled offline Draco WebAssembly decoders (`dist/draco/`).
+  - Multi-resolution Windows application icon (`posEye.ico`).
+- **Prerequisites Managed on Host:** Requires Docker Desktop with the WSL2 backend enabled and the `opendronemap/nodeodm:3.6.2` container image available.
 
 #### Build Command:
 ```powershell
@@ -31,7 +33,7 @@ npm run dist
 ---
 
 ### 2. Full-Bundle Inno Setup Installer (`installer/posEye.iss`)
-The Inno Setup script is designed for offline field provisioning where network access is unavailable, wrapping the Electron app with pre-exported container archives.
+The Inno Setup script is designed for air-gapped field provisioning where internet connectivity is completely unavailable, packaging the desktop application alongside pre-exported container archives.
 
 #### Build Payload Preparation:
 1. Initialize Python environment:
