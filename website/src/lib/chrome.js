@@ -6,7 +6,54 @@ gsap.registerPlugin(ScrollTrigger);
 
 export const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+export function initTheme() {
+  const STORAGE_KEY = 'poseye-theme';
+  const getPreferred = () => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved === 'dark' || saved === 'light') return saved;
+    } catch {
+      // ignore storage access restrictions
+    }
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  };
+
+  const applyTheme = (theme) => {
+    document.documentElement.setAttribute('data-theme', theme);
+    document.querySelectorAll('.theme-toggle').forEach((btn) => {
+      btn.setAttribute('aria-pressed', String(theme === 'dark'));
+      const label = `Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`;
+      btn.setAttribute('title', label);
+      btn.setAttribute('aria-label', label);
+    });
+  };
+
+  const initial = getPreferred();
+  applyTheme(initial);
+
+  document.querySelectorAll('.theme-toggle').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+      const next = current === 'dark' ? 'light' : 'dark';
+      try {
+        localStorage.setItem(STORAGE_KEY, next);
+      } catch {}
+      applyTheme(next);
+      window.dispatchEvent(new CustomEvent('themechange', { detail: { theme: next } }));
+    });
+  });
+
+  try {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+      if (!localStorage.getItem(STORAGE_KEY)) {
+        applyTheme(e.matches ? 'dark' : 'light');
+      }
+    });
+  } catch {}
+}
+
 export function initChrome() {
+  initTheme();
   const yearEl = document.querySelector('#year');
   if (yearEl) yearEl.textContent = String(new Date().getFullYear());
 

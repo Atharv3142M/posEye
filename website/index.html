@@ -25,11 +25,15 @@
       <a href="./pipeline/">Pipeline</a>
       <a href="./viewer/">3D Lab</a>
       <a href="./architecture/">Architecture</a>
-      <a href="./docs/">Docs</a>
+      <a href="./docs/">FAQ</a>
       <a href="./download/">Download</a>
       <a href="./contact/">Contact</a>
     </nav>
 
+    <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle dark mode" title="Toggle dark mode" aria-pressed="false">
+      <span class="light-icon" aria-hidden="true">&#9728;</span>
+      <span class="dark-icon" aria-hidden="true">&#9790;</span>
+    </button>
     <a class="nav-cta" href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">GitHub Repo</a>
     <button class="menu-btn" type="button" aria-label="Open navigation menu" aria-expanded="false">Menu</button>
   </header>
@@ -52,14 +56,14 @@
       </div>
 
       <div class="hero-stage stage-frame">
-        <canvas id="world" class="stage-canvas" aria-label="Interactive 3D drone scanning a coastal cliff terrain model"></canvas>
-        <span class="hero-scene-caption">Coastal Cliff CC0 Scan + UAV Flight Path</span>
+        <canvas id="world" class="stage-canvas" aria-label="Interactive 3D drone scanning Indian heritage architectural model"></canvas>
+        <span class="hero-scene-caption">Indian Heritage Survey (Taj Mahal, Agra) + UAV Flight Path</span>
         <div class="hero-coordinate">
-          WGS 84 / EPSG:4326
-          <small>SRT Telemetry to EXIF Injection</small>
+          WGS 84 / EPSG:4326 | 27.1751&deg; N, 78.0421&deg; E
+          <small>SRT Telemetry: 171m AMSL Survey Elevation</small>
         </div>
         <div id="hero-loader" class="stage-loader" aria-live="polite">
-          <span class="loader-text">Loading 3D models</span>
+          <span class="loader-text">Calibrating 3D Survey</span>
           <span class="stage-bar"><i></i></span>
         </div>
       </div>
@@ -324,7 +328,7 @@
         <a href="./pipeline/">Pipeline</a>
         <a href="./viewer/">3D Lab</a>
         <a href="./architecture/">Architecture</a>
-        <a href="./docs/">Docs</a>
+        <a href="./docs/">FAQ</a>
         <a href="./download/">Download</a>
         <a href="./contact/">Contact</a>
         <a href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">GitHub</a>
@@ -332,7 +336,7 @@
 
       <div class="footer-meta">
         <span>Created by Atharv Pose. Open-source photogrammetry desktop system.</span>
-        <span>3D Assets: CesiumDrone (Apache-2.0), Coastal Cliff 01 (Poly Haven CC0), posEye Test Scan.</span>
+        <span>3D Assets: Indian Cultural Heritage Survey (WGS 84 / Agra, India), Enterprise Survey UAV, posEye Scan.</span>
         <span>&copy; <span id="year">2026</span> posEye</span>
       </div>
     </div>

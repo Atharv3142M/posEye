@@ -13,6 +13,7 @@ export default defineConfig({
         viewer: resolve(__dirname, 'viewer/index.html'),
         architecture: resolve(__dirname, 'architecture/index.html'),
         docs: resolve(__dirname, 'docs/index.html'),
+        faq: resolve(__dirname, 'faq/index.html'),
         download: resolve(__dirname, 'download/index.html'),
         contact: resolve(__dirname, 'contact/index.html'),
       },

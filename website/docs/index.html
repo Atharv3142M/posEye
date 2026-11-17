@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#F4F3EF">
-  <meta name="description" content="Technical documentation and product FAQ covering SRT formats, EXIF GPS injection, local runtime, and GLB/LAZ/GeoTIFF outputs in posEye.">
-  <title>Documentation &amp; FAQ | posEye</title>
+  <meta name="description" content="Frequently Asked Questions (FAQ) and technical documentation covering SRT telemetry, EXIF GPS injection, local photogrammetry runtime, and 3D outputs in posEye.">
+  <title>FAQ &amp; Documentation | posEye</title>
   <link rel="icon" type="image/png" href="../posEye.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -25,11 +25,15 @@
       <a href="../pipeline/">Pipeline</a>
       <a href="../viewer/">3D Lab</a>
       <a href="../architecture/">Architecture</a>
-      <a href="./" aria-current="page">Docs</a>
+      <a href="./" aria-current="page">FAQ</a>
       <a href="../download/">Download</a>
       <a href="../contact/">Contact</a>
     </nav>
 
+    <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle dark mode" title="Toggle dark mode" aria-pressed="false">
+      <span class="light-icon" aria-hidden="true">&#9728;</span>
+      <span class="dark-icon" aria-hidden="true">&#9790;</span>
+    </button>
     <a class="nav-cta" href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">GitHub Repo</a>
     <button class="menu-btn" type="button" aria-label="Open navigation menu" aria-expanded="false">Menu</button>
   </header>
@@ -38,10 +42,10 @@
     <section class="page-hero">
       <div class="page-hero-inner">
         <div>
-          <p class="eyebrow">Reference &amp; Technical FAQ</p>
-          <h1>Documentation.</h1>
+          <p class="eyebrow">Knowledge Base &amp; Reference</p>
+          <h1>Frequently Asked Questions.</h1>
         </div>
-        <p class="lead">Specific answers on telemetry formats, WGS 84 EXIF injection, local construction behavior, and desktop exports.</p>
+        <p class="lead">Answers on drone flight video inputs, SRT telemetry formats, WGS 84 EXIF injection, offline local engine behavior, and desktop 3D exports.</p>
       </div>
     </section>
 
@@ -49,8 +53,8 @@
       <div class="section-inner">
         <div class="split-grid" style="margin-bottom:40px;align-items:end;">
           <div class="field">
-            <label for="doc-search">Search Topics</label>
-            <input id="doc-search" type="search" placeholder="Search telemetry, EXIF, CUDA, GLB...">
+            <label for="doc-search">Search FAQ</label>
+            <input id="doc-search" type="search" placeholder="Search telemetry, EXIF, CUDA, GLB, offline...">
           </div>
           <div style="display:flex;flex-wrap:wrap;gap:8px;" role="group" aria-label="Filter FAQ category">
             <button class="ctrl-btn" type="button" data-cat="all" aria-pressed="true">All Topics</button>
@@ -75,11 +79,13 @@
         <a href="../pipeline/">Pipeline</a>
         <a href="../viewer/">3D Lab</a>
         <a href="../architecture/">Architecture</a>
+        <a href="./" aria-current="page">FAQ</a>
         <a href="../download/">Download</a>
         <a href="../contact/">Contact</a>
+        <a href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">GitHub</a>
       </nav>
       <div class="footer-meta">
-        <span>Additional markdown specs live under Docs/ in the repository.</span>
+        <span>Additional technical specs live under Docs/ in the repository.</span>
         <span>&copy; <span id="year">2026</span> posEye</span>
       </div>
     </div>

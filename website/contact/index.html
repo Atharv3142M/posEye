@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#F4F3EF">
   <meta name="description" content="Contact Atharv Pose and the posEye project regarding drone datasets, bug reports, or architecture collaboration.">
-  <title>Contact | posEye</title>
+  <title>Contact &amp; Support | posEye</title>
   <link rel="icon" type="image/png" href="../posEye.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -25,11 +25,15 @@
       <a href="../pipeline/">Pipeline</a>
       <a href="../viewer/">3D Lab</a>
       <a href="../architecture/">Architecture</a>
-      <a href="../docs/">Docs</a>
+      <a href="../docs/">FAQ</a>
       <a href="../download/">Download</a>
       <a href="./" aria-current="page">Contact</a>
     </nav>
 
+    <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle dark mode" title="Toggle dark mode" aria-pressed="false">
+      <span class="light-icon" aria-hidden="true">&#9728;</span>
+      <span class="dark-icon" aria-hidden="true">&#9790;</span>
+    </button>
     <a class="nav-cta" href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">GitHub Repo</a>
     <button class="menu-btn" type="button" aria-label="Open navigation menu" aria-expanded="false">Menu</button>
   </header>
@@ -38,10 +42,10 @@
     <section class="page-hero">
       <div class="page-hero-inner">
         <div>
-          <p class="eyebrow">Project &amp; Dataset Inquiries</p>
+          <p class="eyebrow">Project, Bug Reports &amp; Dataset Inquiries</p>
           <h1>Contact Us.</h1>
         </div>
-        <p class="lead">Share flight test videos, report Windows installer or GPU pipeline issues, or propose collaboration around posEye's reconstruction workflow.</p>
+        <p class="lead">Share flight test videos, report Windows installer or GPU pipeline issues, or reach out to the developer directly via email or GitHub.</p>
       </div>
     </section>
 
@@ -68,21 +72,22 @@
               </div>
 
               <div class="field">
-                <label for="contact-email">Reply Email</label>
+                <label for="contact-email">Your Reply Email</label>
                 <input id="contact-email" type="email" autocomplete="email" placeholder="name@example.com" aria-invalid="false">
                 <p id="err-email" class="field-error" aria-live="polite"></p>
               </div>
 
               <div class="field">
-                <label for="contact-message">Details (Hardware, Drone Model, or Question)</label>
-                <textarea id="contact-message" placeholder="Describe your flight video resolution, SRT telemetry format, or question..." aria-invalid="false"></textarea>
+                <label for="contact-message">Details (Hardware, Drone Model, or Issue Description)</label>
+                <textarea id="contact-message" placeholder="Describe your flight video resolution, SRT telemetry format, GPU specs, or issue..." aria-invalid="false"></textarea>
                 <p id="err-message" class="field-error" aria-live="polite"></p>
               </div>
             </div>
 
             <div style="margin-top:22px;display:flex;flex-wrap:wrap;gap:12px;">
-              <button class="button primary" type="submit">Prepare Inquiry</button>
-              <a id="btn-open-github" class="button quiet" href="https://github.com/Atharv3142M/posEye/issues/new" target="_blank" rel="noreferrer" hidden>Open Pre-Filled GitHub Issue</a>
+              <button class="button primary" type="submit">Submit Inquiry</button>
+              <a id="btn-send-email" class="button quiet" href="#" hidden>Send via Email Client</a>
+              <a id="btn-open-github" class="button quiet" href="https://github.com/Atharv3142M/posEye/issues/new" target="_blank" rel="noreferrer" hidden>Open GitHub Issue</a>
               <button id="btn-copy-summary" class="button quiet" type="button" hidden>Copy Summary</button>
             </div>
 
@@ -90,18 +95,25 @@
           </form>
 
           <aside class="panel-box" aria-label="Direct project channels">
-            <span class="mono" style="font-size:11px;color:var(--accent);">DIRECT CHANNELS</span>
-            <h2 style="margin-top:12px;">Open-Source Maintainership</h2>
-            <p style="margin-bottom:22px;">posEye is maintained in the open on GitHub by Atharv Pose. For reproducible bug reports, including your SRT sample snippet and Windows GPU details speeds up diagnosis.</p>
+            <span class="mono" style="font-size:11px;color:var(--accent);">DIRECT DEVELOPER CHANNELS</span>
+            <h2 style="margin-top:12px;">Reach Atharv Pose</h2>
+            <p style="margin-bottom:22px;">posEye is developed as an open-source project by Atharv Pose. You can reach out directly through email, submit bug reports on GitHub, or collaborate on test datasets.</p>
 
-            <dl class="stats-kv">
-              <dt>Repository</dt>
+            <dl class="stats-kv" style="margin-bottom:24px;">
+              <dt>Developer Email</dt>
+              <dd><a class="text-link" style="min-height:auto;padding:2px 0;" href="mailto:atharvpose@gmail.com">atharvpose@gmail.com</a></dd>
+              <dt>GitHub Repository</dt>
               <dd><a class="text-link" style="min-height:auto;padding:2px 0;" href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">Atharv3142M/posEye</a></dd>
               <dt>Issue Tracker</dt>
-              <dd><a class="text-link" style="min-height:auto;padding:2px 0;" href="https://github.com/Atharv3142M/posEye/issues" target="_blank" rel="noreferrer">GitHub Issues</a></dd>
+              <dd><a class="text-link" style="min-height:auto;padding:2px 0;" href="https://github.com/Atharv3142M/posEye/issues" target="_blank" rel="noreferrer">Report a Bug</a></dd>
               <dt>Maintainer</dt>
               <dd>Atharv Pose</dd>
             </dl>
+
+            <div style="padding-top:16px;border-top:1px solid var(--line);font-size:13px;color:var(--muted);line-height:1.6;">
+              <p style="margin:0 0 8px;"><strong>How inquiries work:</strong></p>
+              Submitting the form prepares your message and lets you launch your email client with one click to send directly to <code>atharvpose@gmail.com</code>, or automatically creates a pre-filled issue ticket on GitHub.
+            </div>
           </aside>
         </div>
       </div>
@@ -118,11 +130,13 @@
         <a href="../pipeline/">Pipeline</a>
         <a href="../viewer/">3D Lab</a>
         <a href="../architecture/">Architecture</a>
-        <a href="../docs/">Docs</a>
+        <a href="../docs/">FAQ</a>
         <a href="../download/">Download</a>
+        <a href="./" aria-current="page">Contact</a>
+        <a href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">GitHub</a>
       </nav>
       <div class="footer-meta">
-        <span>Static inquiry generator routes directly to GitHub Issues with zero third-party tracking.</span>
+        <span>Direct communication channels for posEye users and contributors.</span>
         <span>&copy; <span id="year">2026</span> posEye</span>
       </div>
     </div>

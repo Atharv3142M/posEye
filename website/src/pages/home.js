@@ -4,6 +4,7 @@ import {
   addStudioLighting,
   buildVertexPointCloud,
   createRenderer,
+  createTajMahalHeritage,
   hasWebGL,
   loadGLB,
   normalizeModel,
@@ -18,7 +19,7 @@ function setProgress(selector, pct, done = false) {
   const bar = el.querySelector('.stage-bar i');
   const text = el.querySelector('.loader-text');
   if (bar && Number.isFinite(pct)) bar.style.width = `${pct}%`;
-  if (text && Number.isFinite(pct)) text.textContent = `Loading 3D models (${pct}%)`;
+  if (text && Number.isFinite(pct)) text.textContent = `Calibrating 3D Survey (${pct}%)`;
   if (done) el.classList.add('done');
 }
 
@@ -29,7 +30,7 @@ function createScannerCone() {
   const edges = new THREE.EdgesGeometry(geo);
   return new THREE.LineSegments(
     edges,
-    new THREE.LineBasicMaterial({ color: 0x9e3816, transparent: true, opacity: 0.45 })
+    new THREE.LineBasicMaterial({ color: 0xe25b38, transparent: true, opacity: 0.55 })
   );
 }
 
@@ -53,10 +54,10 @@ async function initHeroScene() {
   const stageGroup = new THREE.Group();
   scene.add(stageGroup);
 
-  // Subtle calibrated datum ring beneath the terrain model
+  // Calibrated datum ring beneath the monument
   const datumRing = new THREE.Mesh(
-    new THREE.RingGeometry(2.68, 2.71, 96),
-    new THREE.MeshBasicMaterial({ color: 0x9e3816, side: THREE.DoubleSide, transparent: true, opacity: 0.35 })
+    new THREE.RingGeometry(3.1, 3.14, 96),
+    new THREE.MeshBasicMaterial({ color: 0xe25b38, side: THREE.DoubleSide, transparent: true, opacity: 0.4 })
   );
   datumRing.rotation.x = -Math.PI / 2;
   datumRing.position.y = 0.01;
@@ -74,8 +75,8 @@ async function initHeroScene() {
   ro.observe(frame);
   resize();
 
-  let mixer = null;
   let dronePivot = null;
+  let droneMeshRoot = null;
   let pointerX = 0;
   let pointerY = 0;
   frame.addEventListener('pointermove', (e) => {
@@ -85,31 +86,46 @@ async function initHeroScene() {
   });
 
   try {
-    const [cliffGltf, droneGltf] = await Promise.all([
-      loadGLB('coastal-cliff.glb', (p) => setProgress('#hero-loader', Math.round(p * 0.65))),
+    const [heritageGltf, droneGltf] = await Promise.all([
+      loadGLB('india-heritage.glb', (p) => setProgress('#hero-loader', Math.round(p * 0.65))),
       loadGLB('drone.glb', (p) => setProgress('#hero-loader', Math.round(65 + p * 0.35))),
     ]);
 
-    const cliff = normalizeModel(cliffGltf.scene, 6.0);
-    stageGroup.add(cliff.root);
+    let monument = null;
+    if (heritageGltf && heritageGltf.scene) {
+      monument = normalizeModel(heritageGltf.scene, 5.8);
+    } else {
+      monument = createTajMahalHeritage(5.8);
+    }
+    stageGroup.add(monument.root);
 
-    const drone = normalizeModel(droneGltf.scene, 1.35);
+    // Realistic Survey Quadcopter
+    const droneNorm = normalizeModel(droneGltf.scene, 1.2);
+    droneMeshRoot = droneNorm.root;
     dronePivot = new THREE.Group();
-    dronePivot.position.set(0, 2.35, 0);
-    drone.root.add(createScannerCone());
-    dronePivot.add(drone.root);
+    dronePivot.position.set(0, 2.45, 0);
+    droneMeshRoot.add(createScannerCone());
+    dronePivot.add(droneMeshRoot);
     stageGroup.add(dronePivot);
 
-    if (droneGltf.animations?.length) {
-      mixer = new THREE.AnimationMixer(drone.root.children[0]);
-      mixer.clipAction(droneGltf.animations[0]).play();
-    }
+    setProgress('#hero-loader', 100, true);
+  } catch (err) {
+    console.warn('[posEye] Hero loading fallback triggered:', err);
+    // Instant procedural Indian monument fallback ensures zero broken state
+    const monument = createTajMahalHeritage(5.8);
+    stageGroup.add(monument.root);
+
+    try {
+      const droneGltf = await loadGLB('drone.glb');
+      const droneNorm = normalizeModel(droneGltf.scene, 1.2);
+      dronePivot = new THREE.Group();
+      dronePivot.position.set(0, 2.45, 0);
+      droneNorm.root.add(createScannerCone());
+      dronePivot.add(droneNorm.root);
+      stageGroup.add(dronePivot);
+    } catch {}
 
     setProgress('#hero-loader', 100, true);
-  } catch {
-    setProgress('#hero-loader', 100, true);
-    showStageFallback(frame, 'Could not load 3D scene assets. Ensure WebP and WebGL support are enabled.');
-    return;
   }
 
   const clock = new THREE.Clock();
@@ -127,20 +143,30 @@ async function initHeroScene() {
     const dt = Math.min(clock.getDelta(), 0.05);
     const t = clock.elapsedTime;
 
-    if (mixer && !reducedMotion) mixer.update(dt);
     if (dronePivot && !reducedMotion) {
-      dronePivot.position.x = Math.cos(t * 0.52) * 1.45;
-      dronePivot.position.z = Math.sin(t * 0.52) * 0.95;
-      dronePivot.position.y = 2.15 + Math.sin(t * 1.4) * 0.08;
-      dronePivot.rotation.y = -t * 0.52;
+      const droneSpeed = 0.48;
+      const radiusX = 2.1;
+      const radiusZ = 1.6;
+      const nx = Math.cos(t * droneSpeed) * radiusX;
+      const nz = Math.sin(t * droneSpeed) * radiusZ;
+      dronePivot.position.x = nx;
+      dronePivot.position.z = nz;
+      dronePivot.position.y = 2.35 + Math.sin(t * 1.5) * 0.08;
+      // Heading tangent to flight path
+      dronePivot.rotation.y = -t * droneSpeed + Math.PI / 2;
+      // Slight bank into turns
+      if (droneMeshRoot) {
+        droneMeshRoot.rotation.z = Math.sin(t * droneSpeed) * 0.08;
+        droneMeshRoot.rotation.x = 0.06;
+      }
     }
 
-    const targetRotY = pointerX * 0.32 + (reducedMotion ? 0 : Math.sin(t * 0.16) * 0.18);
-    const targetRotX = pointerY * 0.1;
+    const targetRotY = pointerX * 0.28 + (reducedMotion ? 0 : Math.sin(t * 0.12) * 0.14);
+    const targetRotX = pointerY * 0.08;
     stageGroup.rotation.y += (targetRotY - stageGroup.rotation.y) * 0.05;
     stageGroup.rotation.x += (targetRotX - stageGroup.rotation.x) * 0.05;
 
-    camera.lookAt(0, 0.72, 0);
+    camera.lookAt(0, 0.65, 0);
     renderer.render(scene, camera);
   };
   tick();
@@ -161,13 +187,40 @@ async function initStoryScene() {
   const storyEl = document.querySelector('.scroll-story');
   const chapters = [...document.querySelectorAll('.story-copy')];
   const stepBtns = [...document.querySelectorAll('.story-step-btn')];
+  const stepCenters = [0.08, 0.36, 0.64, 0.92];
   let progress = 0;
 
-  const setActiveStep = (idx) => {
-    chapters.forEach((c, i) => c.classList.toggle('active', i === idx));
-    stepBtns.forEach((b, i) => {
-      b.classList.toggle('active', i === idx);
-      b.setAttribute('aria-pressed', String(i === idx));
+  const updateStoryChapters = (prog) => {
+    // Silky smooth cross-fade and vertical translate based on continuous progress
+    chapters.forEach((c, i) => {
+      const center = stepCenters[i];
+      const dist = Math.abs(prog - center);
+      const span = 0.26;
+      const weight = Math.max(0, 1 - dist / span);
+      // Cubic easing for natural fade
+      const opacity = weight * weight * (3 - 2 * weight);
+
+      c.style.opacity = opacity.toFixed(3);
+      c.style.transform = `translate3d(0, ${(1 - opacity) * 14}px, 0)`;
+      c.style.visibility = opacity > 0.01 ? 'visible' : 'hidden';
+      c.style.pointerEvents = opacity > 0.4 ? 'auto' : 'none';
+    });
+
+    // Determine closest active chapter for tab index & buttons
+    let closestIdx = 0;
+    let minD = 999;
+    stepCenters.forEach((c, idx) => {
+      const d = Math.abs(prog - c);
+      if (d < minD) {
+        minD = d;
+        closestIdx = idx;
+      }
+    });
+
+    stepBtns.forEach((btn, idx) => {
+      const isAct = idx === closestIdx;
+      btn.classList.toggle('active', isAct);
+      btn.setAttribute('aria-pressed', String(isAct));
     });
   };
 
@@ -176,10 +229,10 @@ async function initStoryScene() {
       trigger: storyEl,
       start: 'top top',
       end: 'bottom bottom',
+      scrub: 0.5,
       onUpdate: (self) => {
         progress = self.progress;
-        const step = Math.min(3, Math.floor(progress * 4));
-        setActiveStep(step);
+        updateStoryChapters(progress);
       },
     });
   }
@@ -189,8 +242,9 @@ async function initStoryScene() {
       if (!storyEl) return;
       const top = storyEl.offsetTop;
       const maxScroll = Math.max(storyEl.offsetHeight - window.innerHeight, 1);
+      const targetP = stepCenters[idx];
       window.scrollTo({
-        top: top + maxScroll * ((idx + 0.15) / 4),
+        top: top + maxScroll * targetP,
         behavior: reducedMotion ? 'auto' : 'smooth',
       });
     });
@@ -198,7 +252,7 @@ async function initStoryScene() {
 
   if (!hasWebGL()) {
     setProgress('#story-loader', 100, true);
-    showStageFallback(frame, 'Interactive 3D chapter view requires WebGL.');
+    showStageFallback(frame, 'Interactive 3D reconstruction view requires WebGL.');
     return;
   }
 
@@ -207,9 +261,9 @@ async function initStoryScene() {
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
   camera.position.set(0, 4.6, 7.2);
 
-  const hemi = new THREE.HemisphereLight(0xf3f6fa, 0x2c3440, 1.5);
+  const hemi = new THREE.HemisphereLight(0xf3f6fa, 0x2c3440, 1.6);
   scene.add(hemi);
-  const key = new THREE.DirectionalLight(0xfff1e0, 2.0);
+  const key = new THREE.DirectionalLight(0xfff1e0, 2.2);
   key.position.set(6, 10, 7);
   scene.add(key);
 
@@ -220,7 +274,6 @@ async function initStoryScene() {
   let wireGroup = null;
   let cloudPoints = null;
   let droneGroup = null;
-  let mixer = null;
 
   const resize = () => {
     const w = frame.clientWidth;
@@ -235,52 +288,76 @@ async function initStoryScene() {
   resize();
 
   try {
-    const [scanGltf, droneGltf, cliffGltf] = await Promise.all([
-      loadGLB('poseye-scan.glb', (p) => setProgress('#story-loader', Math.round(p * 0.7))),
+    const [heritageGltf, droneGltf] = await Promise.all([
+      loadGLB('india-heritage.glb', (p) => setProgress('#story-loader', Math.round(p * 0.7))),
       loadGLB('drone.glb'),
-      loadGLB('coastal-cliff.glb'),
     ]);
 
-    const scan = normalizeModel(scanGltf.scene, 6.2);
-    solidMeshGroup = scan.root;
+    let monument = null;
+    if (heritageGltf && heritageGltf.scene) {
+      monument = normalizeModel(heritageGltf.scene, 6.0);
+    } else {
+      monument = createTajMahalHeritage(6.0);
+    }
+
+    solidMeshGroup = monument.root;
     scanGroup.add(solidMeshGroup);
 
-    // Clone lightweight wireframe overlay aligned over the real posEye scan
+    // Wireframe overlay representing edge detection and SfM feature matches
     wireGroup = solidMeshGroup.clone(true);
     wireGroup.traverse((c) => {
       if (!c.isMesh) return;
       c.material = new THREE.MeshBasicMaterial({
-        color: 0xea8b69,
+        color: 0xe25b38,
         wireframe: true,
         transparent: true,
-        opacity: 0.28,
+        opacity: 0.24,
       });
     });
     wireGroup.position.y += 0.008;
     scanGroup.add(wireGroup);
 
-    cloudPoints = buildVertexPointCloud(solidMeshGroup, 20000);
+    // Dense point cloud representing photogrammetry depth samples
+    cloudPoints = buildVertexPointCloud(solidMeshGroup, 22000);
     cloudPoints.material.opacity = 0.0;
     cloudPoints.material.transparent = true;
     scanGroup.add(cloudPoints);
 
-    const drone = normalizeModel(droneGltf.scene, 1.15);
+    // Clean survey drone
+    const droneNorm = normalizeModel(droneGltf.scene, 1.1);
     droneGroup = new THREE.Group();
-    droneGroup.add(drone.root);
+    droneGroup.add(droneNorm.root);
     droneGroup.add(createScannerCone());
     scene.add(droneGroup);
 
-    if (droneGltf.animations?.length) {
-      mixer = new THREE.AnimationMixer(drone.root.children[0]);
-      mixer.clipAction(droneGltf.animations[0]).play();
-    }
+    setProgress('#story-loader', 100, true);
+    renderOutputThumbnails(monument.root);
+  } catch (err) {
+    console.warn('[posEye] Story model fallback activated:', err);
+    const monument = createTajMahalHeritage(6.0);
+    solidMeshGroup = monument.root;
+    scanGroup.add(solidMeshGroup);
+
+    wireGroup = solidMeshGroup.clone(true);
+    wireGroup.traverse((c) => {
+      if (!c.isMesh) return;
+      c.material = new THREE.MeshBasicMaterial({
+        color: 0xe25b38,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.24,
+      });
+    });
+    wireGroup.position.y += 0.008;
+    scanGroup.add(wireGroup);
+
+    cloudPoints = buildVertexPointCloud(solidMeshGroup, 22000);
+    cloudPoints.material.opacity = 0.0;
+    cloudPoints.material.transparent = true;
+    scanGroup.add(cloudPoints);
 
     setProgress('#story-loader', 100, true);
-    renderOutputThumbnails(scanGltf.scene, cliffGltf.scene);
-  } catch {
-    setProgress('#story-loader', 100, true);
-    showStageFallback(frame, '3D reconstruction model could not be loaded.');
-    return;
+    renderOutputThumbnails(monument.root);
   }
 
   const clock = new THREE.Clock();
@@ -295,35 +372,37 @@ async function initStoryScene() {
   const tick = () => {
     raf = requestAnimationFrame(tick);
     if (!active) return;
-    const dt = Math.min(clock.getDelta(), 0.05);
-    if (mixer && !reducedMotion) mixer.update(dt);
 
-    // Synchronize camera path and reconstruction visualization layers to scroll progress (0 -> 1)
-    const angle = progress * Math.PI * 1.45 - 0.55;
-    const radius = THREE.MathUtils.lerp(7.2, 4.1, progress);
-    const height = THREE.MathUtils.lerp(4.4, 2.05, progress);
+    // Cinematic continuous orbital trajectory linked to scroll progress (0 -> 1)
+    const angle = progress * Math.PI * 1.5 - 0.45;
+    const radius = THREE.MathUtils.lerp(7.2, 4.3, Math.sin(progress * Math.PI));
+    const height = THREE.MathUtils.lerp(4.4, 2.1, progress);
+
     camera.position.set(Math.sin(angle) * radius, height, Math.cos(angle) * radius);
-    camera.lookAt(0, 0.35, 0);
+    camera.lookAt(0, 0.4, 0);
 
     if (droneGroup) {
-      const droneVisibility = 1 - THREE.MathUtils.smoothstep(progress, 0.45, 0.72);
+      // Drone patrols actively in early capture stage, then pulls back
+      const droneVisibility = 1 - THREE.MathUtils.smoothstep(progress, 0.42, 0.72);
       droneGroup.visible = droneVisibility > 0.02;
+      const droneAngle = progress * Math.PI * 2.8;
       droneGroup.position.set(
-        Math.cos(progress * Math.PI * 2) * 1.8,
-        2.05 - progress * 0.4,
-        Math.sin(progress * Math.PI * 2) * 1.2
+        Math.cos(droneAngle) * 2.1,
+        2.2 - progress * 0.45,
+        Math.sin(droneAngle) * 1.4
       );
-      droneGroup.rotation.y = -progress * Math.PI * 2;
+      droneGroup.rotation.y = -droneAngle + Math.PI / 2;
     }
 
+    // Dynamic reconstruction cross-fade
     const preparePeak = Math.sin(THREE.MathUtils.clamp((progress - 0.12) / 0.52, 0, 1) * Math.PI);
     if (wireGroup) {
       wireGroup.traverse((c) => {
-        if (c.isMesh) c.material.opacity = 0.06 + preparePeak * 0.42;
+        if (c.isMesh) c.material.opacity = 0.05 + preparePeak * 0.45;
       });
     }
     if (cloudPoints) {
-      cloudPoints.material.opacity = preparePeak * 0.85;
+      cloudPoints.material.opacity = preparePeak * 0.9;
     }
 
     renderer.render(scene, camera);
@@ -338,7 +417,7 @@ async function initStoryScene() {
   });
 }
 
-function renderOutputThumbnails(scanScene, cliffScene) {
+function renderOutputThumbnails(monumentScene) {
   const targets = [
     { id: '#thumb-mesh', mode: 'mesh' },
     { id: '#thumb-cloud', mode: 'cloud' },
@@ -355,29 +434,28 @@ function renderOutputThumbnails(scanScene, cliffScene) {
   offRenderer.toneMapping = THREE.ACESFilmicToneMapping;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x161b22);
+  scene.background = new THREE.Color(0x0f141c);
   addStudioLighting(scene);
 
-  const scan = normalizeModel(scanScene, 5.6);
-  const cliff = normalizeModel(cliffScene, 5.8);
-  const cloud = buildVertexPointCloud(cliff.root, 26000);
-  cloud.material.size = 0.055;
+  const monument = normalizeModel(monumentScene, 5.8);
+  const cloud = buildVertexPointCloud(monument.root, 24000);
+  cloud.material.size = 0.05;
 
   for (const item of canvases) {
-    scene.remove(scan.root, cloud);
+    scene.remove(monument.root, cloud);
     const cam = new THREE.PerspectiveCamera(38, width / height, 0.1, 60);
 
     if (item.mode === 'mesh') {
-      scene.add(scan.root);
-      cam.position.set(3.8, 2.5, 4.1);
-      cam.lookAt(0, 0.25, 0);
+      scene.add(monument.root);
+      cam.position.set(4.0, 2.6, 4.4);
+      cam.lookAt(0, 0.35, 0);
     } else if (item.mode === 'cloud') {
       scene.add(cloud);
-      cam.position.set(4.1, 2.3, 4.2);
-      cam.lookAt(0, 0.55, 0);
+      cam.position.set(4.2, 2.4, 4.4);
+      cam.lookAt(0, 0.5, 0);
     } else {
-      scene.add(scan.root);
-      cam.position.set(0.01, 6.3, 0.01);
+      scene.add(monument.root);
+      cam.position.set(0.01, 7.2, 0.01);
       cam.lookAt(0, 0, 0);
     }
 

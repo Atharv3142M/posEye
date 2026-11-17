@@ -25,11 +25,15 @@
       <a href="./" aria-current="page">Pipeline</a>
       <a href="../viewer/">3D Lab</a>
       <a href="../architecture/">Architecture</a>
-      <a href="../docs/">Docs</a>
+      <a href="../docs/">FAQ</a>
       <a href="../download/">Download</a>
       <a href="../contact/">Contact</a>
     </nav>
 
+    <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle dark mode" title="Toggle dark mode" aria-pressed="false">
+      <span class="light-icon" aria-hidden="true">&#9728;</span>
+      <span class="dark-icon" aria-hidden="true">&#9790;</span>
+    </button>
     <a class="nav-cta" href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">GitHub Repo</a>
     <button class="menu-btn" type="button" aria-label="Open navigation menu" aria-expanded="false">Menu</button>
   </header>
@@ -39,49 +43,211 @@
       <div class="page-hero-inner">
         <div>
           <p class="eyebrow">Zero Manual Intermediate Steps</p>
-          <h1>11-Stage Pipeline.</h1>
+          <h1>11-Stage Pipeline Journey.</h1>
         </div>
-        <p class="lead">Every run advances automatically through frame extraction, blur and duplicate removal, telemetry injection, local 3D construction, and desktop GLB conversion.</p>
+        <p class="lead">Scroll through each stage of the automated photogrammetry engine. From video ingest and telemetry parsing to dense point clouds and Three.js 3D meshes.</p>
       </div>
     </section>
 
     <section class="section-pad">
       <div class="section-inner">
         <div class="section-index">
-          <span>Interactive Stage Explorer</span>
-          <span>Click any stage 01 to 11</span>
+          <span>Scroll-Driven Pipeline Timeline</span>
+          <span>Tracking Stages 01 to 11</span>
         </div>
 
-        <div class="split-grid" style="margin-top:32px;align-items:start;">
-          <div id="stage-list" class="btn-stack" aria-label="Pipeline stages"></div>
+        <div class="pipeline-layout" style="margin-top:32px;">
+          <!-- Left Pinned HUD -->
+          <div class="pipeline-sticky-hud">
+            <div class="panel-box">
+              <span id="hud-phase" class="eyebrow" style="color:var(--accent);">Phase 1 : Ingest &amp; Pre-processing</span>
+              <h2 id="hud-title" style="margin-top:10px;font-size:24px;">01 / Video Probing</h2>
+              <p id="hud-body" style="font-size:14px;color:var(--muted);line-height:1.6;margin-bottom:18px;">
+                FFprobe reads container duration, FPS, frame count, and resolution before extraction begins.
+              </p>
 
-          <div class="panel-box" style="position:sticky;top:96px;">
-            <p id="stage-detail-phase" class="eyebrow" style="color:var(--accent);">Stage 1 : Ingest</p>
-            <h2 id="stage-detail-title" style="margin-top:14px;">01 / Video Probing</h2>
-            <p id="stage-detail-body">FFprobe reads container duration, FPS, frame count, and resolution before extraction begins.</p>
-            <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--line);">
-              <h3 style="font-size:15px;">Frame Budget Estimator (Arithmetic Reference)</h3>
-              <div class="field-grid" style="margin-top:14px;">
-                <div class="field">
-                  <label for="est-duration">Flight Video Duration (seconds)</label>
-                  <input id="est-duration" type="number" min="5" max="3600" value="90">
-                </div>
-                <div class="field">
-                  <label for="est-rate">Extraction Rate (frames per second)</label>
-                  <input id="est-rate" type="number" min="0.2" max="10" step="0.2" value="1">
-                </div>
-                <div class="field">
-                  <label for="est-keep">Post-Filter Survival Rate (% after blur &amp; dHash)</label>
-                  <input id="est-keep" type="number" min="10" max="100" value="65">
-                </div>
+              <div class="pipeline-node-diagram" id="hud-node-pills" aria-label="Jump to stage">
+                <!-- Javascript will populate 01..11 pills -->
               </div>
-              <dl class="stats-kv" style="margin-top:18px;">
-                <dt>Extracted Stills</dt>
-                <dd id="est-raw">90 frames</dd>
-                <dt>Sent to posEye Construction Engine</dt>
-                <dd id="est-kept">59 geotagged frames</dd>
-              </dl>
+
+              <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line);">
+                <dl class="stats-kv">
+                  <dt>Active Component</dt>
+                  <dd id="hud-component">apps/pipeline/probe.py</dd>
+                  <dt>Input &rarr; Output</dt>
+                  <dd id="hud-io">MP4 / MOV &rarr; Video Metadata</dd>
+                  <dt>Fault Policy</dt>
+                  <dd id="hud-fault">Fails early if stream unreadable</dd>
+                </dl>
+              </div>
+
+              <div style="margin-top:24px;padding-top:18px;border-top:1px solid var(--line);">
+                <h3 style="font-size:14px;margin-bottom:12px;">Frame Budget Estimator</h3>
+                <div class="field-grid">
+                  <div class="field">
+                    <label for="est-duration">Flight Duration (seconds)</label>
+                    <input id="est-duration" type="number" min="5" max="3600" value="90">
+                  </div>
+                  <div class="field">
+                    <label for="est-rate">Sampling Cadence (fps)</label>
+                    <input id="est-rate" type="number" min="0.2" max="10" step="0.2" value="1">
+                  </div>
+                  <div class="field">
+                    <label for="est-keep">Blur &amp; Dedup Survival (% kept)</label>
+                    <input id="est-keep" type="number" min="10" max="100" value="65">
+                  </div>
+                </div>
+                <dl class="stats-kv" style="margin-top:14px;">
+                  <dt>Extracted Stills</dt>
+                  <dd id="est-raw">90 frames</dd>
+                  <dt>Sent to Construction Engine</dt>
+                  <dd id="est-kept">59 geotagged frames</dd>
+                </dl>
+              </div>
             </div>
+          </div>
+
+          <!-- Right Scrollable Stage Cards -->
+          <div class="pipeline-card-stack" id="stage-cards">
+            <!-- Stage 01 -->
+            <article class="pipeline-stage-card is-active" data-stage="1" id="stage-card-1">
+              <span class="mono" style="font-size:11px;color:var(--accent);">STAGE 01 / PHASE 1 : INGEST</span>
+              <h2 style="margin:10px 0 12px;font-size:22px;">Video Probing &amp; Validation</h2>
+              <p>FFprobe inspects container integrity, video codec (H.264 / H.265 / ProRes), frame resolution, FPS, and pixel aspect ratio. If streams are corrupt or missing video tracks, the pipeline halts with actionable diagnostic guidance before consuming system resources.</p>
+              <div class="tags" style="margin-top:16px;">
+                <span>FFprobe</span>
+                <span>Codec Check</span>
+                <span>Container Validation</span>
+                <span>Fast Fail</span>
+              </div>
+            </article>
+
+            <!-- Stage 02 -->
+            <article class="pipeline-stage-card" data-stage="2" id="stage-card-2">
+              <span class="mono" style="font-size:11px;color:var(--accent);">STAGE 02 / PHASE 1 : INGEST</span>
+              <h2 style="margin:10px 0 12px;font-size:22px;">FFmpeg Frame Extraction</h2>
+              <p>Bundled static FFmpeg (101MB standalone binary) samples candidate frames along a configurable cadence (typically 1 to 2 frames per second). Frame filenames strictly encode their zero-indexed sequential order and millisecond timestamps to allow precise alignment with SRT telemetry.</p>
+              <div class="tags" style="margin-top:16px;">
+                <span>Static FFmpeg</span>
+                <span>Keyframe Extraction</span>
+                <span>Millisecond Timestamps</span>
+              </div>
+            </article>
+
+            <!-- Stage 03 -->
+            <article class="pipeline-stage-card" data-stage="3" id="stage-card-3">
+              <span class="mono" style="font-size:11px;color:var(--accent);">STAGE 03 / PHASE 1 : INGEST</span>
+              <h2 style="margin:10px 0 12px;font-size:22px;">Laplacian Blur Filtering</h2>
+              <p>OpenCV calculates the variance of the Laplacian second derivative across each extracted grayscale still. Images suffering from UAV motion blur, gimbal vibration, or lens defocus fall below the threshold (default 100.0) and are discarded to protect reconstruction sharpness.</p>
+              <div class="tags" style="margin-top:16px;">
+                <span>OpenCV</span>
+                <span>Laplacian Variance</span>
+                <span>Focus Detection</span>
+                <span>Motion Blur Drop</span>
+              </div>
+            </article>
+
+            <!-- Stage 04 -->
+            <article class="pipeline-stage-card" data-stage="4" id="stage-card-4">
+              <span class="mono" style="font-size:11px;color:var(--accent);">STAGE 04 / PHASE 1 : INGEST</span>
+              <h2 style="margin:10px 0 12px;font-size:22px;">dHash Deduplication</h2>
+              <p>Perceptual difference hashing (dHash) computes 64-bit structural gradients. Stills captured while the drone was hovering or stationary produce near-zero Hamming distances (&le; 10) and are pruned, reducing reconstruction times by up to 40% while preserving baseline camera overlap.</p>
+              <div class="tags" style="margin-top:16px;">
+                <span>dHash 64-bit</span>
+                <span>Hamming Distance</span>
+                <span>Hover Pruning</span>
+                <span>40% Speedup</span>
+              </div>
+            </article>
+
+            <!-- Stage 05 -->
+            <article class="pipeline-stage-card" data-stage="5" id="stage-card-5">
+              <span class="mono" style="font-size:11px;color:var(--accent);">STAGE 05 / PHASE 1 : INGEST</span>
+              <h2 style="margin:10px 0 12px;font-size:22px;">SRT Telemetry Parsing</h2>
+              <p>The parser ingests subtitle streams in DJI parenthesized format <code>[latitude: 27.1751] [longitude: 78.0421] [altitude: 171.2]</code>, CSV logs, or key-value subtitle cues. It normalizes GPS coordinates into WGS 84 decimal degrees and AMSL heights with sub-millisecond precision.</p>
+              <div class="tags" style="margin-top:16px;">
+                <span>DJI SRT</span>
+                <span>WGS 84</span>
+                <span>AMSL Altitude</span>
+                <span>Sub-second Sync</span>
+              </div>
+            </article>
+
+            <!-- Stage 06 -->
+            <article class="pipeline-stage-card" data-stage="6" id="stage-card-6">
+              <span class="mono" style="font-size:11px;color:var(--accent);">STAGE 06 / PHASE 1 : INGEST</span>
+              <h2 style="margin:10px 0 12px;font-size:22px;">EXIF GPS Injection</h2>
+              <p>piexif embeds WGS 84 (EPSG:4326) rational coordinates, GPS altitude references, and UTC timestamps into the surviving JPEG headers. Frames matching telemetry within a 1.5-second nearest-neighbor tolerance are stamped, enabling metric scale photogrammetry.</p>
+              <div class="tags" style="margin-top:16px;">
+                <span>piexif</span>
+                <span>EXIF 2.31</span>
+                <span>EPSG:4326</span>
+                <span>Metric Grounding</span>
+              </div>
+            </article>
+
+            <!-- Stage 07 -->
+            <article class="pipeline-stage-card" data-stage="7" id="stage-card-7">
+              <span class="mono" style="font-size:11px;color:var(--accent);">STAGE 07 / PHASE 1 : INGEST</span>
+              <h2 style="margin:10px 0 12px;font-size:22px;">Optional Dynamic Masking</h2>
+              <p>YOLOv8n instance segmentation detects moving transient objects (cars, pedestrians, boats). When enabled in project settings, binary mask PNGs are generated so the reconstruction algorithm ignores fleeting objects that would otherwise cause reconstruction artifacts.</p>
+              <div class="tags" style="margin-top:16px;">
+                <span>YOLOv8n</span>
+                <span>Dynamic Masking</span>
+                <span>Artifact Prevention</span>
+                <span>Local PyTorch</span>
+              </div>
+            </article>
+
+            <!-- Stage 08 -->
+            <article class="pipeline-stage-card" data-stage="8" id="stage-card-8">
+              <span class="mono" style="font-size:11px;color:var(--accent);">STAGE 08 / PHASE 2 : RECONSTRUCTION</span>
+              <h2 style="margin:10px 0 12px;font-size:22px;">Archive Staging &amp; Engine Dispatch</h2>
+              <p>The curated geotagged JPEG stills, EXIF manifests, and optional mask masks are bundled in memory and transferred over localhost HTTP to the local posEye Construction Engine running via Docker.</p>
+              <div class="tags" style="margin-top:16px;">
+                <span>Zip Packaging</span>
+                <span>Localhost Dispatch</span>
+                <span>Zero Cloud Upload</span>
+              </div>
+            </article>
+
+            <!-- Stage 09 -->
+            <article class="pipeline-stage-card" data-stage="9" id="stage-card-9">
+              <span class="mono" style="font-size:11px;color:var(--accent);">STAGE 09 / PHASE 2 : RECONSTRUCTION</span>
+              <h2 style="margin:10px 0 12px;font-size:22px;">posEye Construction Engine</h2>
+              <p>The core reconstruction container executes Structure-from-Motion (OpenSfM), dense multi-view stereo matching, Poisson mesh reconstruction, and texture projection. NVIDIA CUDA acceleration is leveraged automatically, with seamless CPU fallback on non-NVIDIA systems.</p>
+              <div class="tags" style="margin-top:16px;">
+                <span>CUDA GPU</span>
+                <span>CPU Fallback</span>
+                <span>Dense MVS</span>
+                <span>Poisson Mesh</span>
+              </div>
+            </article>
+
+            <!-- Stage 10 -->
+            <article class="pipeline-stage-card" data-stage="10" id="stage-card-10">
+              <span class="mono" style="font-size:11px;color:var(--accent);">STAGE 10 / PHASE 3 : SPATIAL OUTPUTS</span>
+              <h2 style="margin:10px 0 12px;font-size:22px;">Deliverable Extraction &amp; Zip-Slip Validation</h2>
+              <p>The deliverable archive is extracted safely into the job workspace. A defensive Zip-Slip security filter validates canonical destination paths to prevent directory traversal vulnerabilities before handing files to the mesh converter.</p>
+              <div class="tags" style="margin-top:16px;">
+                <span>Zip-Slip Guard</span>
+                <span>Path Traversal Def</span>
+                <span>Output Validation</span>
+              </div>
+            </article>
+
+            <!-- Stage 11 -->
+            <article class="pipeline-stage-card" data-stage="11" id="stage-card-11">
+              <span class="mono" style="font-size:11px;color:var(--accent);">STAGE 11 / PHASE 3 : SPATIAL OUTPUTS</span>
+              <h2 style="margin:10px 0 12px;font-size:22px;">Origin-Centered GLB Conversion &amp; Delivery</h2>
+              <p>Trimesh and pygltflib normalize large real-world UTM coordinates into origin-centered coordinates (preventing 32-bit floating point WebGL vertex jitter), convert raw OBJ/MTL into Draco-compressed GLB, and register raw LAZ point clouds and GeoTIFF orthophoto deliverables.</p>
+              <div class="tags" style="margin-top:16px;">
+                <span>Draco GLB</span>
+                <span>Origin Centering</span>
+                <span>LAZ Point Cloud</span>
+                <span>GeoTIFF Orthophoto</span>
+              </div>
+            </article>
           </div>
         </div>
       </div>
@@ -95,9 +261,10 @@
       </a>
       <nav class="footer-links" aria-label="Footer navigation">
         <a href="../">Overview</a>
+        <a href="./" aria-current="page">Pipeline</a>
         <a href="../viewer/">3D Lab</a>
         <a href="../architecture/">Architecture</a>
-        <a href="../docs/">Docs</a>
+        <a href="../docs/">FAQ</a>
         <a href="../download/">Download</a>
         <a href="../contact/">Contact</a>
       </nav>

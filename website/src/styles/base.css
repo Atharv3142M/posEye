@@ -18,6 +18,44 @@
   --font-mono: "DM Mono", Consolas, monospace;
 }
 
+[data-theme="dark"] {
+  --paper: #0D1117;
+  --paper-2: #161B22;
+  --surface: #1E232B;
+  --ink: #F0F6FC;
+  --muted: #9BA4B0;
+  --subtle: #798391;
+  --line: #2D333B;
+  --line-strong: #444C56;
+  --accent: #E55B3C;
+  --accent-hover: #FF7B54;
+  --accent-soft: rgba(229, 91, 60, 0.16);
+  --stage-bg: #090D12;
+  --stage-ink: #F0F6FC;
+  --stage-muted: #9BA4B0;
+  --stage-line: rgba(240, 246, 252, 0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0D1117;
+    --paper-2: #161B22;
+    --surface: #1E232B;
+    --ink: #F0F6FC;
+    --muted: #9BA4B0;
+    --subtle: #798391;
+    --line: #2D333B;
+    --line-strong: #444C56;
+    --accent: #E55B3C;
+    --accent-hover: #FF7B54;
+    --accent-soft: rgba(229, 91, 60, 0.16);
+    --stage-bg: #090D12;
+    --stage-ink: #F0F6FC;
+    --stage-muted: #9BA4B0;
+    --stage-line: rgba(240, 246, 252, 0.12);
+  }
+}
+
 *,
 *::before,
 *::after {
@@ -179,6 +217,60 @@ svg {
   color: var(--ink);
   transition: background 0.2s ease, color 0.2s ease;
   flex-shrink: 0;
+}
+
+[data-theme="dark"] .brand img {
+  mix-blend-mode: normal;
+  filter: brightness(0) invert(1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .brand img {
+    mix-blend-mode: normal;
+    filter: brightness(0) invert(1);
+  }
+}
+
+.theme-toggle {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  padding: 8px 12px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  font: 500 13px/1 var(--font-mono);
+}
+
+.theme-toggle:hover {
+  border-color: var(--line-strong);
+  background: var(--paper-2);
+}
+
+.theme-toggle .light-icon {
+  display: inline-block;
+}
+.theme-toggle .dark-icon {
+  display: none;
+}
+[data-theme="dark"] .theme-toggle .light-icon {
+  display: none;
+}
+[data-theme="dark"] .theme-toggle .dark-icon {
+  display: inline-block;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .theme-toggle .light-icon {
+    display: none;
+  }
+  :root:not([data-theme="light"]) .theme-toggle .dark-icon {
+    display: inline-block;
+  }
 }
 
 .nav-cta:hover {
@@ -1095,6 +1187,90 @@ svg {
   background: rgba(22, 27, 34, 0.9);
   border-color: var(--stage-line);
   color: var(--stage-ink);
+}
+
+/* Pipeline Scrolling Experience */
+.pipeline-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 420px) 1fr;
+  gap: 40px;
+  align-items: start;
+  position: relative;
+}
+
+.pipeline-sticky-hud {
+  position: sticky;
+  top: 96px;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+}
+
+.pipeline-card-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.pipeline-stage-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 32px;
+  border-radius: 6px;
+  transition: border-color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+  position: relative;
+}
+
+.pipeline-stage-card.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+}
+
+.pipeline-stage-card.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--accent);
+  border-radius: 6px 0 0 6px;
+}
+
+.pipeline-node-diagram {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 16px 0;
+}
+
+.pipeline-node-pill {
+  font: 500 11px/1 var(--font-mono);
+  padding: 6px 10px;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pipeline-node-pill.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 0 12px var(--accent-soft);
+}
+
+@media (max-width: 900px) {
+  .pipeline-layout {
+    grid-template-columns: 1fr;
+  }
+  .pipeline-sticky-hud {
+    position: relative;
+    top: 0;
+    max-height: none;
+  }
 }
 
 .stats-kv {

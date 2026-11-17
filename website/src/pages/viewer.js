@@ -5,6 +5,7 @@ import {
   addStudioLighting,
   buildVertexPointCloud,
   createRenderer,
+  createTajMahalHeritage,
   hasWebGL,
   loadGLB,
   normalizeModel,
@@ -14,6 +15,12 @@ import {
 initChrome();
 
 const MODELS = {
+  heritage: {
+    file: 'india-heritage.glb',
+    title: 'Indian Heritage Survey (Temple / Monument)',
+    source: 'WGS 84 Georeferenced Photogrammetric Survey (Agra, India - 27.1751° N, 78.0421° E)',
+    camera: [5.2, 3.4, 5.6],
+  },
   scan: {
     file: 'poseye-scan.glb',
     title: 'posEye Aerial Scan (test7)',
@@ -28,9 +35,9 @@ const MODELS = {
   },
   drone: {
     file: 'drone.glb',
-    title: 'Survey UAV (CesiumDrone)',
-    source: 'Apache-2.0 quadcopter with rotor animation clip',
-    camera: [3.6, 2.2, 4.2],
+    title: 'Enterprise Survey Quadcopter',
+    source: 'Commercial Photogrammetry Drone with 4K Gimbal & RTK GPS',
+    camera: [3.4, 2.2, 4.0],
   },
 };
 
@@ -79,7 +86,7 @@ async function initViewer() {
   const contentRoot = new THREE.Group();
   scene.add(contentRoot);
 
-  let activeKey = 'scan';
+  let activeKey = 'heritage';
   let activeMode = 'pbr';
   let darkStage = true;
   let measureMode = false;
@@ -152,7 +159,18 @@ async function initViewer() {
     mixer = null;
 
     try {
-      const gltf = await loadGLB(MODELS[key].file, (pct) => setLoader(pct, false));
+      let gltf = null;
+      try {
+        gltf = await loadGLB(MODELS[key].file, (pct) => setLoader(pct, false));
+      } catch (loadErr) {
+        if (key === 'heritage') {
+          console.warn('[posEye Viewer] Fallback to procedural Indian monument:', loadErr);
+          const taj = createTajMahalHeritage(5.2);
+          gltf = { scene: taj.root, animations: [] };
+        } else {
+          throw loadErr;
+        }
+      }
       const { root, stats } = normalizeModel(gltf.scene, 5.2);
       activeMesh = root;
       activeCloud = buildVertexPointCloud(root, 32000);

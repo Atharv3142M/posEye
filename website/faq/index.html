@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F4F3EF">
+  <meta name="description" content="Frequently Asked Questions (FAQ) and technical documentation covering SRT telemetry, EXIF GPS injection, local photogrammetry runtime, and 3D outputs in posEye.">
+  <title>FAQ &amp; Documentation | posEye</title>
+  <link rel="icon" type="image/png" href="../posEye.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../src/styles/base.css">
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+
+  <header class="site-header">
+    <a class="brand" href="../" aria-label="posEye home">
+      <img src="../posEye.png" alt="posEye logo" width="120" height="32">
+    </a>
+
+    <nav class="navlinks" aria-label="Primary navigation">
+      <a href="../">Overview</a>
+      <a href="../pipeline/">Pipeline</a>
+      <a href="../viewer/">3D Lab</a>
+      <a href="../architecture/">Architecture</a>
+      <a href="./" aria-current="page">FAQ</a>
+      <a href="../download/">Download</a>
+      <a href="../contact/">Contact</a>
+    </nav>
+
+    <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle dark mode" title="Toggle dark mode" aria-pressed="false">
+      <span class="light-icon" aria-hidden="true">&#9728;</span>
+      <span class="dark-icon" aria-hidden="true">&#9790;</span>
+    </button>
+    <a class="nav-cta" href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">GitHub Repo</a>
+    <button class="menu-btn" type="button" aria-label="Open navigation menu" aria-expanded="false">Menu</button>
+  </header>
+
+  <main id="main-content">
+    <section class="page-hero">
+      <div class="page-hero-inner">
+        <div>
+          <p class="eyebrow">Knowledge Base &amp; Reference</p>
+          <h1>Frequently Asked Questions.</h1>
+        </div>
+        <p class="lead">Answers on drone flight video inputs, SRT telemetry formats, WGS 84 EXIF injection, offline local engine behavior, and desktop 3D exports.</p>
+      </div>
+    </section>
+
+    <section class="section-pad">
+      <div class="section-inner">
+        <div class="split-grid" style="margin-bottom:40px;align-items:end;">
+          <div class="field">
+            <label for="doc-search">Search FAQ</label>
+            <input id="doc-search" type="search" placeholder="Search telemetry, EXIF, CUDA, GLB, offline...">
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;" role="group" aria-label="Filter FAQ category">
+            <button class="ctrl-btn" type="button" data-cat="all" aria-pressed="true">All Topics</button>
+            <button class="ctrl-btn" type="button" data-cat="inputs" aria-pressed="false">Video &amp; SRT</button>
+            <button class="ctrl-btn" type="button" data-cat="georeferencing" aria-pressed="false">Georeferencing</button>
+            <button class="ctrl-btn" type="button" data-cat="runtime" aria-pressed="false">Local Runtime</button>
+          </div>
+        </div>
+
+        <div id="faq-list" class="faq-list"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <a class="brand" href="../" aria-label="posEye home">
+        <img src="../posEye.png" alt="posEye logo" width="105" height="28">
+      </a>
+      <nav class="footer-links" aria-label="Footer navigation">
+        <a href="../">Overview</a>
+        <a href="../pipeline/">Pipeline</a>
+        <a href="../viewer/">3D Lab</a>
+        <a href="../architecture/">Architecture</a>
+        <a href="./" aria-current="page">FAQ</a>
+        <a href="../download/">Download</a>
+        <a href="../contact/">Contact</a>
+        <a href="https://github.com/Atharv3142M/posEye" target="_blank" rel="noreferrer">GitHub</a>
+      </nav>
+      <div class="footer-meta">
+        <span>Additional technical specs live under Docs/ in the repository.</span>
+        <span>&copy; <span id="year">2026</span> posEye</span>
+      </div>
+    </div>
+  </footer>
+
+  <script type="module" src="../src/pages/docs.js"></script>
+</body>
+</html>
